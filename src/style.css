@@ -32,3 +32,15 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 #gamebar div { display: flex; gap: 6px; }
 #gamebar button { height: 32px; padding: 0 14px; border: 0; border-radius: 16px; background: #ffffff1f; color: var(--ink); font: 600 13px system-ui, sans-serif; cursor: pointer; }
 #gamebar button[data-id="again"] { background: var(--accent); color: #241509; }
+#gamebar button[data-id^="pick"] { min-width: 36px; padding: 0 10px; color: #fff; }
+#gamebar button[data-id="pick0"] { background: #e04a3c; } #gamebar button[data-id="pick1"] { background: #2f86dd; }
+#gamebar button[data-id="pick2"] { background: #34a862; } #gamebar button[data-id="pick3"] { background: #d9a020; color: #241509; }
+/* the drawing pad: a sheet of paper over the stage */
+#pad { position: absolute; inset: 12px; display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 22px; background: #1b120de6;
+  backdrop-filter: blur(6px); box-shadow: 0 8px 30px #0008; }
+#pad[hidden] { display: none; }
+#pad p { margin: 0; text-align: center; font-weight: 600; color: var(--soft); }
+#pad canvas { flex: 1; min-height: 0; width: 100%; border-radius: 14px; background: #fbf3e2; touch-action: none; cursor: crosshair; }
+#pad div { display: flex; gap: 8px; justify-content: center; }
+#pad button { height: 40px; padding: 0 18px; border: 0; border-radius: 20px; background: #ffffff1f; color: var(--ink); font: 600 15px system-ui, sans-serif; cursor: pointer; }
+#pad button[data-id="done"] { background: var(--accent); color: #241509; }

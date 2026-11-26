@@ -7,6 +7,7 @@ import { colours, tidyColours, keepColours } from './looks.js';
 import { describe } from './describe.js';
 import { GAMES } from './games/index.js';
 import { lightRoom, WINDOW } from './light.js';
+import { makeDice } from './dice.js';
 import { SPOTS, SPOT_NAMES, spotOf, roomColours, roomItems, tidyRoomColours, keepRoomColours, keepItem, forgetItem, forgetAll, freePlace, findItem, roomLine, inRoom, MAX_ITEMS } from './room.js';
 
 const HOLD_SIZE = .4;            // metres: the longest side of a prop in its hands
@@ -112,7 +113,7 @@ export function makeWorld() {
   let placed = [], acts = [], carrying = Promise.resolve(), restored = false;
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), at = new THREE.Vector3();
   // a game on the stage (./games): the one being played, the ones made so far, and where the camera is heading
-  let game = null, onNews = () => {};
+  let game = null, onNews = () => {}, dice = null;
   const games = {}, HOME = { pos: [0, .78, 1.95], look: [0, .4, 0] }, camAt = { pos: [...HOME.pos], look: [...HOME.look] };
   const stage = {
     THREE, get scene() { return v.scene; }, get creature() { return creature; }, get physics() { return world; },
@@ -309,6 +310,7 @@ export function makeWorld() {
     /** What is in its hands and on the floor, in a line for Claude. */
     scene() {
       const floor = loose.map(e => e.short).slice(-6);
+      if (dice?.onFloor) floor.push(dice.onFloor);
       return `In your hands: ${held ? held.short : 'nothing'}.${floor.length ? ` On the floor: ${floor.join(', ')}.` : ''}${roomLine(placed)}`;
     },
     reset() {
@@ -316,6 +318,7 @@ export function makeWorld() {
       if (!restored) { restored = true; restoreRoom(); }
       for (const e of loose) remove(e); loose = []; if (held) remove(held); held = null; creature.holding = false;
       fx.clear(); embers = makeEmbers(); creature.mood('calm');
+      dice ||= makeDice({ THREE, scene: v.scene, physics: world, creature, sparks: stage.sparks }); dice.clear();
       if (game) { game.stop(); game = null; }
     },
     resize(w, h) { W = w; H = h; },
@@ -339,6 +342,7 @@ export function makeWorld() {
       pops = pops.filter(p => p.t < .28);
       if (held) { held.pivot.rotation.y += dt * .5; held.pivot.position.y = held.pivot.userData.size.y * .3 + Math.sin(t * 2.4) * .01; }
       world.step(dt);
+      dice?.update(dt);
       for (const e of loose) if (e.pivot.position.y < -4) remove(e);
       loose = loose.filter(e => e.pivot.position.y >= -4);
       while (loose.length > 14) remove(loose.shift());
@@ -396,7 +400,7 @@ export function makeWorld() {
       release(held, true); return `Threw ${w} onto the floor.`;
     },
     async clear(o = {}) {
-      const n = loose.length + (held ? 1 : 0), m = o.room ? placed.length : 0;
+      const n = loose.length + (held ? 1 : 0) + (dice?.clear() || 0), m = o.room ? placed.length : 0;
       for (const e of [...loose, ...(held ? [held] : []), ...(o.room ? placed : [])]) { poof(e.pivot, '#ffffff'); remove(e); }
       loose = []; held = null; creature.holding = false; gs.sound.sounds.pop();
       if (o.room) { placed = []; forgetAll(); }
@@ -413,6 +417,8 @@ export function makeWorld() {
       creature.gesture('tada'); poof(creature.core, creature.glowed('#ffd27a')); gs.sound.sounds.pop();
       return { text: `Your body is now ${r.colours.body} and your glow ${r.colours.glow}. It is remembered next time.` };
     },
+    /** Rolls dice ("2d6", "d20"): real ones thrown onto the rug where it can. Resolves a sentence for Claude. */
+    roll: text => dice.roll(text),
     /** The things kept in the room, as saved: [{ id, words, spot, x, y, z, ... }]. */
     get room() { return placed.map(({ pivot, body, ...i }) => i); },
     /** True while it is walking about the room with something. */
