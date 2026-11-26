@@ -101,7 +101,7 @@ export class Listener {
 
   listen() {
     const way = WAYS[this.way], rec = new R(), t0 = performance.now();
-    let audio = false, heard = false;
+    let audio = false, heard = false, empty = 0;
     rec.lang = this.language; rec.continuous = way !== 'one at a time'; rec.interimResults = true; rec.maxAlternatives = 1;
     const local = this.canLocal && this.way < 2;
     if (local) rec.processLocally = true;
@@ -113,7 +113,11 @@ export class Listener {
     rec.onspeechend = () => this.note('speech end');
     rec.onnomatch = () => this.note('no match');
     rec.onresult = e => {
-      heard = true; this.fails = 0;
+      if (this.rec !== rec) return;
+      // (results that are all empty: the recogniser is getting silence, not us. Edge does this with our track)
+      const words = [...e.results].some(r => r[0]?.transcript?.trim());
+      if (!words) { if (++empty >= 3) this.stepDown('only empty results'); return; }
+      heard = true; empty = 0; this.fails = 0;
       let now = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i], t = norm(r[0].transcript);
