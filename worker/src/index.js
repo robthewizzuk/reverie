@@ -1,6 +1,7 @@
 // Reverie's backend on Cloudflare: POST /api/turn streams Claude's reply (server/turn.js, the same code the dev
 // server runs). The key is a Worker secret: `npx wrangler secret put ANTHROPIC_API_KEY` (never in this repo).
-// ALLOWED_ORIGIN (wrangler.toml) is the page's address, so other sites can't spend the key.
+// The page itself is served from dist/ as static assets (wrangler.toml [assets]); only /api/* reaches this code.
+// Only the Worker's own address (and ALLOWED_ORIGIN, if set; '*' allows any) may call the API, so other sites can't spend the key.
 import { handleTurn } from '../../server/turn.js';
 
 const cors = env => ({
@@ -15,7 +16,8 @@ export default {
     const url = new URL(request.url);
     if (url.pathname !== '/api/turn') return new Response('Not found', { status: 404 });
     const origin = request.headers.get('origin');
-    if (env.ALLOWED_ORIGIN && origin && origin !== env.ALLOWED_ORIGIN) return new Response('Forbidden', { status: 403 });
+    const allowed = env.ALLOWED_ORIGIN === '*' || origin === url.origin || origin === env.ALLOWED_ORIGIN;
+    if (origin && !allowed) return new Response('Forbidden', { status: 403 });
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(env) });
     const res = await handleTurn(request, env);
     const headers = new Headers(res.headers);
