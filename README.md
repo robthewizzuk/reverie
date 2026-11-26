@@ -30,7 +30,8 @@ and nothing with a `VITE_` prefix holds it, so it never reaches the page.
 | The creature | `src/creature.js` | Built in code: plush body, glowing core (pulses when idle, brightens when listening, swirls when thinking), blinking eyes, a mouth the engine's `Face` lip-syncs, arms that wave, point and hold |
 | The stage | `src/world.js` | A workshop corner in the engine's Next Gen view; props from `gs.models.generate`, held in its hands, thrown with real weight by `gs.physics3d` |
 | The backend | `server/turn.js` | One small handler that adds the key and streams Claude's reply back. Runs inside the Vite dev server (`server/dev.js`) and as a Cloudflare Worker (`worker/`) |
-| Its personality and tools | `server/persona.js` | The system prompt and six tools: `make`, `change`, `toss`, `clear`, `act`, `think_harder` |
+| Its personality and tools | `server/persona.js` | The system prompt and its tools: `make`, `change`, `toss`, `clear`, `act`, `play`, `game_move`, `stop_game`, `think_harder` |
+| Games | `src/games/` | Games it plays with you on a table in front of it. Chess: the engine's living stone pieces, rules from chess.js and the engine's chess opponent picking its moves (fast, always legal, levels 1 to 5), while Claude reacts out loud to each move and a stretchy arm moves its pieces. `src/games/index.js` says how to add another |
 
 Everyday chat goes to Claude Haiku 5.5 with low effort, for speed. When a question needs real thought, it calls
 `think_harder` and the rest of that turn goes to Claude Sonnet 5.5. Either can be changed with `REVERIE_QUICK_MODEL`
@@ -54,6 +55,7 @@ Worker's address.
 ```bash
 REVERIE_FAKE=1 npm run dev -- --port 5179
 npm run smoke                 # wakes it, makes, changes and throws a prop, asks a deep question; pictures in tests/out/
+node tests/chess.mjs          # asks to play chess, taps a move, says a move, puts the board away
 ```
 
 ## Known gaps
@@ -65,4 +67,4 @@ npm run smoke                 # wakes it, makes, changes and throws a prop, asks
   button hides and you type.
 - **Talking over it** with the speaker on can pick up its own voice. It needs three or more words heard before it stops,
   which mostly avoids this. Headphones avoid it completely.
-- **AR mode** and the mini-game from the plan are not built yet.
+- **AR mode** is not built yet. Chess is on the stage only, not on your floor.
