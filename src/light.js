@@ -16,7 +16,7 @@ const CORE_LAMP = '#ff7020';     // the light its core casts, as made (moved wit
 /**
  * Lights the room in view v around the creature. roomBox: { min, max } of the room inside its walls. Call after the
  * room and the creature are made (so the room's reflections reach its eyes, glass dome and the props on the bench).
- * Returns { update(dt, t), recolour() }.
+ * Returns { sun, bounce, room, update(dt, t), recolour() }.
  */
 export function lightRoom(v, creature, roomBox) {
   const { sun } = gs.hd;
@@ -59,12 +59,14 @@ export function lightRoom(v, creature, roomBox) {
   // bounce light from the brick, the boards and the sunlit patch (a warm wall tints what is next to it), reflections
   // of the room itself in anything shiny (its eyes, its glass dome, the floorboards) instead of the kit's studio, and
   // soft contact shadows on the rug under its feet and the props. Each scales itself down on a slow phone (v's tiers).
-  v.bounce(roomBox, { spacing: .8, bounces: 1, size: 8 });
-  v.room(roomBox, { strength: .9 });
+  const bounce = v.bounce(roomBox, { spacing: .8, bounces: 1, size: 8 });
+  const reflections = v.room(roomBox, { strength: .9 });
   v.contact({ y: .013, size: 3, darkness: 1.1, opacity: .5, height: .7 });
 
   return {
     sun: s,
+    /** The bounce light and the room's reflections: bake() each again after the room changes. */
+    bounce, room: reflections,
     update(dt, t) {
       creature.coreAt(at); core.at(at.x, at.y - .04, at.z + .2); core.i0 = .3 + creature.coreGlow * .8;
       v.placeLamps([lamp], 0, .4, 0, t);
