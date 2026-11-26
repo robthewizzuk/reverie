@@ -147,8 +147,8 @@ export function makeChess(stage) {
   const ahead = () => {
     const b = game.balance;   // + is good for white (you), in pawns
     if (Math.abs(b) < .8) return 'The position is about even.';
-    const n = Math.abs(b).toFixed(1).replace(/\.0$/, '');
-    return b > 0 ? `They are ahead by about ${n} pawns.` : `You are ahead by about ${n} pawns.`;
+    const n = Math.abs(b).toFixed(1).replace(/\.0$/, ''), p = n === '1' ? 'pawn' : 'pawns';
+    return b > 0 ? `They are ahead by about ${n} ${p}.` : `You are ahead by about ${n} ${p}.`;
   };
   function said(m, who) {
     const whose = who === 'They' ? 'your' : 'their';

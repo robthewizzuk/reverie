@@ -58,8 +58,9 @@ await idle();
 
 const h = await page.evaluate(() => window.__reverie.brain.history.map(m => typeof m.content === 'string' ? m.content : m.content.map(b => b.type + (b.type === 'tool_result' ? ':' + b.content : b.type === 'text' ? ':' + b.text : '')).join(',')));
 console.log('history:\n  ' + h.map(x => x.slice(0, 160)).join('\n  '));
-if (!h.some(x => /^\[chess\]/.test(x))) fail('Claude never heard news from the board');
+if (!h.some(x => /^\[chess\] /m.test(x))) fail('Claude never heard news from the board');
 if (!h.some(x => /tool_result:Played Nf3/.test(x))) fail('no game_move result');
+if (!h.some(x => /board was set up straight away/.test(x))) fail('asking to play did not set the board up straight away');
 console.log('context:', await page.evaluate(() => window.__reverie.world.game.context().slice(0, 300)));
 
 await page.click('#gamebar button[data-id="leave"]');
