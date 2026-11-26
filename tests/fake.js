@@ -3,6 +3,7 @@
 //   "make a <thing>"  -> says a line and calls make
 //   "make it <x>"     -> says a line and calls change
 //   "throw it"        -> toss;  "clear"  -> clear;  "think ..." -> think_harder, then a deep answer
+//   "play chess"      -> play;  "[chess] ..." (news from the board) -> a quip;  "move e4" -> game_move;  "stop playing" -> stop_game
 //   anything else     -> a friendly line with a wave
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const lastUser = messages => [...messages].reverse().find(m => m.role === 'user');
@@ -13,11 +14,17 @@ function plan(body) {
   const results = Array.isArray(u.content) ? u.content.filter(b => b.type === 'tool_result') : [];
   if (results.length) {
     const r = String(results[0].content ?? '');
+    if (/chess board is set up/i.test(r)) return { text: 'Your move. No pressure.', tools: [] };
+    if (/^Played /.test(r)) return { text: 'Bold.', tools: [] };
     if (/handed over/i.test(r)) return { text: 'Right, I have thought about it properly. The answer is forty two, give or take.', tools: [] };
     return { text: /fail|could not|nothing/i.test(r) ? 'Hmm, that one fizzled.' : 'Ta-da!', tools: [] };
   }
-  const said = textOf(u).toLowerCase();
+  const said = textOf(u).replace(/^\[chess,[^\]]*\]\s*/, '').toLowerCase();
+  if (/^\[chess\]/.test(said)) return { text: /taking your/.test(said) ? 'Hey! I needed that.' : /checkmate/.test(said) ? 'Good game!' : 'Hmm, interesting.', tools: [] };
+  if (/play chess|game of chess/.test(said)) return { text: 'Oh, you are on!', tools: [['play', { game: 'chess', level: 1 }]] };
+  if (/stop playing|put it away/.test(said)) return { text: 'Fine, fine.', tools: [['stop_game', {}]] };
   let m;
+  if ((m = /^move (\S+)/.exec(said))) return { text: 'Ooh.', tools: [['game_move', { move: m[1] }]] };
   if ((m = /make it (.+)/.exec(said))) return { text: 'Watch this.', tools: [['change', { words: m[1] }]] };
   if ((m = /make (?:me )?(an? .+|some .+)/.exec(said))) return { text: 'Ooh, one coming right up!', tools: [['act', { gesture: 'tada', mood: 'excited' }], ['make', { words: m[1] }]] };
   if (/throw|toss/.test(said)) return { text: 'Catch!', tools: [['toss', {}]] };

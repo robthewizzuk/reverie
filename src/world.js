@@ -3,6 +3,7 @@
 // game is (make, reset, update, draw), so the engine's kits load and run as they do in the app.
 import gs from '../engine/src/gamescroll.js';
 import { makeCreature } from './creature.js';
+import { GAMES } from './games/index.js';
 
 const HOLD_SIZE = .4;            // metres: the longest side of a prop in its hands
 const SIZE_WORDS = [[/\b(giant|huge|enormous)\b/, 1.8], [/\b(bigger|big|large)\b/, 1.4], [/\b(smaller|small|little)\b/, .7], [/\b(tiny|teeny)\b/, .5]];
@@ -80,6 +81,14 @@ export function makeWorld() {
   const { THREE } = gs.hd;
   let W = 360, H = 640, held = null, loose = [], seed = 1, t = 0, pops = [];
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), at = new THREE.Vector3();
+  // a game on the stage (./games): the one being played, the ones made so far, and where the camera is heading
+  let game = null, onNews = () => {};
+  const games = {}, HOME = { pos: [0, .78, 1.95], look: [0, .4, 0] }, camAt = { pos: [...HOME.pos], look: [...HOME.look] };
+  const stage = {
+    THREE, get scene() { return v.scene; }, get creature() { return creature; }, get physics() { return world; },
+    sparks(p, color = '#ffd27a', count = 24) { fx.sparks({ x: p.x, y: p.y, z: p.z }, { color, count, power: .7, light: false }); },
+    news: (text, loud) => onNews(text, loud),
+  };
 
   // a prop sits in a pivot whose middle is the prop's middle, so it can be held, spun and given a box body
   function pivotFor(thing, size) {
@@ -155,6 +164,7 @@ export function makeWorld() {
       if (!v) setup();
       for (const e of loose) remove(e); loose = []; if (held) remove(held); held = null; creature.holding = false;
       fx.clear(); embers = makeEmbers(); creature.mood('calm');
+      if (game) { game.stop(); game = null; }
     },
     resize(w, h) { W = w; H = h; },
     update(dt) {
@@ -162,6 +172,11 @@ export function makeWorld() {
       // a tall screen sees as wide as a square one would, so the creature never crops at the sides
       const a = W / H; v.cam.fov = a < 1 ? 2 * Math.atan(Math.tan(21 * Math.PI / 180) / a) * 180 / Math.PI : 36;
       v.cam.aspect = a; v.cam.updateProjectionMatrix();
+      // the camera eases to the game's seat and back
+      const goal = game?.camera || HOME, ck = 1 - Math.exp(-dt * 3);
+      for (const k of ['pos', 'look']) for (let i = 0; i < 3; i++) camAt[k][i] += (goal[k][i] - camAt[k][i]) * ck;
+      v.cam.position.set(...camAt.pos); v.cam.lookAt(...camAt.look);
+      game?.update(dt);
       creature.update(dt, v.cam);
       creature.coreAt(at); coreLamp.at(at.x, at.y - .05, at.z + .12); coreLamp.i0 = .25 + creature.coreGlow * .6;
       const st = creature.state; embers.at({ x: at.x, y: at.y, z: at.z + .03 }); embers.rate = st.thinking ? 14 : st.listening ? 6 : st.speaking ? 4 : 2; embers.on = true;
@@ -178,12 +193,35 @@ export function makeWorld() {
       fx.update(dt); motes.update(dt);
     },
     draw(c) { v.render(c, W, H); },
-    /** What a tap at (x, y) in CSS pixels hit: 'creature', 'prop' or null. */
+    /** What a tap at (x, y) in CSS pixels hit: 'game' (the game used it), 'creature', 'prop' or null. */
     tap(x, y) {
       ndc.set(x / W * 2 - 1, -(y / H) * 2 + 1); ray.setFromCamera(ndc, v.cam);
+      if (game?.tap(ray)) return 'game';
       if (held && ray.intersectObject(held.pivot, true).length) return 'prop';
       if (ray.intersectObject(creature.root, true).length) return 'creature';
       return null;
+    },
+
+    // ---- games
+    /** The game being played, or null. */
+    get game() { return game; },
+    /** Who hears what a game says happened (the brain). */
+    set onNews(fn) { onNews = fn; },
+    /** Starts a game by name ('chess'), or a fresh round of the one on. Resolves a sentence for Claude. */
+    async play(name, o = {}) {
+      const def = GAMES[name];
+      if (!def) return `There is no game called "${name}". Games here: ${Object.keys(GAMES).join(', ')}.`;
+      if (game && game.id !== name) { game.stop(); game = null; }
+      if (held) release(held, false);   // (hands free to play)
+      game = games[name] ||= def.make(stage);
+      creature.gesture('tada'); creature.mood('excited');
+      try { return await game.start(o); } catch (e) { game.stop(); game = null; return `The game could not start (${String(e?.message || e).slice(0, 80)}).`; }
+    },
+    /** Puts the game away. */
+    async stopGame() {
+      if (!game) return 'No game was being played.';
+      const t = game.title; game.stop(); game = null; creature.mood('calm');
+      return `Put the ${t.toLowerCase()} away.`;
     },
 
     // ---- Claude's hands
