@@ -33,19 +33,21 @@ export function makeCreature() {
   const coreMat = pbr('#ff4a00', { glow: 2.5, glowCol: '#ff5200', rough: .3 });
   const core = new THREE.Mesh(new THREE.SphereGeometry(.05, 32, 16), coreMat);
   core.position.set(0, .26, .258); core.scale.z = .7; body.add(core);
-  const heart = new THREE.Mesh(new THREE.SphereGeometry(.016, 16, 12), pbr('#ffb060', { glow: 3.5, glowCol: '#ff9a40' }));   // (a white-hot middle)
+  const heartMat = pbr('#ffb060', { glow: 3.5, glowCol: '#ff9a40' }), heart = new THREE.Mesh(new THREE.SphereGeometry(.016, 16, 12), heartMat);   // (a white-hot middle)
   heart.position.set(0, .26, .285); body.add(heart);
   const dome = new THREE.Mesh(new THREE.SphereGeometry(.066, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2), pbr('#ffffff', { rough: .05, glass: { thin: true, tint: '#ffb98a' } }));
   dome.rotation.x = Math.PI / 2; dome.scale.y = .55; dome.position.set(0, .26, .262); body.add(dome);
   const ring = shade(new THREE.Mesh(new THREE.TorusGeometry(.07, .012, 12, 40), pbr('#c9a77e', { rough: .35, metal: .6 })));
   ring.position.set(0, .26, .262); ring.rotation.x = -.18; body.add(ring);
   // the halo: a soft round glow made in code, always facing the camera, added over what is behind it
+  // (white in the middle fading out: the sprite's colour is the glow's, so the halo changes with it)
   const haloTex = (() => {
     const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'), g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
-    g.addColorStop(0, 'rgba(255,150,70,1)'); g.addColorStop(.2, 'rgba(255,110,40,.5)'); g.addColorStop(.55, 'rgba(255,80,20,.1)'); g.addColorStop(1, 'rgba(255,70,20,0)');
+    g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(.2, 'rgba(255,187,146,.5)'); g.addColorStop(.55, 'rgba(255,136,73,.1)'); g.addColorStop(1, 'rgba(255,119,73,0)');
     x.fillStyle = g; x.fillRect(0, 0, 64, 64); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
   })();
   const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: .5 }));
+  halo.material.color.set('#ff9646');
   halo.position.set(0, .26, .3); halo.scale.setScalar(.3); halo.renderOrder = 2; body.add(halo);
 
   // eyes: glossy and dark, a light in each, and lids made by squashing them (the Face's blink)
@@ -162,8 +164,42 @@ export function makeCreature() {
     for (const g of eyes) g.scale.y = Math.max(.08, 1 - shut) * (state.thinking ? .85 : 1);
   }
 
+  /**
+   * Recolours it: body is its plush (arms, hands and feet too), glow its core, the bead on its sprout, the halo and the
+   * light the plush lets through. Colours as '#rrggbb'. The default glow is the core's own orange, and every other
+   * part of the glow is moved the same way from where it was made, so the default looks as it always did.
+   */
+  const WHITE = new THREE.Color(1, 1, 1), made = { plush: plush.color.clone(), sheen: plush.sheenColor.clone(), sss: plush.userData.sss?.colour.clone(), core: coreMat.color.clone(), coreGlow: coreMat.emissive.clone(), heart: heartMat.color.clone(), heartGlow: heartMat.emissive.clone(), halo: halo.material.color.clone() };
+  const BASE_GLOW = new THREE.Color('#ff5200'), glowNow = BASE_GLOW.clone(), hsl = {}, base = {}, x = {};
+  BASE_GLOW.getHSL(base);
+  // a part of the glow as it was made, moved to the glow it has now: the new hue, its own lightness and saturation
+  // kept in step with the core's orange (so the default is unchanged)
+  const shift = (into, from) => {
+    glowNow.getHSL(hsl); from.getHSL(x);
+    return into.setHSL((x.h + hsl.h - base.h + 1) % 1, Math.min(1, x.s * hsl.s / Math.max(.01, base.s)), Math.min(1, x.l * hsl.l / Math.max(.01, base.l)));
+  };
+  function setColours({ body, glow } = {}) {
+    // (each Color is changed in place: the WebGPU view's materials share these objects, so they follow)
+    if (body) {
+      plush.color.set(body);
+      // its soft sheen, a near-white of its own colour (the cream plush keeps the sheen it was made with)
+      if (plush.color.equals(made.plush)) plush.sheenColor.copy(made.sheen);
+      else plush.sheenColor.copy(plush.color).lerp(WHITE, .75);
+    }
+    if (glow) {
+      glowNow.set(glow);
+      shift(coreMat.color, made.core); shift(coreMat.emissive, made.coreGlow);
+      shift(heartMat.color, made.heart); shift(heartMat.emissive, made.heartGlow);
+      shift(halo.material.color, made.halo);
+      if (made.sss) shift(plush.userData.sss.colour, made.sss);
+    }
+  }
+  /** One of the glow's colours as it was made ('#ff7020'), as it is with the glow it has now: for the lights and embers. */
+  const glowed = hex => '#' + shift(new THREE.Color(), new THREE.Color(hex)).getHexString();
+
   return {
     root, hold, face, core,
+    setColours, glowed,
     state,
     get coreGlow() { return coreGlow; },
     get holding() { return holding; }, set holding(v) { holding = !!v; },

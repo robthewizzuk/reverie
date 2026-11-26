@@ -3,8 +3,10 @@
 // game is (make, reset, update, draw), so the engine's kits load and run as they do in the app.
 import gs from '../engine/src/gamescroll.js';
 import { makeCreature } from './creature.js';
+import { colours, tidyColours, keepColours } from './looks.js';
 import { describe } from './describe.js';
 
+const CORE_LAMP = '#ff7020';     // the light its core casts, as made (moved with the glow colour)
 const HOLD_SIZE = .4;            // metres: the longest side of a prop in its hands
 const SIZE_WORDS = [[/\b(giant|huge|enormous)\b/, 1.8], [/\b(bigger|big|large)\b/, 1.4], [/\b(smaller|small|little)\b/, .7], [/\b(tiny|teeny)\b/, .5]];
 const article = w => w.replace(/^(a|an|the|some)\s+/i, '');
@@ -53,7 +55,8 @@ function setup() {
   // a warm lamp over the bench
   lampSpot = { x: 1.3, y: 1.6, z: -1.1, col: '#ffc98a', i: 9, reach: 4 };   // (no flick: any flick makes a lamp stutter like a failing tube)
   creature = makeCreature(); v.scene.add(creature.root);
-  coreLamp = v.flash(0, .3, .3, { keep: true, col: '#ff7020', i: .8, reach: .9 });
+  creature.setColours(colours());   // (the colours it was asked for last time, kept on this device)
+  coreLamp = v.flash(0, .3, .3, { keep: true, col: creature.glowed(CORE_LAMP), i: .8, reach: .9 });
   fx = new gs.fx3d.Particles3D(v.scene);
   // embers drifting up from its core: a few when idle, more while listening, a stream while thinking
   embers = makeEmbers();
@@ -67,7 +70,7 @@ function setup() {
   gs.models.generate.load().catch(() => {});   // (the generator's workers warmed up while it wakes)
 }
 
-const makeEmbers = () => fx.make({ x: 0, y: .26, z: .3 }, { loop: true, rate: 2, life: [.9, 1.8], speed: [.03, .1], size: [.008, .018], colors: ['#ffd8a0', '#ff6a20'], radius: .03, gravity: .18 });
+const makeEmbers = () => fx.make({ x: 0, y: .26, z: .3 }, { loop: true, rate: 2, life: [.9, 1.8], speed: [.03, .1], size: [.008, .018], colors: ['#ffd8a0', '#ff6a20'].map(creature.glowed), radius: .03, gravity: .18 });
 const tmp = {};
 function boxOf(o) { const { THREE } = gs.hd; o.updateMatrixWorld(true); return (tmp.b ||= new THREE.Box3()).setFromObject(o); }
 function fitTo(o, size) { const { THREE } = gs.hd; o.scale.setScalar(1); const s = boxOf(o).getSize(tmp.v ||= new THREE.Vector3()); o.scale.setScalar(size / Math.max(.01, s.x, s.y, s.z)); return o; }
@@ -210,6 +213,16 @@ export function makeWorld() {
       for (const e of [...loose, ...(held ? [held] : [])]) { poof(e.pivot, '#ffffff'); remove(e); }
       loose = []; held = null; creature.holding = false; gs.sound.sounds.pop();
       return n ? `Cleared ${n} prop${n > 1 ? 's' : ''}.` : 'There was nothing to clear.';
+    },
+    /** Its body and glow colours ({ body, glow, reset }), kept for next time. */
+    async recolour(input) {
+      const r = tidyColours(input, THREE);
+      if (r.error) return { text: `Not changed: ${r.error}.`, error: true };
+      creature.setColours(r.colours); keepColours(r.colours);
+      coreLamp.s.col = creature.glowed(CORE_LAMP);
+      embers.remove(); embers = makeEmbers();
+      creature.gesture('tada'); poof(creature.core, creature.glowed('#ffd27a')); gs.sound.sounds.pop();
+      return { text: `Your body is now ${r.colours.body} and your glow ${r.colours.glow}. It is remembered next time.` };
     },
     async act(gesture, mood) {
       if (mood) creature.mood(mood); if (gesture) creature.gesture(gesture);
