@@ -4,6 +4,8 @@
 import gs, { loadParts } from '../engine/src/gamescroll.js';
 import { makeWorld } from './world.js';
 import { makeBrain } from './brain.js';
+import { Listener } from './listen.js';
+import { askPlace } from './place.js';
 
 const $ = s => document.querySelector(s);
 const stage = $('#stage'), canvas = $('#view'), ctx = canvas.getContext('2d');
@@ -48,7 +50,7 @@ function showTiming(t) {
 function frame(now) {
   const dt = Math.min(.05, (now - (last || now)) / 1000); last = now;
   try {
-    if (voice?.listening) {
+    if (voice?.listening || voice?.want) {
       // the mic hears its voice too: only words it did not just say count as yours
       const heard = voice.text.trim(), yours = heard ? brain.yours(heard) : [];
       world.creature.state.listening = yours.length > 0;
@@ -76,15 +78,15 @@ function frame(now) {
 async function boot() {
   fit(); addEventListener('resize', fit);
   status.textContent = 'Waking up…';
-  await loadParts(['hd', 'models', 'characters', 'physics3d', 'fx3d', 'hear']);
+  await loadParts(['hd', 'models', 'characters', 'physics3d', 'fx3d']);
   world = makeWorld();
   await whenLoaded(() => world.reset());
   world.resize(W, H);
   brain = makeBrain({ world, onCaption: say, onStatus: setStatus, onTiming: showTiming });
-  voice = new gs.hear.Voice({ free: true });
+  voice = new Listener();
   window.__reverie = { world, brain, gs };
   status.textContent = '';
-  wake.hidden = false; wake.textContent = 'Tap to wake it up';
+  wake.hidden = false; wake.textContent = 'Tap to say hi';
   requestAnimationFrame(frame);
 }
 
@@ -92,10 +94,24 @@ function wakeUp() {
   if (awake) return; awake = true; wake.hidden = true;
   const c = world.creature;
   c.gesture('wave'); c.mood('happy');
-  const hello = "Hi! I'm Reverie. Ask me to make you something, anything at all.";
+  const hello = "Hi, I'm Reverie! Ask me anything you like, like what the weather's up to. Or say the word and I'll magic something up for us to play with.";
   brain.speak(hello);   // (through its speaker, so the mic knows this is its voice)
-  input.focus({ preventScroll: true });
-  if (voice.available === false) mic.hidden = true;
+  // the browser's prompts, from this tap: the microphone, then where they are (for the weather and local things)
+  startListening().finally(() => askPlace());
+}
+
+async function startListening() {
+  if (voice.listening) return true;
+  const ok = await voice.start();
+  mic.classList.toggle('on', !!ok);
+  if (ok) input.placeholder = 'Listening… or type';
+  else {
+    input.placeholder = 'Say something, or type…';
+    setStatus(voice.problem === 'denied' ? 'The microphone is off. Tap the mic to try again, or type.' : "This browser can't listen, so type instead.");
+    if (voice.problem !== 'denied') mic.hidden = true;
+    input.focus({ preventScroll: true });
+  }
+  return ok;
 }
 
 form.addEventListener('submit', e => {
@@ -105,12 +121,11 @@ form.addEventListener('submit', e => {
 });
 input.addEventListener('input', () => { if (input.value && brain?.speaking && input.value.length > 3) brain.interrupt(); });
 mic.addEventListener('click', async () => {
-  wakeUp();
-  if (voice.listening) { voice.stop(); mic.classList.remove('on'); input.placeholder = 'Say something, or type…'; return; }
-  const ok = await voice.start();
-  mic.classList.toggle('on', !!ok);
-  if (!ok) { mic.hidden = true; setStatus("This device can't listen on its own, so type instead."); }
-  else input.placeholder = 'Listening…';
+  if (!awake) return wakeUp();   // (waking asks for the microphone itself)
+  if (voice.listening || voice.want) { voice.stop(); mic.classList.remove('on'); input.placeholder = 'Say something, or type…'; return; }
+  // (denied before: the browser may let it ask again, or the person has to allow it in the site settings)
+  if (voice.problem === 'denied') { voice.available = true; voice.problem = null; }
+  if (await startListening()) setStatus('');
 });
 wake.addEventListener('click', wakeUp);
 canvas.addEventListener('pointerdown', e => {
