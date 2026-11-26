@@ -47,23 +47,32 @@ function showTiming(t) {
   if (debug) timing.textContent = line;
 }
 
+/** Words heard that are clearly someone talking, not its voice coming back: 3 or more new words, most of what was heard. */
+const deliberate = h => !!h && h.yours.length >= 3 && h.yours.length / Math.max(1, h.words.length) >= .5;
+
 function frame(now) {
   const dt = Math.min(.05, (now - (last || now)) / 1000); last = now;
   try {
     if (voice?.listening || voice?.want) {
-      // the mic hears its voice too: only words it did not just say count as yours
-      const heard = voice.text.trim(), yours = heard ? brain.yours(heard) : [];
-      world.creature.state.listening = yours.length > 0;
-      if (yours.length) input.placeholder = heard;
-      // talking over it: three words of yours heard while it speaks stop it
-      if (yours.length >= 3 && brain.speaking) brain.interrupt();
+      // the mic hears its voice too: only words it has not just said (or is about to say) count as yours
+      const heard = voice.text.trim(), h = heard ? brain.yours(heard) : null, mine = h ? h.yours.length : 0;
+      world.creature.state.listening = mine > 0;
+      if (mine) input.placeholder = heard;
+      // talking over it: three or more words of yours, most of what was heard, stop it (less is its own voice misheard)
+      if (brain.speaking && deliberate(h)) brain.interrupt(`talked over by "${heard}"`);
       const said = voice.next();
       if (said) {
         input.placeholder = 'Say something, or type…';
-        // nearly all its own words: its voice coming back, not you ("make it bigger" after it said "make it" is yours)
-        const n = said.split(/\s+/).length, yoursN = brain.yours(said).length;
-        if (yoursN > 0 && yoursN / n > .3) brain.hear(said);
-        else console.info('[reverie] ignored its own voice: ' + said);
+        const f = brain.yours(said);
+        // while it talks, only a clear new ask counts (or two or more words, none of them its own); between its sentences
+        // in a reply (making something, thinking), anything with none of its words; when it is quiet, anything with
+        // some words of yours ("make it bigger" after it said "make it"), and short words alone ("hi")
+        const all = f.words.length > 0 && f.yours.length === f.words.length;
+        const ok = brain.speaking ? deliberate(f) || (all && f.words.length >= 2)
+          : brain.busy ? deliberate(f) || all
+          : !f.words.length || f.yours.length / f.words.length > .3;
+        if (ok) brain.hear(said);
+        else { console.info(`[reverie] ignored its own voice: "${said}" (yours: ${f.yours.join(' ') || 'none'})`); if (debug) timing.textContent = 'ignored echo: ' + said; }
       }
     }
     captionT -= dt; if (captionT < 0 && !brain?.speaking) caption.hidden = true;

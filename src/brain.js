@@ -16,16 +16,26 @@ const MOODS = ['calm', 'happy', 'excited', 'curious', 'sad', 'surprised'];
 // Text for the voice: no markdown, no stage directions.
 const spoken = s => s.replace(/[*_#`~>|]/g, '').replace(/\[(?!hmm|laugh|sigh|gasp)[^\]]*\]/gi, '').replace(/\s+/g, ' ').trim();
 
-// The mic hears the creature too. What it heard is checked against what it just said: words it said in the last
-// ECHO_KEEP ms are not counted as yours, and for ECHO_TAIL ms after it goes quiet the check stays on.
-const ECHO_KEEP = 6000, ECHO_TAIL = 1500;
-const wordsOf = s => String(s).toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9' ]+/g, ' ').split(/\s+/).filter(Boolean);
+// The mic hears the creature too, and the recogniser's last words about a line can come seconds after it was said
+// (while it makes a prop, say). So what is heard is always checked against everything it said in the last ECHO_KEEP
+// ms and everything it is about to say, loosely (a recogniser mishears its voice: "magic" as "magical"). Words of two
+// letters or fewer don't count either way.
+const ECHO_KEEP = 9000;
+const wordsOf = s => String(s).toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter(w => w.length > 2);
+function near(a, b) {
+  if (a === b) return true;
+  if (a.length >= 4 && b.length >= 4 && a.slice(0, 4) === b.slice(0, 4)) return true;   // (magic / magical, colour / colours)
+  if (Math.abs(a.length - b.length) > 1 || Math.min(a.length, b.length) < 4) return false;
+  let i = 0, j = 0, d = 0;   // one letter different, missing or extra
+  while (i < a.length && j < b.length) { if (a[i] === b[j]) { i++; j++; continue; } if (++d > 1) return false; if (a.length > b.length) i++; else if (b.length > a.length) j++; else { i++; j++; } }
+  return d + (a.length - i) + (b.length - j) <= 1;
+}
 
 /** Says sentences in order, one after another, with the mouth moving; the next is written while one is said. */
 function makeSpeaker(creature, onCaption) {
   let queue = [], busy = false, epoch = 0, buf = '', idle = Promise.resolve(), endIdle = () => {};
   // what it said lately, as words, so the mic can tell its own voice from yours (said: { words, until })
-  let said = [], quietAt = 0;
+  let said = [];
   const wait = ms => new Promise(r => setTimeout(r, ms));
   async function run(my) {
     busy = true; creature.state.speaking = true;
@@ -42,7 +52,7 @@ function makeSpeaker(creature, onCaption) {
       if (!ok && my === epoch) await wait(Math.max(0, line.split(' ').length * 330 - (performance.now() - t0)));
       said.at(-1).until = performance.now();
     }
-    if (my === epoch) { busy = false; creature.state.speaking = false; quietAt = performance.now(); endIdle(); }
+    if (my === epoch) { busy = false; creature.state.speaking = false; endIdle(); }
   }
   function push(line) {
     line = spoken(line); if (!line) return;
@@ -69,14 +79,15 @@ function makeSpeaker(creature, onCaption) {
     /** The words in `text` that are not its own voice coming back through the mic: everything while it is quiet, and
      * only the words it has not just said while it talks or has just stopped (an echo reaches the mic late). */
     yours(text) {
-      const words = wordsOf(text), now = performance.now();
-      if (!busy && now - quietAt > ECHO_TAIL) return words;
-      const mine = said.filter(x => now - x.until < ECHO_KEEP);
-      return words.filter(w => !mine.some(x => x.words.has(w)));
+      const now = performance.now(), mine = new Set();
+      for (const x of said) if (now - x.until < ECHO_KEEP) for (const w of x.words) mine.add(w);
+      for (const w of wordsOf([...queue, buf].join(' '))) mine.add(w);   // (about to be said: the reply streams ahead of the voice)
+      const words = wordsOf(text);
+      return { words, yours: mine.size ? words.filter(w => !mine.has(w) && ![...mine].some(m => near(w, m))) : words };
     },
     /** Resolves when it has said everything queued. */
     done: () => busy ? idle : Promise.resolve(),
-    stop() { if (busy) quietAt = performance.now(); for (const x of said) if (x.until === Infinity) x.until = performance.now(); epoch++; queue = []; buf = ''; busy = false; creature.state.speaking = false; gs.sound.stopTalking(); creature.face.hush(); endIdle(); },
+    stop() { for (const x of said) if (x.until === Infinity) x.until = performance.now(); epoch++; queue = []; buf = ''; busy = false; creature.state.speaking = false; gs.sound.stopTalking(); creature.face.hush(); endIdle(); },
   };
 }
 
@@ -170,7 +181,7 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
     const my = ++turn;
     // talking over it: it stops, and is told what it didn't get to say
     if (ctl) { ctl.abort(); ctl = null; }
-    if (speaker.talking) { cut = speaker.pending || cut; speaker.stop(); }
+    if (speaker.talking) { console.info('[reverie] stopped talking for a new turn: ' + text.slice(0, 80)); cut = speaker.pending || cut; speaker.stop(); }
     const note = cut ? ` (You were interrupted before saying: "${cut.slice(0, 200)}")` : ''; cut = '';
     // (where and when they are rides at the top of what they said: added, never changed later)
     history.push({ role: 'user', content: contextLine(world.scene?.()) + '\n' + text + note });
@@ -203,10 +214,10 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
   return {
     hear,
     /** You started talking: it stops and listens. */
-    interrupt() { turn++; if (ctl) { ctl.abort(); ctl = null; } if (speaker.talking) cut = speaker.pending || cut; speaker.stop(); creature.state.thinking = false; creature.state.listening = true; },
+    interrupt(why = '') { if (speaker.talking || ctl) console.info('[reverie] stopped: ' + (why || 'interrupted')); turn++; if (ctl) { ctl.abort(); ctl = null; } if (speaker.talking) cut = speaker.pending || cut; speaker.stop(); creature.state.thinking = false; creature.state.listening = true; },
     get history() { return history; },
     get speaking() { return speaker.talking; },
-    /** The words of something heard by the mic that are yours, not its own voice coming back. */
+    /** What the mic heard, split into all its words and the ones that are yours (not its own voice coming back). */
     yours: text => speaker.yours(text),
     /** Says a line of its own (not from Claude), such as its hello. */
     speak(line) { speaker.feed(line + ' '); speaker.flush(); },

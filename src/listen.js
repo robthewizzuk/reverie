@@ -23,8 +23,10 @@ export class Listener {
     if (!this.available) return false;
     // the prompt: asking for the microphone ourselves makes the browser show it now, and tells us plainly if it is refused
     try {
-      const s = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
-      for (const t of s.getTracks()) t.stop();
+      // kept open: where the browser lets the recogniser take a microphone track, it gets this echo-cancelled one, so
+      // Reverie's own voice from the speakers is taken out before it is heard
+      this.stream?.getTracks().forEach(t => t.stop());
+      this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
     } catch (e) {
       if (e?.name === 'NotAllowedError' || e?.name === 'SecurityError') { this.problem = 'denied'; this.available = false; return false; }
       // (no getUserMedia here, or no device: the recogniser asks by itself)
@@ -57,7 +59,13 @@ export class Listener {
       else if (e.error === 'language-not-supported' && this.local) this.local = false;
     };
     rec.onend = () => { this.listening = false; this.rec = null; this.text = ''; if (this.want) setTimeout(() => this.want && this.listen(), 200); };
-    try { rec.start(); this.rec = rec; this.listening = true; } catch { this.listening = false; }
+    const track = this.stream?.getAudioTracks().find(t => t.readyState === 'live');
+    try {
+      // (start(track): Chrome's recogniser can listen to a track of ours; elsewhere the argument is ignored or refused)
+      if (track && this.trackOk !== false) { try { rec.start(track); this.trackOk = true; } catch { this.trackOk = false; rec.start(); } }
+      else rec.start();
+      this.rec = rec; this.listening = true;
+    } catch { this.listening = false; }
     return this.listening;
   }
 
@@ -66,6 +74,7 @@ export class Listener {
 
   stop() {
     this.want = false; this.listening = false; this.text = '';
+    this.stream?.getTracks().forEach(t => t.stop()); this.stream = null;
     if (this.rec) { try { this.rec.abort(); } catch { /* gone */ } this.rec = null; }
   }
 }
