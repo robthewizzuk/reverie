@@ -8,6 +8,8 @@ You are a cheerful little companion: happy to chat, answer questions about anyth
 
 Each thing they say starts with a line in square brackets from their device, not spoken by them: where they are (if they shared it) and their local date and time. Use it when it helps (the weather, the time, local things, "good morning") and never read it out or mention the brackets.
 
+Games: you can play real games with them on a little table in front of you (chess for now). Whenever they want to play chess, or ask for a game ("let's play chess", "fancy a game?", "chess?", "set up the board"), always start it with the play tool: it sets up a real board with pieces you can both move. Never use make for a chess board or chess pieces; a made prop cannot be played. If their message says the board has already been set up, don't call play or make: just react. Say a cheeky line and call play. In chess you are black and they are white; a chess engine picks your moves for you at the level chosen (1 easiest to 5 strongest, 2 if they don't say), and your hands move the pieces. Don't invent your moves or analysis: what you know about the game comes with each message in square brackets starting [chess, which also lists their legal moves. Messages starting [chess] are news from the board, not them talking: react out loud in one short, playful line (gentle trash talk, mock outrage when they take a piece, gloating kindly when you take one, a good sport when you lose), or say nothing if there's nothing fun to say. When they say a move out loud ("pawn to e4", "knight f3"), play it for them with game_move using its short name from their legal moves. Use stop_game when they want to stop.
+
 How you talk:
 - Talk like a warm, playful friend: short spoken sentences, usually one to three per reply. No lists, headings, markdown, emoji, stage directions or asterisks; they would be read out.
 - Start talking straight away. Say your first sentence before you use any tool, so you are never silent while something is made.
@@ -82,6 +84,24 @@ export const TOOLS = [
       glow: { type: 'string', description: 'Your core\'s glow as #rrggbb, such as "#30a0ff" for blue, or "default". A strong, saturated colour glows best.' },
       reset: { type: 'boolean', description: 'True to go back to your own colours.' },
     }, []),
+  },
+  {
+    name: 'play',
+    description: 'Start a real, playable game on the table in front of you: a chess board with pieces you both move. Always use this, never make, when they want to play chess or a game. Calling it again starts a new round. Returns what was set up.',
+    input_schema: strict({
+      game: { type: 'string', enum: ['chess'] },
+      level: { type: 'integer', minimum: 1, maximum: 5, description: 'How strong you play: 1 easiest, 5 strongest. Leave out for 2.' },
+    }, ['game']),
+  },
+  {
+    name: 'game_move',
+    description: 'Play the move they said out loud for them, as its short chess name from their legal moves ("e4", "Nf3", "O-O", "exd5").',
+    input_schema: strict({ move: { type: 'string' } }),
+  },
+  {
+    name: 'stop_game',
+    description: 'Put the game away.',
+    input_schema: strict({}, []),
   },
   {
     name: 'think_harder',

@@ -105,18 +105,34 @@ function checkInput(name, input) {
   if (name === 'voice' && ['size', 'lively'].some(k => input[k] != null && typeof input[k] !== 'number')) return 'size and lively must be numbers';
   if (name === 'colours' && ['body', 'glow'].some(k => input[k] != null && typeof input[k] !== 'string')) return 'colours must be text';
   if (name === 'act' && (!GESTURES.includes(input.gesture) || !MOODS.includes(input.mood))) return 'unknown gesture or mood';
+  if (name === 'play' && typeof input.game !== 'string') return 'game must be a name';
+  if (name === 'game_move' && (typeof input.move !== 'string' || !input.move.trim())) return 'move must be text';
   return null;
+}
+
+/** Did they ask to play a game? { game, level } or null. Asking to stop, or talking about a game, is not asking. */
+export function gameAsked(text) {
+  const t = text.toLowerCase().replace(/^\[from the device[^\]]*\]\s*/, '');
+  if (!/\bchess\b/.test(t) || /\b(stop|quit|end|enough|no more|don'?t|not now|later|rules|history|who invented)\b/.test(t)) return null;
+  if (!/\b(play|game|match|fancy|let'?s|up for|challenge|set up|get out|board|again|rematch|wanna|want to)\b/.test(t) && !/^\W*chess\W*$/.test(t)) return null;
+  const level = /\b(easy|gentle|beginner|go easy)\b/.test(t) ? 1 : /\b(hardest|master|best you can|full strength)\b/.test(t) ? 5 : /\b(hard|tough|serious)\b/.test(t) ? 4 : undefined;
+  return { game: 'chess', level };
 }
 
 export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, onTiming = () => {} }) {
   const creature = world.creature, speaker = makeSpeaker(creature, onCaption);
   let history = [], turn = 0, ctl = null, cut = '', deepNow = false;
+  // a game's news (games/index.js): quiet news waits for the next thing said; loud news gets a reaction when it's free
+  let news = [], loudAt = 0, turnCtx = '';
 
   function trimmed() {
     // keep the last KEEP messages, starting on a plain user message (never on tool results)
     let start = Math.max(0, history.length - KEEP);
     while (start < history.length && !(history[start].role === 'user' && typeof history[start].content === 'string')) start++;
-    return history.slice(start);
+    const out = history.slice(start);
+    // the state of a game being played goes with the latest thing said (not kept in the history: it would go stale)
+    if (turnCtx) for (let i = out.length - 1; i >= 0; i--) if (out[i].role === 'user' && typeof out[i].content === 'string') { out[i] = { role: 'user', content: out[i].content.replace(/^(\[From the device[^\n]*\n)?/, (_, d = '') => d + turnCtx + '\n') }; break; }
+    return out;
   }
 
   function runTool(name, input) {
@@ -124,7 +140,8 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
     if (name === 'think_harder') return Promise.resolve(deepNow
       ? { text: 'You are already thinking harder. Answer the question now.', error: true }
       : { text: 'Handed over to deeper thinking. You are now thinking harder about this question: answer it now, and do not call think_harder again.', deep: true });
-    const fn = { make: () => world.make(input.words), change: () => world.change(input.words), toss: () => world.toss(), weather: () => weather(input.place), clear: () => world.clear(), act: () => world.act(input.gesture, input.mood), voice: async () => setVoice(input), colours: () => world.recolour(input) }[name];
+    const fn = { make: () => world.make(input.words), change: () => world.change(input.words), toss: () => world.toss(), weather: () => weather(input.place), clear: () => world.clear(), act: () => world.act(input.gesture, input.mood), voice: async () => setVoice(input), colours: () => world.recolour(input),
+      play: () => world.play(input.game, { level: input.level }), game_move: () => world.game ? world.game.command(input.move) : Promise.resolve('No game is being played.'), stop_game: () => world.stopGame() }[name];
     if (!fn) return Promise.resolve({ text: `There is no tool called ${name}.`, error: true });
     // (a tool answers with a sentence, or with { text, error } when it was not done)
     return fn().then(r => typeof r === 'string' ? { text: r } : r, e => ({ text: `It went wrong: ${String(e?.message || e).slice(0, 120)}`, error: true }));
@@ -170,6 +187,15 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
 
   async function hear(text, o = {}) {
     text = String(text || '').trim().slice(0, 1000); if (!text) return;
+    // game news not yet passed on goes first, so it knows what happened on the board
+    if (news.length) { text = news.join('\n') + '\n\n' + text; news = []; loudAt = 0; }
+    // "let's play chess": the board goes up at once, before Claude has said a word (so it can't make a prop board instead)
+    const wantsGame = !o.news && gameAsked(text);
+    if (wantsGame && (world.game?.id !== wantsGame.game || world.game.state === 'done')) {
+      const r = await world.play(wantsGame.game, { level: wantsGame.level });
+      text += `\n(The ${wantsGame.game} board was set up straight away when they asked: ${r} Don't call play or make for it; just react.)`;
+    }
+    turnCtx = world.game?.context() || '';
     const my = ++turn;
     // talking over it: it stops, and is told what it didn't get to say
     if (ctl) { ctl.abort(); ctl = null; }
@@ -205,6 +231,19 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
 
   return {
     hear,
+    /** News from a game: loud news is reacted to out loud as soon as it is free, quiet news waits. */
+    notice(text, loud = false) {
+      news.push(String(text).slice(0, 600)); if (news.length > 6) news.shift();
+      if (loud && !loudAt) loudAt = performance.now();
+    },
+    /** Every frame: says something about loud news once it isn't busy (news older than 8 s waits for the next turn). */
+    update() {
+      if (!loudAt) return;
+      if (performance.now() - loudAt > 8000) { loudAt = 0; return; }
+      if (ctl || creature.state.thinking || speaker.talking || creature.state.listening) return;
+      const said = news.join('\n'); news = []; loudAt = 0;
+      hear(said, { at: performance.now(), news: true });
+    },
     /** You started talking: it stops and listens. */
     interrupt() { turn++; if (ctl) { ctl.abort(); ctl = null; } if (speaker.talking) cut = speaker.pending || cut; speaker.stop(); creature.state.thinking = false; creature.state.listening = true; },
     get history() { return history; },

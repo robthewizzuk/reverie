@@ -83,7 +83,7 @@ export function makeCreature() {
     const arm = shade(new THREE.Mesh(new THREE.CapsuleGeometry(.036, .1, 6, 12), plush)); arm.position.y = -.075;
     const hand = shade(new THREE.Mesh(new THREE.SphereGeometry(.05, 16, 12), plush)); hand.position.y = -.16; hand.scale.set(1, .9, .85);
     pivot.add(arm, hand); body.add(pivot);
-    return { s, pivot, x: REST[0], z: REST[1] };
+    return { s, pivot, x: REST[0], z: REST[1], long: 1 };
   });
 
   // feet, and a sprout on top with a glowing bead that sways
@@ -99,6 +99,9 @@ export function makeCreature() {
   let t = 0, mood = 'calm', gesture = null, gT = 0, bounce = 0, giggle = 0, holding = false;
   let lean = 0, tilt = 0, turn = 0, nod = 0, coreLevel = .6, coreGlow = .6;
   const state = { listening: false, thinking: false, speaking: false };
+  // a point in the world it is reaching for with one hand (a chess piece it is moving), or null
+  let reachAt = null, reachArm = 1;
+  const tmpV = new THREE.Vector3();
 
   function setMood(m) {
     mood = MOODS[m] ? m : 'calm';
@@ -117,6 +120,13 @@ export function makeCreature() {
   // where each arm wants to be this frame: [x, z]
   function armGoal(a) {
     const L = a.s < 0, d = gT;
+    if (reachAt && a.s === reachArm) {
+      // aim the arm (which hangs down) along the line from its shoulder to the point, in the body's own frame
+      const p = a.pivot.parent.worldToLocal(tmpV.copy(reachAt)).sub(a.pivot.position);
+      a.want = Math.min(2.6, Math.max(1, p.length() / .19)); p.normalize();   // (a stretchy toy arm: it grows to reach)
+      const side = Math.asin(Math.max(-1, Math.min(1, p.x))), fwd = Math.atan2(-p.z, -p.y);
+      return [fwd, side / a.s];
+    }
     if (gesture === 'wave' && !L) return [-.3, 2.5 + Math.sin(d * 14) * .35];
     if (gesture === 'point' && !L) return [-1.45, .05];
     if (gesture === 'tada') return [-.4, 2.2];
@@ -138,7 +148,7 @@ export function makeCreature() {
     giggle = Math.max(0, giggle - dt * 1.5);
     root.position.y = Math.abs(Math.sin(t * 11)) * .07 * bounce + Math.abs(Math.sin(t * 24)) * .015 * giggle;
     const e = 1 - Math.exp(-dt * 6);
-    lean += ((state.listening ? .14 : state.thinking ? -.05 : 0) - lean) * e;
+    lean += ((reachAt ? .24 : state.listening ? .14 : state.thinking ? -.05 : 0) - lean) * e;
     tilt += ((state.thinking ? .13 : gesture === 'shrug' ? .08 : giggle * Math.sin(t * 30) * .1) - tilt) * e;
     nod = gesture === 'nod' ? Math.sin(gT * 14) * .12 : 0;
     const shake = gesture === 'shake' ? Math.sin(gT * 16) * .18 : 0;
@@ -150,6 +160,7 @@ export function makeCreature() {
       const [gx, gz] = armGoal(a), k = 1 - Math.exp(-dt * 10);
       a.x += (gx - a.x) * k; a.z += (gz - a.z) * k;
       a.pivot.rotation.set(a.x, 0, a.s * a.z);
+      a.long += ((reachAt && a.s === reachArm ? a.want || 1 : 1) - a.long) * k; a.pivot.scale.set(1, a.long, 1);
     }
     sprout.rotation.z = Math.sin(t * 1.7) * .12 + tilt * -.8; sprout.rotation.x = Math.sin(t * 1.3) * .08 - lean;
     // the core: slow pulse when idle, brighter while listening, a quick swirl while thinking, steady while talking
@@ -220,6 +231,12 @@ export function makeCreature() {
     },
     /** A tap on it: a giggle and a look. */
     poke() { giggle = 1; setMood('happy'); face.blink(); },
+    /** Reaches for a point in the world (a THREE.Vector3) with the nearer hand; null puts the hand back. */
+    reach(p) {
+      if (!p) { reachAt = null; return; }
+      if (!reachAt) { reachAt = new THREE.Vector3(); reachArm = root.worldToLocal(tmpV.copy(p)).x >= 0 ? 1 : -1; }
+      reachAt.copy(p);
+    },
     /** The world position of the core, for its light. */
     coreAt(v) { core.updateWorldMatrix(true, false); return v.setFromMatrixPosition(core.matrixWorld); },
     update,
