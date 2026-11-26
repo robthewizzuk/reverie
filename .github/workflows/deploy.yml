@@ -1,0 +1,67 @@
+# Builds Reverie and deploys it to Cloudflare Workers (the page as static assets, plus /api/turn) on every push to
+# main, or by hand from the Actions tab (Run workflow).
+#
+# Repository secrets (Settings > Secrets and variables > Actions):
+#   CLOUDFLARE_API_TOKEN   a token from the "Edit Cloudflare Workers" template (dash.cloudflare.com/profile/api-tokens)
+#   CLOUDFLARE_ACCOUNT_ID  the account id shown on the Workers & Pages overview page
+#   ANTHROPIC_API_KEY      the Claude key; uploaded to the Worker as an encrypted secret with each deploy.
+#                          Optional: leave it out if you set it once with `npx wrangler secret put ANTHROPIC_API_KEY`.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: true
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: engine/.nvmrc
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            engine/package-lock.json
+
+      - name: Install
+        run: npm --prefix engine ci && npm ci
+
+      - name: Check the Cloudflare secrets are set
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          [ -n "$CLOUDFLARE_API_TOKEN" ] || { echo "::error::Add the CLOUDFLARE_API_TOKEN repository secret (see the top of this file)."; exit 1; }
+          [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || { echo "::error::Add the CLOUDFLARE_ACCOUNT_ID repository secret (see the top of this file)."; exit 1; }
+
+      - name: Build the page
+        run: npm run build
+
+      - name: Deploy
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          args=()
+          if [ -n "$ANTHROPIC_API_KEY" ]; then
+            # Written as JSON outside the repo, read by wrangler, then removed. Never printed.
+            trap 'rm -f "$RUNNER_TEMP/secrets.json"' EXIT
+            node -e 'require("fs").writeFileSync(process.argv[1], JSON.stringify({ ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY }), { mode: 0o600 })' "$RUNNER_TEMP/secrets.json"
+            args=(--secrets-file "$RUNNER_TEMP/secrets.json")
+          fi
+          npx wrangler deploy "${args[@]}"

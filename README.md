@@ -51,6 +51,10 @@ It prints the address (`https://reverie.<your-subdomain>.workers.dev`). Run `npm
 `npm run worker:dev` tries the same Worker locally at http://localhost:8787, with the key in `worker/.dev.vars`
 (gitignored): `ANTHROPIC_API_KEY=...`.
 
+Or let GitHub deploy it: `.github/workflows/deploy.yml` builds and deploys on every push to `main` (or by hand from the
+Actions tab). Add the repository secrets `CLOUDFLARE_API_TOKEN` (the "Edit Cloudflare Workers" token template),
+`CLOUDFLARE_ACCOUNT_ID` and `ANTHROPIC_API_KEY` under Settings › Secrets and variables › Actions.
+
 Only the Worker's own address may call the API from a browser. To host the page somewhere else, set `ALLOWED_ORIGIN` in
 `worker/wrangler.toml` to that page's address and build it with `VITE_API_URL` set to the Worker's address.
 
