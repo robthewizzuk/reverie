@@ -104,6 +104,8 @@ export function makeCreature() {
   const state = { listening: false, thinking: false, speaking: false };
   // a point in the world it is reaching for with one hand (a chess piece it is moving), or null
   let reachAt = null, reachArm = 1;
+  // walking (carrying something across the room): which way it faces (null: towards you) and how hard it waddles, 0..1
+  let heading = null, stride = 0;
   const tmpV = new THREE.Vector3();
 
   function setMood(m) {
@@ -170,7 +172,8 @@ export function makeCreature() {
     blob.scale.set(1 / Math.sqrt(breathe), 1.12 * breathe, .95);
     bounce = Math.max(0, bounce - dt * 1.4);
     giggle = Math.max(0, giggle - dt * 1.5);
-    root.position.y = Math.abs(Math.sin(t * 11)) * .07 * bounce + Math.abs(Math.sin(t * 24)) * .015 * giggle;
+    root.position.y = Math.abs(Math.sin(t * 11)) * .07 * bounce + Math.abs(Math.sin(t * 24)) * .015 * giggle + Math.abs(Math.sin(t * 12)) * .045 * stride;
+    root.rotation.z = Math.sin(t * 12) * .09 * stride;
     const e = 1 - Math.exp(-dt * 6);
     const leanIdle = idle === 'peek' ? .2 * env : idle === 'stretch' ? -.08 * env : 0;
     lean += ((reachAt ? .24 : state.listening ? .14 : state.thinking ? -.05 : leanIdle + drowse * .06) - lean) * e - perk * dt * .8;
@@ -180,7 +183,8 @@ export function makeCreature() {
     const shake = gesture === 'shake' ? Math.sin(gT * 16) * .18 : 0;
     body.rotation.set(lean + nod, shake + look * .55, tilt);
     // turn to face the camera a little
-    if (cam) { const want = Math.atan2(cam.position.x - root.position.x, cam.position.z - root.position.z) * .5; turn += (want - turn) * e; root.rotation.y = turn; }
+    if (heading != null) { let d = heading - turn; d = Math.atan2(Math.sin(d), Math.cos(d)); turn += d * (1 - Math.exp(-dt * 8)); root.rotation.y = turn; }
+    else if (cam) { const want = Math.atan2(cam.position.x - root.position.x, cam.position.z - root.position.z) * .5; let d = want - turn; d = Math.atan2(Math.sin(d), Math.cos(d)); turn += d * e; root.rotation.y = turn; }
     // arms
     for (const a of arms) {
       const [gx, gz] = armGoal(a), k = 1 - Math.exp(-dt * 10);
@@ -271,6 +275,8 @@ export function makeCreature() {
       if (!reachAt) { reachAt = new THREE.Vector3(); reachArm = root.worldToLocal(tmpV.copy(p)).x >= 0 ? 1 : -1; }
       reachAt.copy(p);
     },
+    /** Walking: stride 0..1 (how hard it waddles) and the way it faces (radians about y, 0 towards you; null faces you). */
+    walk(s = 0, face = null) { stride = Math.max(0, Math.min(1, s)); heading = face; },
     /** The world position of the core, for its light. */
     coreAt(v) { core.updateWorldMatrix(true, false); return v.setFromMatrixPosition(core.matrixWorld); },
     update,
