@@ -3,8 +3,11 @@
 // game is (make, reset, update, draw), so the engine's kits load and run as they do in the app.
 import gs from '../engine/src/gamescroll.js';
 import { makeCreature } from './creature.js';
+import { colours, tidyColours, keepColours } from './looks.js';
 import { describe } from './describe.js';
+import { GAMES } from './games/index.js';
 
+const CORE_LAMP = '#ff7020';     // the light its core casts, as made (moved with the glow colour)
 const HOLD_SIZE = .4;            // metres: the longest side of a prop in its hands
 const SIZE_WORDS = [[/\b(giant|huge|enormous)\b/, 1.8], [/\b(bigger|big|large)\b/, 1.4], [/\b(smaller|small|little)\b/, .7], [/\b(tiny|teeny)\b/, .5]];
 const article = w => w.replace(/^(a|an|the|some)\s+/i, '');
@@ -53,7 +56,8 @@ function setup() {
   // a warm lamp over the bench
   lampSpot = { x: 1.3, y: 1.6, z: -1.1, col: '#ffc98a', i: 9, reach: 4 };   // (no flick: any flick makes a lamp stutter like a failing tube)
   creature = makeCreature(); v.scene.add(creature.root);
-  coreLamp = v.flash(0, .3, .3, { keep: true, col: '#ff7020', i: .8, reach: .9 });
+  creature.setColours(colours());   // (the colours it was asked for last time, kept on this device)
+  coreLamp = v.flash(0, .3, .3, { keep: true, col: creature.glowed(CORE_LAMP), i: .8, reach: .9 });
   fx = new gs.fx3d.Particles3D(v.scene);
   // embers drifting up from its core: a few when idle, more while listening, a stream while thinking
   embers = makeEmbers();
@@ -67,7 +71,7 @@ function setup() {
   gs.models.generate.load().catch(() => {});   // (the generator's workers warmed up while it wakes)
 }
 
-const makeEmbers = () => fx.make({ x: 0, y: .26, z: .3 }, { loop: true, rate: 2, life: [.9, 1.8], speed: [.03, .1], size: [.008, .018], colors: ['#ffd8a0', '#ff6a20'], radius: .03, gravity: .18 });
+const makeEmbers = () => fx.make({ x: 0, y: .26, z: .3 }, { loop: true, rate: 2, life: [.9, 1.8], speed: [.03, .1], size: [.008, .018], colors: ['#ffd8a0', '#ff6a20'].map(creature.glowed), radius: .03, gravity: .18 });
 const tmp = {};
 function boxOf(o) { const { THREE } = gs.hd; o.updateMatrixWorld(true); return (tmp.b ||= new THREE.Box3()).setFromObject(o); }
 function fitTo(o, size) { const { THREE } = gs.hd; o.scale.setScalar(1); const s = boxOf(o).getSize(tmp.v ||= new THREE.Vector3()); o.scale.setScalar(size / Math.max(.01, s.x, s.y, s.z)); return o; }
@@ -81,6 +85,14 @@ export function makeWorld() {
   const { THREE } = gs.hd;
   let W = 360, H = 640, held = null, loose = [], seed = 1, t = 0, pops = [];
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), at = new THREE.Vector3();
+  // a game on the stage (./games): the one being played, the ones made so far, and where the camera is heading
+  let game = null, onNews = () => {};
+  const games = {}, HOME = { pos: [0, .78, 1.95], look: [0, .4, 0] }, camAt = { pos: [...HOME.pos], look: [...HOME.look] };
+  const stage = {
+    THREE, get scene() { return v.scene; }, get creature() { return creature; }, get physics() { return world; },
+    sparks(p, color = '#ffd27a', count = 24) { fx.sparks({ x: p.x, y: p.y, z: p.z }, { color, count, power: .7, light: false }); },
+    news: (text, loud) => onNews(text, loud),
+  };
 
   // a prop sits in a pivot whose middle is the prop's middle, so it can be held, spun and given a box body
   function pivotFor(thing, size) {
@@ -157,6 +169,7 @@ export function makeWorld() {
       if (!v) setup();
       for (const e of loose) remove(e); loose = []; if (held) remove(held); held = null; creature.holding = false;
       fx.clear(); embers = makeEmbers(); creature.mood('calm');
+      if (game) { game.stop(); game = null; }
     },
     resize(w, h) { W = w; H = h; },
     update(dt) {
@@ -164,6 +177,11 @@ export function makeWorld() {
       // a tall screen sees as wide as a square one would, so the creature never crops at the sides
       const a = W / H; v.cam.fov = a < 1 ? 2 * Math.atan(Math.tan(21 * Math.PI / 180) / a) * 180 / Math.PI : 36;
       v.cam.aspect = a; v.cam.updateProjectionMatrix();
+      // the camera eases to the game's seat and back
+      const goal = game?.camera || HOME, ck = 1 - Math.exp(-dt * 3);
+      for (const k of ['pos', 'look']) for (let i = 0; i < 3; i++) camAt[k][i] += (goal[k][i] - camAt[k][i]) * ck;
+      v.cam.position.set(...camAt.pos); v.cam.lookAt(...camAt.look);
+      game?.update(dt);
       creature.update(dt, v.cam);
       creature.coreAt(at); coreLamp.at(at.x, at.y - .05, at.z + .12); coreLamp.i0 = .25 + creature.coreGlow * .6;
       const st = creature.state; embers.at({ x: at.x, y: at.y, z: at.z + .03 }); embers.rate = st.thinking ? 14 : st.listening ? 6 : st.speaking ? 4 : 2; embers.on = true;
@@ -180,12 +198,35 @@ export function makeWorld() {
       fx.update(dt); motes.update(dt);
     },
     draw(c) { v.render(c, W, H); },
-    /** What a tap at (x, y) in CSS pixels hit: 'creature', 'prop' or null. */
+    /** What a tap at (x, y) in CSS pixels hit: 'game' (the game used it), 'creature', 'prop' or null. */
     tap(x, y) {
       ndc.set(x / W * 2 - 1, -(y / H) * 2 + 1); ray.setFromCamera(ndc, v.cam);
+      if (game?.tap(ray)) return 'game';
       if (held && ray.intersectObject(held.pivot, true).length) return 'prop';
       if (ray.intersectObject(creature.root, true).length) return 'creature';
       return null;
+    },
+
+    // ---- games
+    /** The game being played, or null. */
+    get game() { return game; },
+    /** Who hears what a game says happened (the brain). */
+    set onNews(fn) { onNews = fn; },
+    /** Starts a game by name ('chess'), or a fresh round of the one on. Resolves a sentence for Claude. */
+    async play(name, o = {}) {
+      const def = GAMES[name];
+      if (!def) return `There is no game called "${name}". Games here: ${Object.keys(GAMES).join(', ')}.`;
+      if (game && game.id !== name) { game.stop(); game = null; }
+      if (held) release(held, false);   // (hands free to play)
+      game = games[name] ||= def.make(stage);
+      creature.gesture('tada'); creature.mood('excited');
+      try { return await game.start(o); } catch (e) { game.stop(); game = null; return `The game could not start (${String(e?.message || e).slice(0, 80)}).`; }
+    },
+    /** Puts the game away. */
+    async stopGame() {
+      if (!game) return 'No game was being played.';
+      const t = game.title; game.stop(); game = null; creature.mood('calm');
+      return `Put the ${t.toLowerCase()} away.`;
     },
 
     // ---- Claude's hands
@@ -212,6 +253,16 @@ export function makeWorld() {
       for (const e of [...loose, ...(held ? [held] : [])]) { poof(e.pivot, '#ffffff'); remove(e); }
       loose = []; held = null; creature.holding = false; gs.sound.sounds.pop();
       return n ? `Cleared ${n} prop${n > 1 ? 's' : ''}.` : 'There was nothing to clear.';
+    },
+    /** Its body and glow colours ({ body, glow, reset }), kept for next time. */
+    async recolour(input) {
+      const r = tidyColours(input, THREE);
+      if (r.error) return { text: `Not changed: ${r.error}.`, error: true };
+      creature.setColours(r.colours); keepColours(r.colours);
+      coreLamp.s.col = creature.glowed(CORE_LAMP);
+      embers.remove(); embers = makeEmbers();
+      creature.gesture('tada'); poof(creature.core, creature.glowed('#ffd27a')); gs.sound.sounds.pop();
+      return { text: `Your body is now ${r.colours.body} and your glow ${r.colours.glow}. It is remembered next time.` };
     },
     async act(gesture, mood) {
       if (mood) creature.mood(mood); if (gesture) creature.gesture(gesture);

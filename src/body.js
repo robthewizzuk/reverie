@@ -77,7 +77,8 @@ export function makeBody({ creature, world, hour = hourNow }) {
       // the instant reaction: your voice is heard, and it perks up before anything goes to Claude
       if (st.listening && !wasListening && !st.speaking) perk();
       wasListening = st.listening;
-      if (busy) { quiet = 0; creature.drowsy = false; next = Math.max(next, 1.5); return; }
+      // (a game on the table: it is busy playing, so no idle moves and no dozing off)
+      if (busy || world.game) { quiet = 0; creature.drowsy = false; next = Math.max(next, 1.5); return; }
       quiet += dt;
       creature.drowsy = quiet > DROWSY_AFTER * (1 - .5 * look().s.night);
       if (creature.busy) { next = Math.max(next, 1); return; }   // (a gesture Claude asked for comes first)

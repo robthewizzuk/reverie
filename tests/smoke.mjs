@@ -49,7 +49,20 @@ if (!/From the device[^\]]*Leeds/.test(wx)) fail('the place did not reach Claude
 await ask('why is the sky blue', () => !window.__reverie.brain.busy);
 const tiers = await page.evaluate(() => window.__reverie.brain.history.at(-1));
 console.log('last:', JSON.stringify(tiers).slice(0, 200));
+// asking for a new voice and new colours: both kept on the device, and back after a reload
+await ask('talk like a pirate', () => !window.__reverie.brain.busy);
+await ask('go purple', () => !window.__reverie.brain.busy);
+await page.waitForTimeout(800);
+await shot('5-recoloured');
+const kept = await page.evaluate(() => JSON.parse(localStorage.getItem('reverie.looks.v1') || 'null'));
+console.log('kept:', JSON.stringify(kept));
+if (kept?.voice?.name !== 'captain_silas_blackwater') fail('the pirate voice was not kept');
+if (kept?.colours?.body !== '#c8b4ee' || kept?.colours?.glow !== '#30a0ff') fail('the colours were not kept');
 console.log('timing:', await page.textContent('#timing'));
+await page.reload();
+await page.waitForFunction(() => window.__reverie, null, { timeout: 180000 });
+const glow = await page.evaluate(() => { const c = window.__reverie.world.creature.core.material.emissive; return { r: c.r, b: c.b }; });
+if (!(glow.b > glow.r)) fail('the blue glow did not come back after a reload: ' + JSON.stringify(glow));
 if (errors.length) fail('page errors: ' + errors.join(' | '));
 await browser.close();
 console.log(process.exitCode ? 'smoke: failed' : 'smoke: ok');

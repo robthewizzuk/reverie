@@ -33,19 +33,21 @@ export function makeCreature() {
   const coreMat = pbr('#ff4a00', { glow: 2.5, glowCol: '#ff5200', rough: .3 });
   const core = new THREE.Mesh(new THREE.SphereGeometry(.05, 32, 16), coreMat);
   core.position.set(0, .26, .258); core.scale.z = .7; body.add(core);
-  const heart = new THREE.Mesh(new THREE.SphereGeometry(.016, 16, 12), pbr('#ffb060', { glow: 3.5, glowCol: '#ff9a40' }));   // (a white-hot middle)
+  const heartMat = pbr('#ffb060', { glow: 3.5, glowCol: '#ff9a40' }), heart = new THREE.Mesh(new THREE.SphereGeometry(.016, 16, 12), heartMat);   // (a white-hot middle)
   heart.position.set(0, .26, .285); body.add(heart);
   const dome = new THREE.Mesh(new THREE.SphereGeometry(.066, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2), pbr('#ffffff', { rough: .05, glass: { thin: true, tint: '#ffb98a' } }));
   dome.rotation.x = Math.PI / 2; dome.scale.y = .55; dome.position.set(0, .26, .262); body.add(dome);
   const ring = shade(new THREE.Mesh(new THREE.TorusGeometry(.07, .012, 12, 40), pbr('#c9a77e', { rough: .35, metal: .6 })));
   ring.position.set(0, .26, .262); ring.rotation.x = -.18; body.add(ring);
   // the halo: a soft round glow made in code, always facing the camera, added over what is behind it
+  // (white in the middle fading out: the sprite's colour is the glow's, so the halo changes with it)
   const haloTex = (() => {
     const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'), g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
-    g.addColorStop(0, 'rgba(255,150,70,1)'); g.addColorStop(.2, 'rgba(255,110,40,.5)'); g.addColorStop(.55, 'rgba(255,80,20,.1)'); g.addColorStop(1, 'rgba(255,70,20,0)');
+    g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(.2, 'rgba(255,187,146,.5)'); g.addColorStop(.55, 'rgba(255,136,73,.1)'); g.addColorStop(1, 'rgba(255,119,73,0)');
     x.fillStyle = g; x.fillRect(0, 0, 64, 64); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
   })();
   const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: .5 }));
+  halo.material.color.set('#ff9646');
   halo.position.set(0, .26, .3); halo.scale.setScalar(.3); halo.renderOrder = 2; body.add(halo);
 
   // eyes: glossy and dark, a light in each, and lids made by squashing them (the Face's blink)
@@ -81,7 +83,7 @@ export function makeCreature() {
     const arm = shade(new THREE.Mesh(new THREE.CapsuleGeometry(.036, .1, 6, 12), plush)); arm.position.y = -.075;
     const hand = shade(new THREE.Mesh(new THREE.SphereGeometry(.05, 16, 12), plush)); hand.position.y = -.16; hand.scale.set(1, .9, .85);
     pivot.add(arm, hand); body.add(pivot);
-    return { s, pivot, x: REST[0], z: REST[1] };
+    return { s, pivot, x: REST[0], z: REST[1], long: 1 };
   });
 
   // feet, and a sprout on top with a glowing bead that sways
@@ -100,6 +102,9 @@ export function makeCreature() {
   let idle = null, iT = 0, side = 1, look = 0, perk = 0, drowse = 0, drowsy = false, yawned = false;
   const IDLE_TIME = { rest: 0, glance: 2.4, peek: 2.2, sway: 4, hop: .9, stretch: 2.8, perk: .8 };
   const state = { listening: false, thinking: false, speaking: false };
+  // a point in the world it is reaching for with one hand (a chess piece it is moving), or null
+  let reachAt = null, reachArm = 1;
+  const tmpV = new THREE.Vector3();
 
   function setMood(m) {
     mood = MOODS[m] ? m : 'calm';
@@ -118,6 +123,13 @@ export function makeCreature() {
   // where each arm wants to be this frame: [x, z]
   function armGoal(a) {
     const L = a.s < 0, d = gT;
+    if (reachAt && a.s === reachArm) {
+      // aim the arm (which hangs down) along the line from its shoulder to the point, in the body's own frame
+      const p = a.pivot.parent.worldToLocal(tmpV.copy(reachAt)).sub(a.pivot.position);
+      a.want = Math.min(2.6, Math.max(1, p.length() / .19)); p.normalize();   // (a stretchy toy arm: it grows to reach)
+      const side = Math.asin(Math.max(-1, Math.min(1, p.x))), fwd = Math.atan2(-p.z, -p.y);
+      return [fwd, side / a.s];
+    }
     if (gesture === 'wave' && !L) return [-.3, 2.5 + Math.sin(d * 14) * .35];
     if (gesture === 'point' && !L) return [-1.45, .05];
     if (gesture === 'tada') return [-.4, 2.2];
@@ -161,7 +173,7 @@ export function makeCreature() {
     root.position.y = Math.abs(Math.sin(t * 11)) * .07 * bounce + Math.abs(Math.sin(t * 24)) * .015 * giggle;
     const e = 1 - Math.exp(-dt * 6);
     const leanIdle = idle === 'peek' ? .2 * env : idle === 'stretch' ? -.08 * env : 0;
-    lean += ((state.listening ? .14 : state.thinking ? -.05 : leanIdle + drowse * .06) - lean) * e - perk * dt * .8;
+    lean += ((reachAt ? .24 : state.listening ? .14 : state.thinking ? -.05 : leanIdle + drowse * .06) - lean) * e - perk * dt * .8;
     const tiltIdle = idle === 'sway' ? Math.sin(iT * 2.4) * .1 * env : idle === 'peek' ? .07 * env : 0;
     tilt += ((state.thinking ? .13 : gesture === 'shrug' ? .08 : giggle * Math.sin(t * 30) * .1 + tiltIdle) - tilt) * e;
     nod = gesture === 'nod' ? Math.sin(gT * 14) * .12 : 0;
@@ -174,6 +186,7 @@ export function makeCreature() {
       const [gx, gz] = armGoal(a), k = 1 - Math.exp(-dt * 10);
       a.x += (gx - a.x) * k; a.z += (gz - a.z) * k;
       a.pivot.rotation.set(a.x, 0, a.s * a.z);
+      a.long += ((reachAt && a.s === reachArm ? a.want || 1 : 1) - a.long) * k; a.pivot.scale.set(1, a.long, 1);
     }
     sprout.rotation.z = Math.sin(t * 1.7) * .12 + tilt * -.8; sprout.rotation.x = Math.sin(t * 1.3) * .08 - lean;
     // the core: slow pulse when idle, brighter while listening, a quick swirl while thinking, steady while talking
@@ -189,8 +202,42 @@ export function makeCreature() {
     for (const g of eyes) { g.scale.y = Math.max(.08, (1 - shut) * lids); g.scale.x = 1 + perk * .1; }
   }
 
+  /**
+   * Recolours it: body is its plush (arms, hands and feet too), glow its core, the bead on its sprout, the halo and the
+   * light the plush lets through. Colours as '#rrggbb'. The default glow is the core's own orange, and every other
+   * part of the glow is moved the same way from where it was made, so the default looks as it always did.
+   */
+  const WHITE = new THREE.Color(1, 1, 1), made = { plush: plush.color.clone(), sheen: plush.sheenColor.clone(), sss: plush.userData.sss?.colour.clone(), core: coreMat.color.clone(), coreGlow: coreMat.emissive.clone(), heart: heartMat.color.clone(), heartGlow: heartMat.emissive.clone(), halo: halo.material.color.clone() };
+  const BASE_GLOW = new THREE.Color('#ff5200'), glowNow = BASE_GLOW.clone(), hsl = {}, base = {}, x = {};
+  BASE_GLOW.getHSL(base);
+  // a part of the glow as it was made, moved to the glow it has now: the new hue, its own lightness and saturation
+  // kept in step with the core's orange (so the default is unchanged)
+  const shift = (into, from) => {
+    glowNow.getHSL(hsl); from.getHSL(x);
+    return into.setHSL((x.h + hsl.h - base.h + 1) % 1, Math.min(1, x.s * hsl.s / Math.max(.01, base.s)), Math.min(1, x.l * hsl.l / Math.max(.01, base.l)));
+  };
+  function setColours({ body, glow } = {}) {
+    // (each Color is changed in place: the WebGPU view's materials share these objects, so they follow)
+    if (body) {
+      plush.color.set(body);
+      // its soft sheen, a near-white of its own colour (the cream plush keeps the sheen it was made with)
+      if (plush.color.equals(made.plush)) plush.sheenColor.copy(made.sheen);
+      else plush.sheenColor.copy(plush.color).lerp(WHITE, .75);
+    }
+    if (glow) {
+      glowNow.set(glow);
+      shift(coreMat.color, made.core); shift(coreMat.emissive, made.coreGlow);
+      shift(heartMat.color, made.heart); shift(heartMat.emissive, made.heartGlow);
+      shift(halo.material.color, made.halo);
+      if (made.sss) shift(plush.userData.sss.colour, made.sss);
+    }
+  }
+  /** One of the glow's colours as it was made ('#ff7020'), as it is with the glow it has now: for the lights and embers. */
+  const glowed = hex => '#' + shift(new THREE.Color(), new THREE.Color(hex)).getHexString();
+
   return {
     root, hold, face, core,
+    setColours, glowed,
     state,
     get coreGlow() { return coreGlow; },
     get holding() { return holding; }, set holding(v) { holding = !!v; },
@@ -218,6 +265,12 @@ export function makeCreature() {
     },
     /** A tap on it: a giggle and a look. */
     poke() { giggle = 1; setMood('happy'); face.blink(); },
+    /** Reaches for a point in the world (a THREE.Vector3) with the nearer hand; null puts the hand back. */
+    reach(p) {
+      if (!p) { reachAt = null; return; }
+      if (!reachAt) { reachAt = new THREE.Vector3(); reachArm = root.worldToLocal(tmpV.copy(p)).x >= 0 ? 1 : -1; }
+      reachAt.copy(p);
+    },
     /** The world position of the core, for its light. */
     coreAt(v) { core.updateWorldMatrix(true, false); return v.setFromMatrixPosition(core.matrixWorld); },
     update,
