@@ -3,6 +3,7 @@
 //   "make a <thing>"  -> says a line and calls make
 //   "make it <x>"     -> says a line and calls change
 //   "throw it"        -> toss;  "clear"  -> clear;  "think ..." -> think_harder, then a deep answer
+//   "make <x> and put it <spot>" / "put it <spot>" / "move the <x> <spot>" -> place;  "paint the walls <c>" -> room_colours
 //   "play chess"      -> play;  "[chess] ..." (news from the board) -> a quip;  "move e4" -> game_move;  "stop playing" -> stop_game
 //   "roll ..."        -> roll;  "quiz me" -> play quiz;  "[quiz] ..." -> a quip;  "answer b" -> game_move;  "draw" -> doodle;  "[doodle] ..." -> a quip
 //   anything else     -> a friendly line with a wave
@@ -20,6 +21,8 @@ function plan(body) {
     if (/^weather in|location is not shared|did not answer/i.test(r)) return { text: 'Looks like a cosy day for staying in with me.', tools: [] };
     if (/^your voice is now/i.test(r)) return { text: 'How do I sound now?', tools: [] };
     if (/^your body is now/i.test(r)) return { text: 'Do you like it?', tools: [] };
+    if (/^(Carried|Fetched|Took)/.test(r)) return { text: 'There we go.', tools: [] };
+    if (/^The room's/.test(r)) return { text: 'So cosy!', tools: [] };
     if (/chess board is set up/i.test(r)) return { text: 'Your move. No pressure.', tools: [] };
     if (/quiz table is set up/i.test(r)) return { text: 'First question, here we go!', tools: [] };
     if (/^Threw |^Rolled /.test(r)) return { text: 'There we go!', tools: [] };
@@ -40,7 +43,12 @@ function plan(body) {
   if ((m = /^answer (.+)/.exec(said))) return { text: 'Locking it in.', tools: [['game_move', { move: m[1] }]] };
   if ((m = /^roll (.+)/.exec(said))) return { text: 'Rolling!', tools: [['roll', { dice: m[1].replace(/^(a|the) /, '') }]] };
   if (/^draw/.test(said)) return { text: 'Ooh, a drawing!', tools: [['doodle', {}]] };
-  if ((m = /^move (\S+)/.exec(said))) return { text: 'Ooh.', tools: [['game_move', { move: m[1] }]] };
+  if ((m = /^move (?!the )(\S+)/.exec(said))) return { text: 'Ooh.', tools: [['game_move', { move: m[1] }]] };
+  const SPOT = /(by the window|on the windowsill|on the workbench|on the shelf|on the rug|left of you|right of you|in front of you|back left corner|by the barrel|front left|front right|your hands|away)/;
+  if ((m = /make (?:me )?(an? .+?) and put it (.+)/.exec(said))) return { text: 'Coming right up, and I know just where.', tools: [['place', { item: m[1], spot: SPOT.exec(m[2])?.[1] || m[2] }]] };
+  if ((m = /^put it (.+)/.exec(said))) return { text: 'Hup, over we go.', tools: [['place', { item: 'it', spot: SPOT.exec(m[1])?.[1] || m[1] }]] };
+  if ((m = /^(?:move|bring) the (\w+) (.+)/.exec(said))) return { text: 'On it.', tools: [['place', { item: m[1], spot: /back|me/.test(m[2]) ? 'your hands' : SPOT.exec(m[2])?.[1] || m[2] }]] };
+  if ((m = /^paint the (walls|floor|rug|wood) (.+)/.exec(said))) return { text: 'Ooh, redecorating.', tools: [['room_colours', { [m[1]]: m[2] }]] };
   if ((m = /make it (.+)/.exec(said))) return { text: 'Watch this.', tools: [['change', { words: m[1] }]] };
   if ((m = /make (?:me )?(an? .+|some .+)/.exec(said))) return { text: 'Ooh, one coming right up!', tools: [['act', { gesture: 'tada', mood: 'excited' }], ['make', { words: m[1] }]] };
   if (/pirate/.test(said)) return { text: 'Arr, give me a moment.', tools: [['voice', { name: 'captain_silas_blackwater' }]] };
