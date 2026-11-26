@@ -4,6 +4,7 @@
 import gs, { loadParts } from '../engine/src/gamescroll.js';
 import { makeWorld } from './world.js';
 import { makeBrain } from './brain.js';
+import { makeBody } from './body.js';
 import { Listener } from './listen.js';
 import { askPlace } from './place.js';
 
@@ -12,7 +13,7 @@ const stage = $('#stage'), canvas = $('#view'), ctx = canvas.getContext('2d');
 const input = $('#say'), form = $('#bar'), mic = $('#mic'), caption = $('#caption'), status = $('#status'), wake = $('#wake'), timing = $('#timing');
 const debug = new URLSearchParams(location.search).has('debug');
 
-let W = 0, H = 0, world, brain, voice, last = 0, awake = false, captionT = 0;
+let W = 0, H = 0, world, brain, body, voice, last = 0, awake = false, captionT = 0;
 
 function fit() {
   const r = stage.getBoundingClientRect(), dpr = Math.min(2, devicePixelRatio || 1);
@@ -67,6 +68,7 @@ function frame(now) {
       }
     }
     captionT -= dt; if (captionT < 0 && !brain?.speaking) caption.hidden = true;
+    if (awake) body.update(dt);
     world.update(dt);
     world.draw(ctx);
   } catch (e) {
@@ -83,8 +85,9 @@ async function boot() {
   await whenLoaded(() => world.reset());
   world.resize(W, H);
   brain = makeBrain({ world, onCaption: say, onStatus: setStatus, onTiming: showTiming });
+  body = makeBody({ creature: world.creature, world });
   voice = new Listener();
-  window.__reverie = { world, brain, gs };
+  window.__reverie = { world, brain, body, gs };
   status.textContent = '';
   wake.hidden = false; wake.textContent = 'Tap to say hi';
   requestAnimationFrame(frame);
@@ -119,7 +122,7 @@ form.addEventListener('submit', e => {
   const text = input.value.trim(); if (!text || !brain) return;
   input.value = ''; wakeUp(); brain.hear(text, { at: performance.now() });
 });
-input.addEventListener('input', () => { if (input.value && brain?.speaking && input.value.length > 3) brain.interrupt(); });
+input.addEventListener('input', () => { if (input.value.length === 1) body?.notice(); if (input.value && brain?.speaking && input.value.length > 3) brain.interrupt(); });
 mic.addEventListener('click', async () => {
   if (!awake) return wakeUp();   // (waking asks for the microphone itself)
   if (voice.listening || voice.want) { voice.stop(); mic.classList.remove('on'); input.placeholder = 'Say something, or type…'; return; }
@@ -132,7 +135,7 @@ canvas.addEventListener('pointerdown', e => {
   if (!world) return;
   if (!awake) return wakeUp();
   const r = canvas.getBoundingClientRect(), hit = world.tap(e.clientX - r.left, e.clientY - r.top);
-  if (hit === 'creature') { world.creature.poke(); gs.sound.sounds.boing?.(); }
+  if (hit === 'creature') { body.poke(); gs.sound.sounds.boing?.(); }
   else if (hit === 'prop') world.toss();
 });
 

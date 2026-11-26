@@ -96,6 +96,9 @@ export function makeCreature() {
   // ---- life
   let t = 0, mood = 'calm', gesture = null, gT = 0, bounce = 0, giggle = 0, holding = false;
   let lean = 0, tilt = 0, turn = 0, nod = 0, coreLevel = .6, coreGlow = .6;
+  // idle moves (chosen on the device by body.js, between replies): what it is doing, for how long, which way it glances
+  let idle = null, iT = 0, side = 1, look = 0, perk = 0, drowse = 0, drowsy = false, yawned = false;
+  const IDLE_TIME = { rest: 0, glance: 2.4, peek: 2.2, sway: 4, hop: .9, stretch: 2.8, perk: .8 };
   const state = { listening: false, thinking: false, speaking: false };
 
   function setMood(m) {
@@ -120,15 +123,36 @@ export function makeCreature() {
     if (gesture === 'tada') return [-.4, 2.2];
     if (gesture === 'shrug') return [-.35, 1.15];
     if (gesture === 'think' && !L) return [-2.1, -.55];
+    if (idle === 'stretch' && !holding) { const up = Math.sin(Math.min(1, iT / 2.8) * Math.PI); return [-.15 * up, .35 + up * 1.9]; }
     if (holding) return HOLD;
     if (state.listening) return [-.2, .25];
     return [REST[0] + Math.sin(t * 1.3 + a.s) * .03, REST[1] + Math.sin(t * 1.1) * .04];
+  }
+  // an idle move: none while a gesture runs; 'perk' (you started talking) cuts any idle move short
+  function doIdle(a) {
+    if (gesture || !(a in IDLE_TIME)) return false;
+    if (idle === 'stretch' && yawned) setMood(mood);
+    idle = a; iT = 0; yawned = false;
+    if (a === 'glance') side = Math.random() < .5 ? -1 : 1;
+    if (a === 'hop') bounce = Math.max(bounce, .55);
+    if (a === 'perk') { perk = 1; bounce = Math.max(bounce, .3); face.blink(); }
+    return true;
   }
   const GESTURE_TIME = { wave: 1.6, point: 1.4, tada: 1.3, shrug: 1.2, think: 2.2, nod: .9, shake: 1, bounce: .8 };
 
   function update(dt, cam) {
     t += dt; gT += dt;
     if (gesture && gT > (GESTURE_TIME[gesture] || 1.2)) gesture = null;
+    iT += dt;
+    if (gesture && idle) idle = null;
+    if (idle === 'stretch' && !yawned && iT > .6) { yawned = true; face.set('round', .9); face.set('smile', 0); }
+    if (idle && iT > IDLE_TIME[idle]) { if (idle === 'stretch' && yawned) setMood(mood); idle = null; }
+    perk = Math.max(0, perk - dt * 1.6);
+    drowse += ((drowsy && !state.listening && !state.speaking ? 1 : 0) - drowse) * (1 - Math.exp(-dt * (drowsy ? .6 : 5)));
+    // where it looks: a glance one way, then the other, then back
+    const lookGoal = idle === 'glance' ? (iT < .9 ? side * .5 : iT < 1.8 ? -side * .4 : 0) : 0;
+    look += (lookGoal - look) * (1 - Math.exp(-dt * 5));
+    const env = idle ? Math.sin(Math.min(1, iT / IDLE_TIME[idle]) * Math.PI) : 0;   // (eases each move in and out)
     // body: breathing, a bounce, leaning in to listen, tilting the head to think
     const breathe = 1 + Math.sin(t * 2.2) * .014;
     blob.scale.set(1 / Math.sqrt(breathe), 1.12 * breathe, .95);
@@ -136,11 +160,13 @@ export function makeCreature() {
     giggle = Math.max(0, giggle - dt * 1.5);
     root.position.y = Math.abs(Math.sin(t * 11)) * .07 * bounce + Math.abs(Math.sin(t * 24)) * .015 * giggle;
     const e = 1 - Math.exp(-dt * 6);
-    lean += ((state.listening ? .14 : state.thinking ? -.05 : 0) - lean) * e;
-    tilt += ((state.thinking ? .13 : gesture === 'shrug' ? .08 : giggle * Math.sin(t * 30) * .1) - tilt) * e;
+    const leanIdle = idle === 'peek' ? .2 * env : idle === 'stretch' ? -.08 * env : 0;
+    lean += ((state.listening ? .14 : state.thinking ? -.05 : leanIdle + drowse * .06) - lean) * e - perk * dt * .8;
+    const tiltIdle = idle === 'sway' ? Math.sin(iT * 2.4) * .1 * env : idle === 'peek' ? .07 * env : 0;
+    tilt += ((state.thinking ? .13 : gesture === 'shrug' ? .08 : giggle * Math.sin(t * 30) * .1 + tiltIdle) - tilt) * e;
     nod = gesture === 'nod' ? Math.sin(gT * 14) * .12 : 0;
     const shake = gesture === 'shake' ? Math.sin(gT * 16) * .18 : 0;
-    body.rotation.set(lean + nod, shake, tilt);
+    body.rotation.set(lean + nod, shake + look * .55, tilt);
     // turn to face the camera a little
     if (cam) { const want = Math.atan2(cam.position.x - root.position.x, cam.position.z - root.position.z) * .5; turn += (want - turn) * e; root.rotation.y = turn; }
     // arms
@@ -151,7 +177,7 @@ export function makeCreature() {
     }
     sprout.rotation.z = Math.sin(t * 1.7) * .12 + tilt * -.8; sprout.rotation.x = Math.sin(t * 1.3) * .08 - lean;
     // the core: slow pulse when idle, brighter while listening, a quick swirl while thinking, steady while talking
-    coreLevel = state.thinking ? .9 + Math.sin(t * 9) * .35 : state.listening ? 1.2 : state.speaking ? .9 : .55 + Math.sin(t * 1.6) * .12;
+    coreLevel = state.thinking ? .9 + Math.sin(t * 9) * .35 : state.listening ? 1.2 : state.speaking ? .9 : (.55 + Math.sin(t * (1.6 - drowse * .7)) * .12) * (1 - drowse * .35) + perk * .5;
     coreGlow += (coreLevel - coreGlow) * (1 - Math.exp(-dt * 8));
     coreMat.emissiveIntensity = 1.6 + coreGlow * 1.8;
     halo.material.opacity = .12 + coreGlow * .22; halo.scale.setScalar(.2 + coreGlow * .08 + Math.sin(t * 2.4) * .01);
@@ -159,7 +185,8 @@ export function makeCreature() {
     // the face: speech and blinking (the engine's Face), eyelids from its blink shape
     face.update(dt);
     const shut = Math.min(1, mouth.morphTargetInfluences[blinkIndex] || 0);
-    for (const g of eyes) g.scale.y = Math.max(.08, 1 - shut) * (state.thinking ? .85 : 1);
+    const lids = (state.thinking ? .85 : 1) * (1 - drowse * .5) * (idle === 'stretch' && yawned ? .55 : 1) * (1 + perk * .18);
+    for (const g of eyes) { g.scale.y = Math.max(.08, (1 - shut) * lids); g.scale.x = 1 + perk * .1; }
   }
 
   return {
@@ -169,6 +196,13 @@ export function makeCreature() {
     get holding() { return holding; }, set holding(v) { holding = !!v; },
     mood: setMood,
     gesture: doGesture,
+    /** An idle move, chosen by body.js: rest, glance, peek, sway, hop, stretch, or perk (you started talking). */
+    idle: doIdle,
+    get idling() { return idle; },
+    /** True while a gesture (one Claude asked for, or a greeting) is playing. */
+    get busy() { return !!gesture; },
+    /** Drowsy: eyes half shut, a slower glow. Anything that happens wakes it. */
+    get drowsy() { return drowsy; }, set drowsy(v) { drowsy = !!v; },
     /** Says a line with its mouth moving (the engine's Face.say), and calls onStart once the voice is really heard. */
     say(line, o, onStart = () => {}) {
       const { visemes } = gs.characters;
