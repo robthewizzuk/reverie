@@ -8,7 +8,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const lastUser = messages => [...messages].reverse().find(m => m.role === 'user');
 const textOf = m => typeof m.content === 'string' ? m.content : (m.content.find(b => b.type === 'text')?.text ?? '');
 // (without the device's line at the top: where and when they are)
-const saidOf = m => textOf(m).replace(/^\[From the device[^\]]*\]\n/, '');
+const saidOf = m => textOf(m).replace(/^\[From the device[^\]]*\]\n/, '').replace(/ \(You were interrupted[^)]*\)$/, '');
 
 function plan(body) {
   const u = lastUser(body.messages);

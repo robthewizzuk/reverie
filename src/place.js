@@ -1,6 +1,6 @@
 // Where and when you are, and the weather there. All from the browser: the device's location (it asks first), a
 // place name for it, and the forecast from Open-Meteo (free, no key). Nothing here goes through Reverie's backend:
-// Claude only hears the town and the local time, in a line at the top of what you say.
+// Claude only hears the town and the local time (and what is in Reverie's hands), in a line at the top of what you say.
 
 const TIMEOUT = 8000;
 let here = null;          // { lat, lon, name, country, countryCode } once known
@@ -32,10 +32,10 @@ export function askPlace() {
 }
 
 /** The line Claude reads at the top of each thing you say: where you are (if known) and your local date and time. */
-export function contextLine(now = new Date()) {
+export function contextLine(scene = '', now = new Date()) {
   const when = now.toLocaleString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
   const where = here?.name ? `they are in ${[here.name, here.region !== here.name ? here.region : null, here.country].filter(Boolean).join(', ')}` : here ? 'they shared their location, but the town is unknown' : 'they have not shared their location';
-  return `[From the device, not said aloud: ${where}; it is ${when} where they are.]`;
+  return `[From the device, not said aloud: ${where}; it is ${when} where they are.${scene ? ' ' + scene : ''}]`;
 }
 
 // WMO weather codes (Open-Meteo) in plain words

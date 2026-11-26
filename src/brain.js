@@ -173,7 +173,7 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
     if (speaker.talking) { cut = speaker.pending || cut; speaker.stop(); }
     const note = cut ? ` (You were interrupted before saying: "${cut.slice(0, 200)}")` : ''; cut = '';
     // (where and when they are rides at the top of what they said: added, never changed later)
-    history.push({ role: 'user', content: contextLine() + '\n' + text + note });
+    history.push({ role: 'user', content: contextLine(world.scene?.()) + '\n' + text + note });
     creature.state.thinking = true; creature.state.listening = false;
     creature.gesture('nod'); onStatus('thinking');
     const times = { start: o.at ?? performance.now() };
