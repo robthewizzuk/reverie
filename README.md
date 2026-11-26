@@ -38,16 +38,25 @@ and `REVERIE_DEEP_MODEL`.
 
 ## Put it online
 
-The built page is static (`npm run build` → `dist/`). The backend goes on Cloudflare Workers:
+One Cloudflare Worker serves both the built page (`dist/`, as static assets) and the `/api/turn` backend, at one
+address, so there is no CORS or `VITE_API_URL` to set. From the repo root, after `npm run setup`:
 
 ```bash
-cd worker
-npx wrangler secret put ANTHROPIC_API_KEY   # stored by Cloudflare, never in the repo
-npx wrangler deploy
+npx wrangler login                                        # once: opens Cloudflare in the browser
+cd worker && npx wrangler secret put ANTHROPIC_API_KEY    # once: paste the key; stored by Cloudflare, never in the repo
+cd .. && npm run deploy                                   # builds the page, then deploys it and the backend
 ```
 
-Set `ALLOWED_ORIGIN` in `worker/wrangler.toml` to the page's address, and build the page with `VITE_API_URL` set to the
-Worker's address.
+It prints the address (`https://reverie.<your-subdomain>.workers.dev`). Run `npm run deploy` again after each change.
+`npm run worker:dev` tries the same Worker locally at http://localhost:8787, with the key in `worker/.dev.vars`
+(gitignored): `ANTHROPIC_API_KEY=...`.
+
+Or let GitHub deploy it: `.github/workflows/deploy.yml` builds and deploys on every push to `main` (or by hand from the
+Actions tab). Add the repository secrets `CLOUDFLARE_API_TOKEN` (the "Edit Cloudflare Workers" token template),
+`CLOUDFLARE_ACCOUNT_ID` and `ANTHROPIC_API_KEY` under Settings › Secrets and variables › Actions.
+
+Only the Worker's own address may call the API from a browser. To host the page somewhere else, set `ALLOWED_ORIGIN` in
+`worker/wrangler.toml` to that page's address and build it with `VITE_API_URL` set to the Worker's address.
 
 ## Test
 

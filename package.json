@@ -10,10 +10,11 @@
     "build": "node engine/node_modules/vite/bin/vite.js build",
     "preview": "node engine/node_modules/vite/bin/vite.js preview --host",
     "smoke": "node tests/smoke.mjs",
-    "worker:dev": "cd worker && npx wrangler dev",
-    "worker:deploy": "cd worker && npx wrangler deploy"
+    "worker:dev": "npm run build && cd worker && wrangler dev",
+    "deploy": "npm run build && cd worker && wrangler deploy"
   },
   "devDependencies": {
-    "@anthropic-ai/sdk": "^0.137.0"
+    "@anthropic-ai/sdk": "^0.137.0",
+    "wrangler": "^4.168.0"
   }
 }

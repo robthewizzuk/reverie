@@ -1,14 +1,25 @@
-# Reverie's backend: holds the Anthropic API key and streams Claude's replies to the page.
-#   npx wrangler secret put ANTHROPIC_API_KEY     (once; the key is never written in this repo)
-#   npx wrangler deploy                           (from this folder, or npm run worker:deploy)
-# Local: npx wrangler dev reads the key from worker/.dev.vars (gitignored): ANTHROPIC_API_KEY=...
-name = "reverie-api"
+# Reverie on Cloudflare Workers: one Worker serves the built page (dist/, as static assets) and POST /api/turn,
+# which streams Claude's replies. Page and API share one address, so no CORS or VITE_API_URL is needed.
+#   npx wrangler login                            (once, with your Cloudflare account)
+#   npx wrangler secret put ANTHROPIC_API_KEY     (once; the key is stored by Cloudflare, never in this repo)
+#   npm run deploy                                (from the repo root: builds the page, then deploys)
+# Local: npm run worker:dev serves dist/ and the API at http://localhost:8787, with the key read from
+# worker/.dev.vars (gitignored): ANTHROPIC_API_KEY=...
+name = "reverie"
 main = "src/index.js"
 compatibility_date = "2026-10-01"
 compatibility_flags = ["nodejs_compat"]
 
+[assets]
+directory = "../dist"
+binding = "ASSETS"
+# Only /api/* runs the Worker's code; every other path is a file from dist/, served straight from Cloudflare's cache.
+run_worker_first = ["/api/*"]
+not_found_handling = "single-page-application"
+
 [vars]
-# The page's address (scheme and host). Requests from other sites are refused. Empty allows any (local only).
+# The Worker's own address (and any custom domain routed to it) may always call the API, and nothing else may.
+# Set this to one more page address (scheme and host) if the page is hosted elsewhere, or "*" to allow any.
 ALLOWED_ORIGIN = ""
 # Which models answer (optional; these are the defaults).
 REVERIE_QUICK_MODEL = "claude-haiku-5-5"
