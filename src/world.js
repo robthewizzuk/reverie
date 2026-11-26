@@ -9,7 +9,7 @@ const SIZE_WORDS = [[/\b(giant|huge|enormous)\b/, 1.8], [/\b(bigger|big|large)\b
 const article = w => w.replace(/^(a|an|the|some)\s+/i, '');
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 
-let v, sunLight, creature, fx, world, coreLamp, lampSpot, room;
+let v, sunLight, creature, fx, world, coreLamp, lampSpot, room, embers, motes;
 
 function setup() {
   const { HDView, pbr, rbox, sun, THREE } = gs.hd, { material, prop } = gs.models;
@@ -39,11 +39,23 @@ function setup() {
   keep(prop('barrel', { seed: 3 }), .55, 1.85, 0, -.6, .3);
   keep(prop('bucket', { seed: 4 }), .22, .95, .815, -1.25);
   keep(prop('lamp', { seed: 2 }), .32, 1.55, .815, -1.3);
+  // the room's own light: bounce light from the brick and the floor (a warm wall tints what is next to it), reflections
+  // of the room itself in anything shiny (its eyes, its glass dome, the floorboards) instead of the kit's studio, and
+  // soft contact shadows on the rug under its feet and the props. Each scales itself down on a slow phone (v's tiers).
+  const roomBox = { min: [-2.1, 0, -1.6], max: [2.2, 2.6, 2.2] };
+  v.bounce(roomBox, { spacing: .9, bounces: 1 }); v.hemi.intensity = .22;   // (less fill light: the bounce light does that now)
+  v.room(roomBox, { strength: .8 });
+  v.contact({ y: .013, size: 3, darkness: 1, opacity: .45, height: .8 });
+  // dust drifting in the low sun, lit as it passes through the light
+  motes = new gs.fx3d.Particles3D(v.scene);
+  motes.make({ x: -.2, y: 1, z: -.2 }, { loop: true, rate: 6, life: [6, 10], speed: [.01, .04], size: [.004, .008], colors: ['#ffe6c0', '#ffd09a'], radius: 1.3, gravity: -.004, glow: false, shrink: false });
   // a warm lamp over the bench
-  lampSpot = { x: 1.3, y: 1.6, z: -1.1, col: '#ffc98a', i: 9, reach: 4, flick: .05 };
+  lampSpot = { x: 1.3, y: 1.6, z: -1.1, col: '#ffc98a', i: 9, reach: 4 };   // (no flick: any flick makes a lamp stutter like a failing tube)
   creature = makeCreature(); v.scene.add(creature.root);
-  coreLamp = v.flash(0, .3, .3, { keep: true, col: '#ff9a4a', i: .8, reach: .9, flicker: .1 });
+  coreLamp = v.flash(0, .3, .3, { keep: true, col: '#ff7020', i: .8, reach: .9 });
   fx = new gs.fx3d.Particles3D(v.scene);
+  // embers drifting up from its core: a few when idle, more while listening, a stream while thinking
+  embers = makeEmbers();
   world = w3;
   world.floor(0, { friction: .8 });
   world.box(null, 6, 3, .2, { fixed: true, at: { x: 0, y: 1.5, z: -1.7 } });
@@ -54,6 +66,7 @@ function setup() {
   gs.models.generate.load().catch(() => {});   // (the generator's workers warmed up while it wakes)
 }
 
+const makeEmbers = () => fx.make({ x: 0, y: .26, z: .3 }, { loop: true, rate: 2, life: [.9, 1.8], speed: [.03, .1], size: [.008, .018], colors: ['#ffd8a0', '#ff6a20'], radius: .03, gravity: .18 });
 const tmp = {};
 function boxOf(o) { const { THREE } = gs.hd; o.updateMatrixWorld(true); return (tmp.b ||= new THREE.Box3()).setFromObject(o); }
 function fitTo(o, size) { const { THREE } = gs.hd; o.scale.setScalar(1); const s = boxOf(o).getSize(tmp.v ||= new THREE.Vector3()); o.scale.setScalar(size / Math.max(.01, s.x, s.y, s.z)); return o; }
@@ -141,7 +154,7 @@ export function makeWorld() {
     reset() {
       if (!v) setup();
       for (const e of loose) remove(e); loose = []; if (held) remove(held); held = null; creature.holding = false;
-      fx.clear(); creature.mood('calm');
+      fx.clear(); embers = makeEmbers(); creature.mood('calm');
     },
     resize(w, h) { W = w; H = h; },
     update(dt) {
@@ -150,7 +163,8 @@ export function makeWorld() {
       const a = W / H; v.cam.fov = a < 1 ? 2 * Math.atan(Math.tan(21 * Math.PI / 180) / a) * 180 / Math.PI : 36;
       v.cam.aspect = a; v.cam.updateProjectionMatrix();
       creature.update(dt, v.cam);
-      creature.coreAt(at); coreLamp.at(at.x, at.y, at.z + .08); coreLamp.i0 = .3 + creature.coreGlow * .7;
+      creature.coreAt(at); coreLamp.at(at.x, at.y - .05, at.z + .12); coreLamp.i0 = .25 + creature.coreGlow * .6;
+      const st = creature.state; embers.at({ x: at.x, y: at.y, z: at.z + .03 }); embers.rate = st.thinking ? 14 : st.listening ? 6 : st.speaking ? 4 : 2; embers.on = true;
       v.placeLamps([lampSpot], 0, .4, 0, t);
       sunLight.follow(0, 0, 0);
       // a new prop pops into its hands
@@ -161,7 +175,7 @@ export function makeWorld() {
       for (const e of loose) if (e.pivot.position.y < -4) remove(e);
       loose = loose.filter(e => e.pivot.position.y >= -4);
       while (loose.length > 14) remove(loose.shift());
-      fx.update(dt);
+      fx.update(dt); motes.update(dt);
     },
     draw(c) { v.render(c, W, H); },
     /** What a tap at (x, y) in CSS pixels hit: 'creature', 'prop' or null. */

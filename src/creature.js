@@ -23,16 +23,30 @@ export function makeCreature() {
   const shade = m => { m.castShadow = true; m.receiveShadow = true; return m; };
 
   // the body: one soft plush blob
-  const plush = pbr('#e8dccb', { rough: .75, sheen: .5, sheenColor: '#fff3e4', sheenRoughness: .5 });
+  // (sss: light passes into the plush, so the core warms the belly round it the way a torch glows through a hand)
+  const plush = pbr('#e8dccb', { rough: .75, sheen: .5, sheenColor: '#fff3e4', sheenRoughness: .5, sss: { colour: '#ff8a4a', power: 2.5, scale: .9, distortion: .3, ambient: .04 } });
   const blob = shade(new THREE.Mesh(new THREE.SphereGeometry(.28, 48, 32), plush));
   blob.scale.set(1, 1.12, .95); blob.position.y = .33; body.add(blob);
 
-  // the core: a warm light in the chest, set in a little ring
-  const coreMat = pbr('#ff8a3d', { glow: 2, rough: .25, clear: 1 });
-  const core = new THREE.Mesh(new THREE.SphereGeometry(.062, 32, 16), coreMat);
-  core.position.set(0, .26, .236); core.scale.z = .7; body.add(core);
-  const ring = shade(new THREE.Mesh(new THREE.TorusGeometry(.072, .013, 12, 40), pbr('#d9c6ad', { rough: .5 })));
-  ring.position.set(0, .26, .238); ring.rotation.x = -.18; body.add(ring);
+  // the core: a hot ember in the chest under a glass dome, set in a little ring, with a soft halo round it. Its
+  // brightness is in lamp numbers (gs.hd "glow by numbers": 4 to 6 reads as a lamp), so the view's bloom makes the glow.
+  const coreMat = pbr('#ff4a00', { glow: 2.5, glowCol: '#ff5200', rough: .3 });
+  const core = new THREE.Mesh(new THREE.SphereGeometry(.05, 32, 16), coreMat);
+  core.position.set(0, .26, .258); core.scale.z = .7; body.add(core);
+  const heart = new THREE.Mesh(new THREE.SphereGeometry(.016, 16, 12), pbr('#ffb060', { glow: 3.5, glowCol: '#ff9a40' }));   // (a white-hot middle)
+  heart.position.set(0, .26, .285); body.add(heart);
+  const dome = new THREE.Mesh(new THREE.SphereGeometry(.066, 32, 16, 0, Math.PI * 2, 0, Math.PI / 2), pbr('#ffffff', { rough: .05, glass: { thin: true, tint: '#ffb98a' } }));
+  dome.rotation.x = Math.PI / 2; dome.scale.y = .55; dome.position.set(0, .26, .262); body.add(dome);
+  const ring = shade(new THREE.Mesh(new THREE.TorusGeometry(.07, .012, 12, 40), pbr('#c9a77e', { rough: .35, metal: .6 })));
+  ring.position.set(0, .26, .262); ring.rotation.x = -.18; body.add(ring);
+  // the halo: a soft round glow made in code, always facing the camera, added over what is behind it
+  const haloTex = (() => {
+    const c = document.createElement('canvas'); c.width = c.height = 64; const x = c.getContext('2d'), g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+    g.addColorStop(0, 'rgba(255,150,70,1)'); g.addColorStop(.2, 'rgba(255,110,40,.5)'); g.addColorStop(.55, 'rgba(255,80,20,.1)'); g.addColorStop(1, 'rgba(255,70,20,0)');
+    x.fillStyle = g; x.fillRect(0, 0, 64, 64); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+  })();
+  const halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: haloTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: .5 }));
+  halo.position.set(0, .26, .3); halo.scale.setScalar(.3); halo.renderOrder = 2; body.add(halo);
 
   // eyes: glossy and dark, a light in each, and lids made by squashing them (the Face's blink)
   const eyeMat = pbr('#1c1714', { rough: .15, clear: 1 }), glint = pbr('#ffffff', { glow: 1.5 });
@@ -139,7 +153,8 @@ export function makeCreature() {
     // the core: slow pulse when idle, brighter while listening, a quick swirl while thinking, steady while talking
     coreLevel = state.thinking ? .9 + Math.sin(t * 9) * .35 : state.listening ? 1.2 : state.speaking ? .9 : .55 + Math.sin(t * 1.6) * .12;
     coreGlow += (coreLevel - coreGlow) * (1 - Math.exp(-dt * 8));
-    coreMat.emissiveIntensity = .5 + coreGlow * 1.3;
+    coreMat.emissiveIntensity = 1.6 + coreGlow * 1.8;
+    halo.material.opacity = .12 + coreGlow * .22; halo.scale.setScalar(.2 + coreGlow * .08 + Math.sin(t * 2.4) * .01);
     core.rotation.z += dt * (state.thinking ? 6 : 1);
     // the face: speech and blinking (the engine's Face), eyelids from its blink shape
     face.update(dt);
@@ -154,6 +169,19 @@ export function makeCreature() {
     get holding() { return holding; }, set holding(v) { holding = !!v; },
     mood: setMood,
     gesture: doGesture,
+    /** Says a line with its mouth moving (the engine's Face.say), and calls onStart once the voice is really heard. */
+    say(line, o, onStart = () => {}) {
+      const { visemes } = gs.characters;
+      const L = face.line = { v: visemes(line, o), t: 0, i: 0, spoken: null };
+      let started = false;
+      const p = gs.sound.say(line, { ...o, onWord: at => {
+        if (!started) { started = true; onStart(); }
+        if (face.line !== L) return;
+        const k = L.v.findIndex((x, j) => j >= at); if (k >= 0 && k < L.v.length) L.t = L.v[k].t;
+      } });
+      p.then(ok => { if (face.line === L && ok) L.t = Math.max(L.t, L.v.end); }, () => {});
+      return p;
+    },
     /** A tap on it: a giggle and a look. */
     poke() { giggle = 1; setMood('happy'); face.blink(); },
     /** The world position of the core, for its light. */

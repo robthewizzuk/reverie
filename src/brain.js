@@ -15,22 +15,33 @@ const MOODS = ['calm', 'happy', 'excited', 'curious', 'sad', 'surprised'];
 // Text for the voice: no markdown, no stage directions.
 const spoken = s => s.replace(/[*_#`~>|]/g, '').replace(/\[(?!hmm|laugh|sigh|gasp)[^\]]*\]/gi, '').replace(/\s+/g, ' ').trim();
 
+// The mic hears the creature too. What it heard is checked against what it just said: words it said in the last
+// ECHO_KEEP ms are not counted as yours, and for ECHO_TAIL ms after it goes quiet the check stays on.
+const ECHO_KEEP = 6000, ECHO_TAIL = 1500;
+const wordsOf = s => String(s).toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9' ]+/g, ' ').split(/\s+/).filter(Boolean);
+
 /** Says sentences in order, one after another, with the mouth moving; the next is written while one is said. */
 function makeSpeaker(creature, onCaption) {
   let queue = [], busy = false, epoch = 0, buf = '', idle = Promise.resolve(), endIdle = () => {};
+  // what it said lately, as words, so the mic can tell its own voice from yours (said: { words, until })
+  let said = [], quietAt = 0;
   const wait = ms => new Promise(r => setTimeout(r, ms));
   async function run(my) {
     busy = true; creature.state.speaking = true;
     while (queue.length && my === epoch) {
       const line = queue.shift();
-      onCaption(line);
+      // the bubble shows when the voice starts, not while the line is still being made ready
+      let shown = false; const show = () => { if (!shown && my === epoch) { shown = true; onCaption(line); } };
+      said.push({ words: new Set(wordsOf(line)), until: Infinity }); if (said.length > 6) said.shift();
       const t0 = performance.now();
       if (queue[0]) gs.sound.prepare(queue[0], VOICE).catch(() => {});
-      const ok = await creature.face.say(line, VOICE).catch(() => false);
+      const ok = await creature.say(line, VOICE, show).catch(() => false);
+      show();   // (no voice here: the bubble alone, for as long as it takes to read)
       // no voice here (a browser that can't speak): give the line the time it takes to read
       if (!ok && my === epoch) await wait(Math.max(0, line.split(' ').length * 330 - (performance.now() - t0)));
+      said.at(-1).until = performance.now();
     }
-    if (my === epoch) { busy = false; creature.state.speaking = false; endIdle(); }
+    if (my === epoch) { busy = false; creature.state.speaking = false; quietAt = performance.now(); endIdle(); }
   }
   function push(line) {
     line = spoken(line); if (!line) return;
@@ -54,9 +65,17 @@ function makeSpeaker(creature, onCaption) {
     /** Everything said so far in this reply that is still to come, for "you were interrupted". */
     get pending() { return [...queue, buf].join(' ').trim(); },
     get talking() { return busy; },
+    /** The words in `text` that are not its own voice coming back through the mic: everything while it is quiet, and
+     * only the words it has not just said while it talks or has just stopped (an echo reaches the mic late). */
+    yours(text) {
+      const words = wordsOf(text), now = performance.now();
+      if (!busy && now - quietAt > ECHO_TAIL) return words;
+      const mine = said.filter(x => now - x.until < ECHO_KEEP);
+      return words.filter(w => !mine.some(x => x.words.has(w)));
+    },
     /** Resolves when it has said everything queued. */
     done: () => busy ? idle : Promise.resolve(),
-    stop() { epoch++; queue = []; buf = ''; busy = false; creature.state.speaking = false; gs.sound.stopTalking(); creature.face.hush(); endIdle(); },
+    stop() { if (busy) quietAt = performance.now(); for (const x of said) if (x.until === Infinity) x.until = performance.now(); epoch++; queue = []; buf = ''; busy = false; creature.state.speaking = false; gs.sound.stopTalking(); creature.face.hush(); endIdle(); },
   };
 }
 
@@ -87,7 +106,7 @@ function checkInput(name, input) {
 
 export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, onTiming = () => {} }) {
   const creature = world.creature, speaker = makeSpeaker(creature, onCaption);
-  let history = [], turn = 0, ctl = null, cut = '';
+  let history = [], turn = 0, ctl = null, cut = '', deepNow = false;
 
   function trimmed() {
     // keep the last KEEP messages, starting on a plain user message (never on tool results)
@@ -98,7 +117,9 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
 
   function runTool(name, input) {
     const bad = checkInput(name, input); if (bad) return Promise.resolve({ text: `Not done: ${bad}.`, error: true });
-    if (name === 'think_harder') return Promise.resolve({ text: 'Handed over to deeper thinking. Answer the question now.', deep: true });
+    if (name === 'think_harder') return Promise.resolve(deepNow
+      ? { text: 'You are already thinking harder. Answer the question now.', error: true }
+      : { text: 'Handed over to deeper thinking. You are now thinking harder about this question: answer it now, and do not call think_harder again.', deep: true });
     const fn = { make: () => world.make(input.words), change: () => world.change(input.words), toss: () => world.toss(), clear: () => world.clear(), act: () => world.act(input.gesture, input.mood) }[name];
     if (!fn) return Promise.resolve({ text: `There is no tool called ${name}.`, error: true });
     return fn().then(text => ({ text }), e => ({ text: `It went wrong: ${String(e?.message || e).slice(0, 120)}`, error: true }));
@@ -153,7 +174,7 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
     creature.state.thinking = true; creature.state.listening = false;
     creature.gesture('nod'); onStatus('thinking');
     const times = { start: o.at ?? performance.now() };
-    let tier = 'quick', errored = false;
+    let tier = 'quick', errored = false; deepNow = false;
     try {
       for (let n = 0; n < MAX_STEPS; n++) {
         const r = await step(tier, my, times);
@@ -161,7 +182,7 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
         history.push({ role: 'assistant', content: r.content });
         if (!r.results.length) break;
         history.push({ role: 'user', content: r.results.map(x => ({ type: 'tool_result', tool_use_id: x.id, content: x.text, ...(x.error ? { is_error: true } : {}) })) });
-        if (r.results.some(x => x.deep)) { tier = 'deep'; creature.state.thinking = true; creature.gesture('think'); onStatus('thinking harder'); }
+        if (r.results.some(x => x.deep)) { tier = 'deep'; deepNow = true; creature.state.thinking = true; creature.gesture('think'); onStatus('thinking harder'); }
       }
     } catch (e) {
       if (e?.name === 'AbortError' || my !== turn) return;
@@ -182,6 +203,10 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
     interrupt() { turn++; if (ctl) { ctl.abort(); ctl = null; } if (speaker.talking) cut = speaker.pending || cut; speaker.stop(); creature.state.thinking = false; creature.state.listening = true; },
     get history() { return history; },
     get speaking() { return speaker.talking; },
+    /** The words of something heard by the mic that are yours, not its own voice coming back. */
+    yours: text => speaker.yours(text),
+    /** Says a line of its own (not from Claude), such as its hello. */
+    speak(line) { speaker.feed(line + ' '); speaker.flush(); },
     get busy() { return !!ctl || creature.state.thinking; },
   };
 }

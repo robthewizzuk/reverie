@@ -40,16 +40,23 @@ export function requestFor(body, env = {}) {
   const req = {
     model,
     max_tokens: 4000,
-    system: [{ type: 'text', text: SYSTEM + (deep ? '\n\nYou are now thinking harder about this question. Do not call think_harder again; answer it.' : '') }],
+    // The same system prompt and tools for both models, always: Claude's thinking blocks are bound to everything
+    // before them, so a prompt that changed with the model would make the quick model's thinking invalid when the deep
+    // one reads it (a 400). The "answer now" note for the deep model rides in think_harder's result instead.
+    system: [{ type: 'text', text: SYSTEM }],
     tools: TOOLS.map(t => ({ ...t, eager_input_streaming: true })),
     tool_choice: { type: 'auto' },
     output_config: { effort: deep ? 'medium' : 'low' },
+    // If the history before a thinking block ever does change (the page drops old turns in a long chat), that block is
+    // left out of the request rather than failing it.
+    thinking: { type: 'adaptive', block_binding: { prefix_mismatch_behavior: 'drop_block' } },
+    betas: ['thinking-binding-controls-2026-08-01'],
     cache_control: { type: 'ephemeral' },
     messages: body.messages,
   };
   // A declined request is tried again on another model, so the creature is never left silent. Sonnet 5.5 has this on
   // the server; Haiku 5.5 does not (the page answers a refusal itself).
-  if (/sonnet-5-5|opus-5|fable/.test(model)) { req.betas = ['server-side-fallback-2026-07-01']; req.fallbacks = 'default'; }
+  if (/sonnet-5-5|opus-5|fable/.test(model)) { req.betas.push('server-side-fallback-2026-07-01'); req.fallbacks = 'default'; }
   return req;
 }
 
@@ -73,7 +80,7 @@ export async function handleTurn(request, env = {}) {
     const t0 = Date.now();
     let stream;
     try {
-      stream = req.betas ? client.beta.messages.stream(req, { signal: request.signal }) : client.messages.stream(req, { signal: request.signal });
+      stream = client.beta.messages.stream(req, { signal: request.signal });
       for await (const event of stream) await send(event);
       const message = await stream.finalMessage();
       await send({ type: 'final', message, ms: Date.now() - t0 });
