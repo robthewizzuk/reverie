@@ -2,26 +2,29 @@
 // in each state (idle, holding a prop, after throwing it) records the CPU time of a frame (the stage's update and
 // the 3D frame), draw calls, triangles and the quality tier the engine settled on. The GPU here is SwiftShader
 // (software), so frame rates say nothing about a real browser; the CPU numbers are what to compare before and after.
-//   REVERIE_FAKE=1 npm run dev -- --port 5179   then   node tests/perf.mjs [--gpu] [--secs 6] [--json out.json] [url]
+//   REVERIE_FAKE=1 npm run dev -- --port 5179   then   node tests/perf.mjs [--gpu] [--tier 0..3] [--secs 6] [--size 1440x900@2] [--idle] [--profile] [--shots dir] [--json out.json] [url]
 import { createRequire } from 'node:module';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 const { chromium } = createRequire(import.meta.url)('playwright');
 const argv = process.argv.slice(2), opt = k => { const i = argv.indexOf(k); return i >= 0 ? argv.splice(i, 2)[1] : null; };
-const secs = +(opt('--secs') || 6), out = opt('--json'), gpu = argv.includes('--gpu'), shots = opt('--shots'), tier = opt('--tier'), exp = opt('--exp'), idleOnly = argv.includes('--idle');
+const secs = +(opt('--secs') || 6), out = opt('--json'), gpu = argv.includes('--gpu'), shots = opt('--shots'), tier = opt('--tier'), exp = opt('--exp'), size = (opt('--size') || '420x820@1').split(/[x@]/).map(Number), idleOnly = argv.includes('--idle');
 const url = argv.find(a => !a.startsWith('--')) || 'http://localhost:5179/';
 const icd = join(dirname(chromium.executablePath()), 'vk_swiftshader_icd.json');
 const browser = await chromium.launch(gpu
   ? { args: ['--enable-unsafe-webgpu', '--use-webgpu-adapter=swiftshader', '--use-angle=vulkan', '--enable-features=Vulkan'], env: { ...process.env, VK_ICD_FILENAMES: icd } }
   : { args: ['--enable-unsafe-swiftshader', '--use-angle=swiftshader'] });
-const page = await browser.newPage({ viewport: { width: 420, height: 820 }, deviceScaleFactor: 1 });
+const page = await browser.newPage({ viewport: { width: size[0], height: size[1] }, deviceScaleFactor: size[2] || 1 });
 await page.route('**/api.bigdatacloud.net/**', r => r.fulfill({ json: {} }));
 await page.route('**/api.open-meteo.com/**', r => r.fulfill({ json: {} }));
 const errors = []; page.on('pageerror', e => errors.push(String(e)));
 await page.goto(url);
 await page.waitForFunction(() => window.__reverie?.body, null, { timeout: 180000 });
-await page.waitForSelector('#wake:not([hidden])', { timeout: 60000 });
+await page.waitForSelector('#wake:not([hidden])', { timeout: 120000 });
 await page.click('#wake');
+// (every shader built: until then things not ready yet are left out of the picture)
+await page.evaluate(() => window.__reverie.world.view.prepare());   // (the page does this itself; an older page may not)
+await page.waitForFunction(() => { const v = window.__reverie.world.view; return v.ready && v.shadersLeft === 0; }, null, { timeout: 300000, polling: 500 });
 if (tier != null) { await page.waitForTimeout(1500); await page.evaluate(async t => { (await import('/engine/src/kit/hd3d.js')).HD.force = +t; }, tier); }
 // time each frame's parts by wrapping the stage's update and draw
 await page.evaluate(() => {
@@ -33,11 +36,13 @@ await page.evaluate(() => {
 const med = a => a.length ? [...a].sort((x, y) => x - y)[a.length >> 1] : 0;
 const p95 = a => a.length ? [...a].sort((x, y) => x - y)[Math.min(a.length - 1, Math.floor(a.length * .95))] : 0;
 async function measure(name) {
+  // (the tier pinned again each time: the view's quality settles once it starts, which lets a pin go)
+  if (tier != null) await page.evaluate(async t => { (await import('/engine/src/kit/hd3d.js')).HD.force = +t; }, tier);
   await page.evaluate(() => { const P = window.__perf; P.up = []; P.draw = []; P.gap = []; P.info = []; P.last = 0; });
   await page.waitForTimeout(secs * 1000);
-  const r = await page.evaluate(() => { const P = window.__perf, HD = window.__reverie.gs.hd.HD; return { up: P.up, draw: P.draw, gap: P.gap, info: P.info, tier: HD.tier, name: HD.name, backend: HD.info.backend, res: [HD.info.canvas] }; });
+  const r = await page.evaluate(() => { const P = window.__perf, HD = window.__reverie.gs.hd.HD; return { up: P.up, draw: P.draw, gap: P.gap, info: P.info, tier: HD.tier, name: HD.name, backend: HD.info.backend, canvas: HD.info.canvas }; });
   const last = r.info.at(-1) || {};
-  const row = { state: name, frames: r.draw.length, updateMs: +med(r.up).toFixed(2), drawMs: +med(r.draw).toFixed(2), drawP95: +p95(r.draw).toFixed(2), hdCpu: +med(r.info.map(i => i.cpu || 0)).toFixed(2), gapMs: +med(r.gap).toFixed(1), calls: last.calls, tris: last.tris, shadowCalls: last.shCalls, tier: r.tier, backend: r.backend };
+  const row = { state: name, frames: r.draw.length, updateMs: +med(r.up).toFixed(2), drawMs: +med(r.draw).toFixed(2), drawP95: +p95(r.draw).toFixed(2), hdCpu: +med(r.info.map(i => i.cpu || 0)).toFixed(2), gapMs: +med(r.gap).toFixed(1), calls: last.calls, tris: last.tris, shadowCalls: last.shCalls, tier: r.tier, backend: r.backend, canvas: r.canvas };
   console.log(JSON.stringify(row));
   if (shots) { mkdirSync(shots, { recursive: true }); await page.screenshot({ path: join(shots, `${name}.png`) }); }
   return row;

@@ -51,7 +51,7 @@ function setup() {
   ceiling.rotation.x = Math.PI / 2; ceiling.position.set(.9, 3, 1.1); shade(ceiling); room.add(ceiling);
   // (the outside: a warm bright sky seen through it, which the room's reflections and bounce light pick up too; it
   // throws no shadow, so the sun still comes in)
-  const outside = new THREE.Mesh(new THREE.PlaneGeometry(4, 3), pbr('#ffe2b8', { glow: 1.6, glowCol: '#ffd9a8', rough: 1 }));
+  const outside = new THREE.Mesh(new THREE.PlaneGeometry(4, 3), pbr('#ffe2b8', { glow: 1.2, glowCol: '#ffd9a8', rough: 1 }));
   outside.position.set(W0.x - .6, 1.6, wz); outside.rotation.y = Math.PI / 2; room.add(outside);
   // a workbench and a few things a maker keeps about
   const wood = roomMat('wood', rc.wood);

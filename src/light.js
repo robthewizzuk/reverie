@@ -39,7 +39,7 @@ export function lightRoom(v, creature, roomBox) {
   v.autoExposure = false;   // (a fixed exposure: an eye that adapts opened the shade up until the sun's patch no longer stood out)
 
   // the sun, through the window: sharper than a summer sky's (a window is a small opening), shadows by the view's tier
-  const s = sun('#ffd3a0', 9, 4, SUN_DIR);
+  const s = sun('#ffd8ac', 7.5, 4, SUN_DIR);
   s.softShadows(.7); v.scene.add(s, s.target); v.onTier(T => s.setTier(T));
   // light in the air where the sun comes through: beams cut by the window's frame, the dust in them catching it
   // (drawn at half size on high and ultra; the tiers turn it off on small phones)

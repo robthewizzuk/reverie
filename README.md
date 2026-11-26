@@ -71,7 +71,14 @@ REVERIE_FAKE=1 npm run dev -- --port 5179
 npm run smoke                 # wakes it, makes, changes and throws a prop, asks a deep question; pictures in tests/out/
 node tests/chess.mjs          # asks to play chess, taps a move, says a move, puts the board away
 node tests/room.mjs           # carries a lamp to the window, a teapot to the shelf, paints the room, reloads it
+node tests/perf.mjs --gpu --tier 2 --idle   # CPU time a frame, draw calls and triangles (the GPU here is software)
+node tests/look.mjs --seats front,top       # pictures of the light from the usual seat and from above, in tests/out/
 ```
+
+The light is `src/light.js`: a low sun through the window in the left wall, the bench lamp, the core's glow, bounce
+light and the room's own reflections, with an indoor mood set by hand. The page draws at the engine's frame rate for a
+Next Gen game (60 on a phone or a browser, not every refresh of a 120 Hz screen) and tells its speed kit what is
+playing, so the quality it settles on is remembered between visits.
 
 ## Known gaps
 

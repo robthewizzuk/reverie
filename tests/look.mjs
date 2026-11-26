@@ -19,6 +19,9 @@ page.on('pageerror', e => console.log('page error:', String(e).slice(0, 300)));
 await page.goto(url);
 await page.waitForFunction(() => window.__reverie?.body, null, { timeout: 180000 });
 await page.waitForSelector('#wake:not([hidden])', { timeout: 120000 });
+// (every shader built: until then things not ready yet are left out of the picture)
+await page.evaluate(() => window.__reverie.world.view.prepare());   // (the page does this itself; an older page may not)
+await page.waitForFunction(() => { const v = window.__reverie.world.view; return v.ready && v.shadersLeft === 0; }, null, { timeout: 300000, polling: 500 });
 await page.evaluate(async t => { (await import('/engine/src/kit/hd3d.js')).HD.force = t; document.querySelector('#caption').style.display = 'none'; }, tier);
 if (exp) await page.evaluate(exp);
 const SEATS = { front: null, wide: [[.2, 1.6, 3.6], [-.2, .6, -.6]], top: [[0, 4.2, 1.2], [0, 0, -.3]], left: [[1.6, 1.2, 2.2], [-.8, .7, -.6]], window: [[1.6, 1.3, 2.6], [-2.1, 1.1, .2]], side: [[2.0, .9, .4], [0, .4, -.2]] };
