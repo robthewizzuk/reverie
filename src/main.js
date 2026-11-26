@@ -7,14 +7,16 @@ import { makeBrain } from './brain.js';
 import { makeBody } from './body.js';
 import { Listener } from './listen.js';
 import { askPlace } from './place.js';
+import { makePad, madeFrom } from './doodle.js';
 
 const $ = s => document.querySelector(s);
 const stage = $('#stage'), canvas = $('#view'), ctx = canvas.getContext('2d');
 const input = $('#say'), form = $('#bar'), mic = $('#mic'), caption = $('#caption'), status = $('#status'), wake = $('#wake'), timing = $('#timing');
 const gamebar = $('#gamebar'), gameText = $('#gamebar span'), gameButtons = $('#gamebar div');
+const draw = $('#draw');
 const debug = new URLSearchParams(location.search).has('debug');
 
-let W = 0, H = 0, world, brain, body, voice, last = 0, awake = false, captionT = 0;
+let W = 0, H = 0, world, brain, body, voice, pad, last = 0, awake = false, captionT = 0;
 
 function fit() {
   const r = stage.getBoundingClientRect(), dpr = Math.min(2, devicePixelRatio || 1);
@@ -96,11 +98,15 @@ async function boot() {
   world = makeWorld();
   await whenLoaded(() => world.reset());
   world.resize(W, H);
-  brain = makeBrain({ world, onCaption: say, onStatus: setStatus, onTiming: showTiming });
+  // the drawing pad: what they draw is named on the device and made real; Reverie hears what it was
+  pad = makePad({ el: $('#pad'), onOpen: () => { world.creature.mood('curious'); world.creature.gesture('point'); },
+    onDrawn: async guesses => { const news = await madeFrom(guesses, world); console.info('[reverie] ' + news); brain.notice(news, true); } });
+  brain = makeBrain({ world, onCaption: say, onStatus: setStatus, onTiming: showTiming,
+    tools: { doodle: async () => { pad.show(); return 'The drawing pad is open on their screen. When they press Make it!, you will hear what they drew and it appears in your hands.'; } } });
   body = makeBody({ creature: world.creature, world });
   world.onNews = (text, loud) => brain.notice(text, loud);
   voice = new Listener({ onProblem: () => listeningOff(), onNote: debug ? line => { timing.textContent = 'mic: ' + line; } : null });
-  window.__reverie = { world, brain, body, gs, voice };
+  window.__reverie = { world, brain, body, gs, voice, pad };
   status.textContent = '';
   wake.hidden = false; wake.textContent = 'Tap to say hi';
   requestAnimationFrame(frame);
@@ -152,6 +158,7 @@ mic.addEventListener('click', async () => {
   if (await startListening()) setStatus('');
 });
 wake.addEventListener('click', wakeUp);
+draw.addEventListener('click', () => { if (!pad) return; wakeUp(); if (pad.open) pad.hide(); else pad.show(); });
 canvas.addEventListener('pointerdown', e => {
   if (!world) return;
   if (!awake) return wakeUp();

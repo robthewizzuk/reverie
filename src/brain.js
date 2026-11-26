@@ -117,6 +117,7 @@ function checkInput(name, input) {
   if (name === 'colours' && ['body', 'glow'].some(k => input[k] != null && typeof input[k] !== 'string')) return 'colours must be text';
   if (name === 'act' && (!GESTURES.includes(input.gesture) || !MOODS.includes(input.mood))) return 'unknown gesture or mood';
   if (name === 'play' && typeof input.game !== 'string') return 'game must be a name';
+  if (name === 'roll' && input.dice != null && typeof input.dice !== 'string') return 'dice must be text, like 2d6';
   if (name === 'place' && (typeof input.spot !== 'string' || !input.spot.trim())) return 'spot must be a place';
   if (name === 'place' && ['item', 'near', 'size'].some(k => input[k] != null && typeof input[k] !== 'string')) return 'item, near and size must be text';
   if (name === 'room_colours' && ['walls', 'floor', 'rug', 'wood'].some(k => input[k] != null && typeof input[k] !== 'string')) return 'colours must be text';
@@ -127,13 +128,14 @@ function checkInput(name, input) {
 /** Did they ask to play a game? { game, level } or null. Asking to stop, or talking about a game, is not asking. */
 export function gameAsked(text) {
   const t = text.toLowerCase().replace(/^\[from the device[^\]]*\]\s*/, '');
-  if (!/\bchess\b/.test(t) || /\b(stop|quit|end|enough|no more|don'?t|not now|later|rules|history|who invented)\b/.test(t)) return null;
-  if (!/\b(play|game|match|fancy|let'?s|up for|challenge|set up|get out|board|again|rematch|wanna|want to)\b/.test(t) && !/^\W*chess\W*$/.test(t)) return null;
+  const game = /\bchess\b/.test(t) ? 'chess' : /\b(quiz|trivia|quiz me)\b/.test(t) ? 'quiz' : null;
+  if (!game || /\b(stop|quit|end|enough|no more|don'?t|not now|later|rules|history|who invented)\b/.test(t)) return null;
+  if (!/\b(play|game|match|fancy|let'?s|up for|challenge|set up|get out|board|again|rematch|wanna|want to|quiz me|another|round|start|do a|have a|host)\b/.test(t) && !/^\W*(chess|quiz|trivia)\W*$/.test(t)) return null;
   const level = /\b(easy|gentle|beginner|go easy)\b/.test(t) ? 1 : /\b(hardest|master|best you can|full strength)\b/.test(t) ? 5 : /\b(hard|tough|serious)\b/.test(t) ? 4 : undefined;
-  return { game: 'chess', level };
+  return { game, level };
 }
 
-export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, onTiming = () => {} }) {
+export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, onTiming = () => {}, tools: extra = {} }) {
   const creature = world.creature, speaker = makeSpeaker(creature, onCaption);
   let history = [], turn = 0, ctl = null, cut = '', deepNow = false;
   // a game's news (games/index.js): quiet news waits for the next thing said; loud news gets a reaction when it's free
@@ -155,7 +157,8 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
       ? { text: 'You are already thinking harder. Answer the question now.', error: true }
       : { text: 'Handed over to deeper thinking. You are now thinking harder about this question: answer it now, and do not call think_harder again.', deep: true });
     const fn = { make: () => world.make(input.words), change: () => world.change(input.words), toss: () => world.toss(), weather: () => weather(input.place), clear: () => world.clear({ room: !!input.room }), place: () => world.place(input), room_colours: () => world.recolourRoom(input), act: () => world.act(input.gesture, input.mood), voice: async () => setVoice(input), colours: () => world.recolour(input),
-      play: () => world.play(input.game, { level: input.level }), game_move: () => world.game ? world.game.command(input.move) : Promise.resolve('No game is being played.'), stop_game: () => world.stopGame() }[name];
+      play: () => world.play(input.game, { level: input.level }), game_move: () => world.game ? world.game.command(input.move) : Promise.resolve('No game is being played.'), stop_game: () => world.stopGame(),
+      roll: () => world.roll(input.dice || '1d6'), ...Object.fromEntries(Object.entries(extra).map(([k, f]) => [k, () => f(input)])) }[name];
     if (!fn) return Promise.resolve({ text: `There is no tool called ${name}.`, error: true });
     // (a tool answers with a sentence, or with { text, error } when it was not done)
     return fn().then(r => typeof r === 'string' ? { text: r } : r, e => ({ text: `It went wrong: ${String(e?.message || e).slice(0, 120)}`, error: true }));
@@ -207,7 +210,7 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
     const wantsGame = !o.news && gameAsked(text);
     if (wantsGame && (world.game?.id !== wantsGame.game || world.game.state === 'done')) {
       const r = await world.play(wantsGame.game, { level: wantsGame.level });
-      text += `\n(The ${wantsGame.game} board was set up straight away when they asked: ${r} Don't call play or make for it; just react.)`;
+      text += `\n(The ${wantsGame.game} ${wantsGame.game === 'chess' ? 'board' : 'table'} was set up straight away when they asked: ${r} Don't call play or make for it; just react.)`;
     }
     turnCtx = world.game?.context() || '';
     const my = ++turn;

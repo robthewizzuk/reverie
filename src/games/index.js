@@ -15,7 +15,9 @@
 //
 // To add a game: write it in this folder, add it here, and add its name to the play tool's list in server/persona.js.
 import { makeChess } from './chess.js';
+import { makeQuiz } from './quiz.js';
 
 export const GAMES = {
   chess: { title: 'Chess', make: makeChess },
+  quiz: { title: 'Quiz', make: makeQuiz },
 };
