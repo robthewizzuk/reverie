@@ -1,0 +1,15 @@
+# Reverie's backend: holds the Anthropic API key and streams Claude's replies to the page.
+#   npx wrangler secret put ANTHROPIC_API_KEY     (once; the key is never written in this repo)
+#   npx wrangler deploy                           (from this folder, or npm run worker:deploy)
+# Local: npx wrangler dev reads the key from worker/.dev.vars (gitignored): ANTHROPIC_API_KEY=...
+name = "reverie-api"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+# The page's address (scheme and host). Requests from other sites are refused. Empty allows any (local only).
+ALLOWED_ORIGIN = ""
+# Which models answer (optional; these are the defaults).
+REVERIE_QUICK_MODEL = "claude-haiku-5-5"
+REVERIE_DEEP_MODEL = "claude-sonnet-5-5"
