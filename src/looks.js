@@ -49,12 +49,16 @@ function tidyVoice(input, base) {
   return { voice: out };
 }
 
+// How its name is said, by every voice: REV-uh-ree. Only the sound changes: the bubble still reads "Reverie", and the
+// engine maps each spoken word back to the written one, so the mouth stays in step ("Reverie's" is covered too).
+export const SAY_AS = { Reverie: 'rev uh ree' };
+
 /** The options for gs.sound.say / prepare, for the voice it has now. */
 export function sayOptions() {
   const v = now.voice;
   // (a voice by name: the fragment is its name as the engine lists it, "Jule (built in", so "jule" never finds "jules")
   const voice = v.name ? { like: [v.name.replace(/_/g, ' ') + ' (built in'] } : { kind: 'woman', lang: ['en-GB'], take: 2 };
-  return { voice, size: v.size, lively: v.lively, ...(v.effect !== 'none' ? { fx: v.effect } : {}) };
+  return { voice, respell: SAY_AS, size: v.size, lively: v.lively, ...(v.effect !== 'none' ? { fx: v.effect } : {}) };
 }
 
 /** A sentence saying what a voice is, for Claude. */
