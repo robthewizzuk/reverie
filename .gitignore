@@ -1,0 +1,12 @@
+node_modules
+dist
+.DS_Store
+# Keys and local settings: never commit these
+.env
+.env.local
+.env.*.local
+.dev.vars
+worker/.dev.vars
+.wrangler
+# Test output
+tests/out/
