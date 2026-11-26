@@ -18,6 +18,8 @@ npm run dev                   # opens on http://localhost:5173 (add ?debug to se
 No key yet? `REVERIE_FAKE=1 npm run dev` runs a scripted stand-in for Claude, so the page, speech, tools and props all
 work offline.
 
+`node tests/smoke.mjs` and `node tests/body.mjs` test the page against that stand-in (`REVERIE_FAKE=1 npm run dev -- --port 5179` first).
+
 The key only ever lives on the server side: `.env.local` is gitignored, the Vite dev server reads it for `/api/turn`,
 and nothing with a `VITE_` prefix holds it, so it never reaches the page.
 
@@ -27,6 +29,7 @@ and nothing with a `VITE_` prefix holds it, so it never reaches the page.
 | --- | --- | --- |
 | The page | `src/main.js` | Runs the stage, the chat bar, the mic and the caption |
 | The turn loop | `src/brain.js` | Sends what you said to `/api/turn`, speaks each sentence as soon as it has streamed in, starts each tool the moment its words are complete, and stops at once when you talk over it |
+| Its body language | `src/body.js` | On the device, between replies: simple rules pick a little move every few seconds (glance about, peek at what it holds, sway, hop, stretch and yawn), it gets drowsy when left alone, and it perks up the moment you start talking or typing, before anything goes to Claude. A Tiny Brains `Coach` from the engine sits on the rules: poke it just after a move you like and it does that more in moments like that one (kept in the browser) |
 | The creature | `src/creature.js` | Built in code: plush body, glowing core (pulses when idle, brightens when listening, swirls when thinking), blinking eyes, a mouth the engine's `Face` lip-syncs, arms that wave, point and hold |
 | The stage | `src/world.js` | A workshop corner in the engine's Next Gen view; props from `gs.models.generate`, held in its hands, thrown with real weight by `gs.physics3d` |
 | The backend | `server/turn.js` | One small handler that adds the key and streams Claude's reply back. Runs inside the Vite dev server (`server/dev.js`) and as a Cloudflare Worker (`worker/`) |

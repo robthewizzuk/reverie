@@ -158,6 +158,8 @@ export function makeWorld() {
     get view() { return v; },
     get creature() { return creature; },
     get held() { return held; },
+    /** How many props there are, held or on the floor. */
+    get props() { return loose.length + (held ? 1 : 0); },
     /** What is in its hands and on the floor, in a line for Claude. */
     scene() {
       const floor = loose.map(e => e.short).slice(-6);

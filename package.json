@@ -10,6 +10,7 @@
     "build": "node engine/node_modules/vite/bin/vite.js build",
     "preview": "node engine/node_modules/vite/bin/vite.js preview --host",
     "smoke": "node tests/smoke.mjs",
+    "test:body": "node tests/body.mjs",
     "worker:dev": "npm run build && cd worker && wrangler dev",
     "deploy": "npm run build && cd worker && wrangler deploy"
   },
