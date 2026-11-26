@@ -111,7 +111,7 @@ export function makeQuiz(stage) {
       b.position.x = (i - (count - 1) / 2) * (count === 2 ? .2 : .15);
       b.userData.label.userData.redraw((c, w, h) => {
         c.fillStyle = '#ffffff'; c.textAlign = 'center'; c.textBaseline = 'middle';
-        const text = q?.kind === 'truefalse' ? q.answers[i][0] : LETTERS[i];
+        const text = q?.kind === 'truefalse' ? (q.answers[i] || '')[0] || '' : LETTERS[i];
         c.font = `800 ${h * .7}px system-ui, sans-serif`; c.fillText(text, w / 2, h * .54);
       });
     });
