@@ -3,6 +3,7 @@
 // moment its words are in (a prop starts being made mid-sentence). Tool results go back to Claude, which may say a
 // little more. Talking over it stops it at once.
 import gs from '../engine/src/gamescroll.js';
+import { weather, contextLine } from './place.js';
 
 const API = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '') + '/api/turn';
 const KEEP = 40;                 // messages kept in the conversation (older ones drop off, whole turns at a time)
@@ -100,6 +101,7 @@ async function readEvents(res, onEvent) {
 function checkInput(name, input) {
   if (!input || typeof input !== 'object') return 'no input';
   if ((name === 'make' || name === 'change') && (typeof input.words !== 'string' || !input.words.trim())) return 'words must be text';
+  if (name === 'weather' && input.place != null && typeof input.place !== 'string') return 'place must be text';
   if (name === 'act' && (!GESTURES.includes(input.gesture) || !MOODS.includes(input.mood))) return 'unknown gesture or mood';
   return null;
 }
@@ -120,7 +122,7 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
     if (name === 'think_harder') return Promise.resolve(deepNow
       ? { text: 'You are already thinking harder. Answer the question now.', error: true }
       : { text: 'Handed over to deeper thinking. You are now thinking harder about this question: answer it now, and do not call think_harder again.', deep: true });
-    const fn = { make: () => world.make(input.words), change: () => world.change(input.words), toss: () => world.toss(), clear: () => world.clear(), act: () => world.act(input.gesture, input.mood) }[name];
+    const fn = { make: () => world.make(input.words), change: () => world.change(input.words), toss: () => world.toss(), weather: () => weather(input.place), clear: () => world.clear(), act: () => world.act(input.gesture, input.mood) }[name];
     if (!fn) return Promise.resolve({ text: `There is no tool called ${name}.`, error: true });
     return fn().then(text => ({ text }), e => ({ text: `It went wrong: ${String(e?.message || e).slice(0, 120)}`, error: true }));
   }
@@ -170,7 +172,8 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
     if (ctl) { ctl.abort(); ctl = null; }
     if (speaker.talking) { cut = speaker.pending || cut; speaker.stop(); }
     const note = cut ? ` (You were interrupted before saying: "${cut.slice(0, 200)}")` : ''; cut = '';
-    history.push({ role: 'user', content: text + note });
+    // (where and when they are rides at the top of what they said: added, never changed later)
+    history.push({ role: 'user', content: contextLine() + '\n' + text + note });
     creature.state.thinking = true; creature.state.listening = false;
     creature.gesture('nod'); onStatus('thinking');
     const times = { start: o.at ?? performance.now() };

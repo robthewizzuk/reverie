@@ -8,7 +8,11 @@ import { mkdirSync } from 'node:fs';
 const url = process.argv[2] || 'http://localhost:5179/?debug';
 mkdirSync('tests/out', { recursive: true });
 const browser = await chromium.launch({ args: ['--enable-unsafe-swiftshader', '--use-angle=swiftshader'] });
-const page = await browser.newPage({ viewport: { width: 420, height: 820 }, deviceScaleFactor: 1 });
+const page = await browser.newPage({ viewport: { width: 420, height: 820 }, deviceScaleFactor: 1, permissions: ['geolocation'], geolocation: { latitude: 53.8, longitude: -1.55 } });
+// the place name and the weather, answered here (the test machine may not reach them)
+await page.route('**/api.bigdatacloud.net/**', r => r.fulfill({ json: { city: 'Leeds', principalSubdivision: 'England', countryName: 'United Kingdom', countryCode: 'GB' } }));
+await page.route('**/api.open-meteo.com/**', r => r.fulfill({ json: { current: { temperature_2m: 6.4, apparent_temperature: 3.1, weather_code: 61, wind_speed_10m: 19.6, is_day: 0 },
+  daily: { time: ['2026-11-26', '2026-11-27', '2026-11-28', '2026-11-29'], weather_code: [61, 3, 0, 71], temperature_2m_max: [8, 7, 6, 2], temperature_2m_min: [4, 3, 1, -1], precipitation_probability_max: [80, 20, 0, 60], sunrise: ['2026-11-26T07:52'], sunset: ['2026-11-26T15:47'] } } }));
 const errors = [];
 page.on('pageerror', e => errors.push(String(e)));
 page.on('console', m => { if (m.type() === 'error' || /\[reverie\]/.test(m.text())) console.log('  page:', m.text().slice(0, 300)); });
@@ -38,6 +42,10 @@ await shot('3-changed');
 await ask('throw it', () => !window.__reverie.world.held && !window.__reverie.brain.busy);
 await page.waitForTimeout(1500);
 await shot('4-thrown');
+await ask("what's the weather like", () => !window.__reverie.brain.busy);
+const wx = await page.evaluate(() => JSON.stringify(window.__reverie.brain.history.slice(-4)));
+if (!/Weather in Leeds/.test(wx)) fail('no weather for Leeds: ' + wx.slice(0, 300));
+if (!/From the device[^\]]*Leeds/.test(wx)) fail('the place did not reach Claude');
 await ask('why is the sky blue', () => !window.__reverie.brain.busy);
 const tiers = await page.evaluate(() => window.__reverie.brain.history.at(-1));
 console.log('last:', JSON.stringify(tiers).slice(0, 200));

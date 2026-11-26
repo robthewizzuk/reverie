@@ -7,20 +7,24 @@
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const lastUser = messages => [...messages].reverse().find(m => m.role === 'user');
 const textOf = m => typeof m.content === 'string' ? m.content : (m.content.find(b => b.type === 'text')?.text ?? '');
+// (without the device's line at the top: where and when they are)
+const saidOf = m => textOf(m).replace(/^\[From the device[^\]]*\]\n/, '');
 
 function plan(body) {
   const u = lastUser(body.messages);
   const results = Array.isArray(u.content) ? u.content.filter(b => b.type === 'tool_result') : [];
   if (results.length) {
     const r = String(results[0].content ?? '');
+    if (/^weather in|location is not shared|did not answer/i.test(r)) return { text: 'Looks like a cosy day for staying in with me.', tools: [] };
     if (/handed over/i.test(r)) return { text: 'Right, I have thought about it properly. The answer is forty two, give or take.', tools: [] };
     return { text: /fail|could not|nothing/i.test(r) ? 'Hmm, that one fizzled.' : 'Ta-da!', tools: [] };
   }
-  const said = textOf(u).toLowerCase();
+  const said = saidOf(u).toLowerCase();
   let m;
   if ((m = /make it (.+)/.exec(said))) return { text: 'Watch this.', tools: [['change', { words: m[1] }]] };
   if ((m = /make (?:me )?(an? .+|some .+)/.exec(said))) return { text: 'Ooh, one coming right up!', tools: [['act', { gesture: 'tada', mood: 'excited' }], ['make', { words: m[1] }]] };
   if (/throw|toss/.test(said)) return { text: 'Catch!', tools: [['toss', {}]] };
+  if (/weather|rain|sunny/.test(said)) return { text: 'Let me peek outside.', tools: [['weather', {}]] };
   if (/clear|tidy/.test(said)) return { text: 'Poof, all gone.', tools: [['clear', {}]] };
   if (/think|why|how does/.test(said)) return { text: 'Ooh, let me think about that one.', tools: [['think_harder', {}]] };
   return { text: 'Hello! I am a little test version of me. Ask me to make you something.', tools: [['act', { gesture: 'wave', mood: 'happy' }]] };
