@@ -4,6 +4,7 @@
 import gs from '../engine/src/gamescroll.js';
 import { makeCreature } from './creature.js';
 import { colours, tidyColours, keepColours } from './looks.js';
+import { describe } from './describe.js';
 
 const CORE_LAMP = '#ff7020';     // the light its core casts, as made (moved with the glow colour)
 const HOLD_SIZE = .4;            // metres: the longest side of a prop in its hands
@@ -114,15 +115,6 @@ export function makeWorld() {
   }
   function remove(entry) { if (entry.body) entry.body.remove(); entry.pivot.removeFromParent(); }
 
-  // a sentence about what the generator made of the words, for Claude to hear
-  function described(words) {
-    try {
-      const u = gs.models.generate.understood(words);
-      const swaps = (u.swaps || []).filter(s => s.guess || s.standIn || s.later).map(s => `"${s.word}" as ${s.as}`);
-      const name = u.thing ? `a ${u.thing}` : `something from "${words}"`;
-      return `Made ${name}${swaps.length ? ` (it read ${swaps.join(', ')})` : ''}${u.unknown?.length ? `; it did not know the words ${u.unknown.join(', ')}` : ''}.`;
-    } catch { return `Made "${words}".`; }
-  }
   // its real weight per cubic metre of its box, so an anvil thuds and a balloon floats down
   function densityOf(thing) {
     try {
@@ -145,15 +137,23 @@ export function makeWorld() {
     let k = o.sizeK ?? 1;
     for (const [re, f] of SIZE_WORDS) if (re.test(words.toLowerCase())) { k = f; break; }
     if (held) release(held, false);
-    const entry = { words, seed: s, sizeK: k, density, pivot: pivotFor(thing, HOLD_SIZE * k), body: null };
+    // what it really is, in words: Claude can't see it, so it hears the recipe the generator used
+    let read = null; try { read = gs.models.generate.understood(words); } catch { /* still loading: none */ }
+    const d = describe(thing, words, { size: HOLD_SIZE * k, read, asked: o.asked ?? words });
+    const entry = { words, seed: s, sizeK: k, density, short: d.short, pivot: pivotFor(thing, HOLD_SIZE * k), body: null };
     hold(entry); poof(entry.pivot); gs.sound.sounds.pop();
-    return o.said ?? described(words);
+    return o.said ?? `Made ${d.text}`;
   }
 
   return {
     get view() { return v; },
     get creature() { return creature; },
     get held() { return held; },
+    /** What is in its hands and on the floor, in a line for Claude. */
+    scene() {
+      const floor = loose.map(e => e.short).slice(-6);
+      return `In your hands: ${held ? held.short : 'nothing'}.${floor.length ? ` On the floor: ${floor.join(', ')}.` : ''}`;
+    },
     reset() {
       if (!v) setup();
       for (const e of loose) remove(e); loose = []; if (held) remove(held); held = null; creature.holding = false;
@@ -200,7 +200,7 @@ export function makeWorld() {
       if (/\b(bigger|larger)\b/i.test(ch)) k *= 1.35; else if (/\b(smaller)\b/i.test(ch)) k *= .7;
       else for (const [re, f] of SIZE_WORDS) if (re.test(ch.toLowerCase())) { k = f; break; }
       const old = held; held = null; poof(old.pivot, '#9fd8ff'); remove(old);
-      const r = await makeProp(prompt, { seed: old.seed, sizeK: clamp(k, .3, 2.2) });
+      const r = await makeProp(prompt, { seed: old.seed, sizeK: clamp(k, .3, 2.2), asked: ch });
       return r.startsWith('Made') ? r.replace(/^Made/, 'Changed it into') : r;
     },
     async toss() {
