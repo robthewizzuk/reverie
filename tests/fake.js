@@ -4,6 +4,7 @@
 //   "make it <x>"     -> says a line and calls change
 //   "throw it"        -> toss;  "clear"  -> clear;  "think ..." -> think_harder, then a deep answer
 //   "play chess"      -> play;  "[chess] ..." (news from the board) -> a quip;  "move e4" -> game_move;  "stop playing" -> stop_game
+//   "roll ..."        -> roll;  "quiz me" -> play quiz;  "[quiz] ..." -> a quip;  "answer b" -> game_move;  "draw" -> doodle;  "[doodle] ..." -> a quip
 //   anything else     -> a friendly line with a wave
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const lastUser = messages => [...messages].reverse().find(m => m.role === 'user');
@@ -20,16 +21,25 @@ function plan(body) {
     if (/^your voice is now/i.test(r)) return { text: 'How do I sound now?', tools: [] };
     if (/^your body is now/i.test(r)) return { text: 'Do you like it?', tools: [] };
     if (/chess board is set up/i.test(r)) return { text: 'Your move. No pressure.', tools: [] };
+    if (/quiz table is set up/i.test(r)) return { text: 'First question, here we go!', tools: [] };
+    if (/^Threw |^Rolled /.test(r)) return { text: 'There we go!', tools: [] };
+    if (/drawing pad is open/i.test(r)) return { text: 'Go on, draw me something!', tools: [] };
+    if (/^Answered /.test(r)) return { text: 'Ooh.', tools: [] };
     if (/^Played /.test(r)) return { text: 'Bold.', tools: [] };
     if (/handed over/i.test(r)) return { text: 'Right, I have thought about it properly. The answer is forty two, give or take.', tools: [] };
     return { text: /fail|could not|nothing/i.test(r) ? 'Hmm, that one fizzled.' : 'Ta-da!', tools: [] };
   }
-  const said = saidOf(u).replace(/^\[chess,[^\]]*\]\s*/, '').toLowerCase();
+  const said = saidOf(u).replace(/^\[(chess|quiz),[^\]]*\]\s*/, '').toLowerCase();
   if (/^\[chess\]/.test(said)) return { text: /taking your/.test(said) ? 'Hey! I needed that.' : /checkmate/.test(said) ? 'Good game!' : 'Hmm, interesting.', tools: [] };
-  if (/board was set up straight away/.test(said)) return { text: 'Oh, you are on!', tools: [] };
+  if (/^\[quiz\]/.test(said)) return { text: /: right!/.test(said) ? 'Correct, you clever thing!' : /last question/.test(said) ? 'What a round!' : 'Ooh, so close.', tools: [] };
+  if (/^\[doodle\]/.test(said)) return { text: 'What a lovely drawing!', tools: [] };
+  if (/was set up straight away/.test(said)) return { text: 'Oh, you are on!', tools: [] };
   if (/play chess|game of chess/.test(said)) return { text: 'Oh, you are on!', tools: [['play', { game: 'chess', level: 1 }]] };
   if (/stop playing|put it away/.test(said)) return { text: 'Fine, fine.', tools: [['stop_game', {}]] };
   let m;
+  if ((m = /^answer (.+)/.exec(said))) return { text: 'Locking it in.', tools: [['game_move', { move: m[1] }]] };
+  if ((m = /^roll (.+)/.exec(said))) return { text: 'Rolling!', tools: [['roll', { dice: m[1].replace(/^(a|the) /, '') }]] };
+  if (/^draw/.test(said)) return { text: 'Ooh, a drawing!', tools: [['doodle', {}]] };
   if ((m = /^move (\S+)/.exec(said))) return { text: 'Ooh.', tools: [['game_move', { move: m[1] }]] };
   if ((m = /make it (.+)/.exec(said))) return { text: 'Watch this.', tools: [['change', { words: m[1] }]] };
   if ((m = /make (?:me )?(an? .+|some .+)/.exec(said))) return { text: 'Ooh, one coming right up!', tools: [['act', { gesture: 'tada', mood: 'excited' }], ['make', { words: m[1] }]] };

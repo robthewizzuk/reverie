@@ -1,6 +1,8 @@
 // Where and when you are, and the weather there. All from the browser: the device's location (it asks first), a
 // place name for it, and the forecast from Open-Meteo (free, no key). Nothing here goes through Reverie's backend:
 // Claude only hears the town and the local time (and what is in Reverie's hands), in a line at the top of what you say.
+// The sky outside and the battery come from the engine (gs.real): worked out on the device, with no permission.
+import gs from '../engine/src/gamescroll.js';
 
 const TIMEOUT = 8000;
 let here = null;          // { lat, lon, name, country, countryCode } once known
@@ -31,11 +33,32 @@ export function askPlace() {
   return asked;
 }
 
+const hhmm = h => h == null ? null : `${String(Math.floor(h)).padStart(2, '0')}:${String(Math.round((h % 1) * 60) % 60).padStart(2, '0')}`;
+try { gs.real.battery(); } catch { /* (starts reading the battery, where the browser says) */ }
+
+/** The sky outside and the battery, in a few words ('' when there's nothing worth saying). */
+export function outside(now = new Date()) {
+  const bits = [];
+  try {
+    const at = here ? { lat: here.lat, lon: here.lon } : null, sun = gs.real.sun(at, now);
+    if (sun.part === 'day') bits.push(`the sun is up${sun.set != null ? ` and sets about ${hhmm(sun.set)}` : ''}`);
+    else if (sun.part === 'dusk') bits.push('the sun is setting');
+    else if (sun.part === 'dawn') bits.push('the sun is coming up');
+    else { const moon = gs.real.moon(at, now); bits.push(`it is dark outside, with a ${moon.name} moon${moon.name === 'new' ? ' (none to see)' : ''}`); }
+  } catch { /* no sky: fine */ }
+  try {
+    const b = gs.real.battery();
+    if (b.level != null && b.level <= .2 && !b.charging) bits.push(`their battery is low (${Math.round(b.level * 100)}%)`);
+  } catch { /* no battery: fine */ }
+  return bits.join('; ');
+}
+
 /** The line Claude reads at the top of each thing you say: where you are (if known) and your local date and time. */
 export function contextLine(scene = '', now = new Date()) {
   const when = now.toLocaleString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' });
   const where = here?.name ? `they are in ${[here.name, here.region !== here.name ? here.region : null, here.country].filter(Boolean).join(', ')}` : here ? 'they shared their location, but the town is unknown' : 'they have not shared their location';
-  return `[From the device, not said aloud: ${where}; it is ${when} where they are.${scene ? ' ' + scene : ''}]`;
+  const sky = outside(now);
+  return `[From the device, not said aloud: ${where}; it is ${when} where they are${sky ? '; ' + sky : ''}.${scene ? ' ' + scene : ''}]`;
 }
 
 // WMO weather codes (Open-Meteo) in plain words

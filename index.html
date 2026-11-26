@@ -18,12 +18,20 @@
     <p id="caption" aria-live="polite" hidden></p>
     <button id="wake" type="button" hidden>Waking up…</button>
     <div id="gamebar" hidden><span></span><div></div></div>
+    <div id="pad" hidden>
+      <p>Draw something, and Reverie will make it real</p>
+      <canvas aria-label="Drawing pad"></canvas>
+      <div><button type="button" data-id="cancel">Cancel</button><button type="button" data-id="clear">Clear</button><button type="button" data-id="done">Make it!</button></div>
+    </div>
   </div>
   <p id="status" role="status"></p>
   <p id="timing"></p>
   <form id="bar" autocomplete="off">
     <button id="mic" type="button" aria-label="Talk">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-2.08A7 7 0 0 0 19 12h-2Z"/></svg>
+    </button>
+    <button id="draw" type="button" aria-label="Draw something for Reverie to make">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm17.71-10.21a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83Z"/></svg>
     </button>
     <input id="say" type="text" placeholder="Say something, or type…" enterkeyhint="send" aria-label="Say something">
     <button id="send" type="submit" aria-label="Send">

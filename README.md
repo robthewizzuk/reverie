@@ -5,7 +5,8 @@ engine does everything else on your device: the voice and lip sync, listening, t
 makes for you out of words.
 
 Ask it to make something ("make me a red teapot"), change it ("make it made of gold", "make it bigger"), throw it, or
-tidy up. Tap it and it giggles. Talk over it and it stops to listen.
+tidy up. Tap it and it giggles. Talk over it and it stops to listen. Play chess or a quiz with it, ask it to roll some
+dice, or tap the pencil and draw something for it to make real.
 
 ## Run it
 
@@ -32,9 +33,12 @@ and nothing with a `VITE_` prefix holds it, so it never reaches the page.
 | Its body language | `src/body.js` | On the device, between replies: simple rules pick a little move every few seconds (glance about, peek at what it holds, sway, hop, stretch and yawn), it gets drowsy when left alone, and it perks up the moment you start talking or typing, before anything goes to Claude. A Tiny Brains `Coach` from the engine sits on the rules: poke it just after a move you like and it does that more in moments like that one (kept in the browser) |
 | The creature | `src/creature.js` | Built in code: plush body, glowing core (pulses when idle, brightens when listening, swirls when thinking), blinking eyes, a mouth the engine's `Face` lip-syncs, arms that wave, point and hold |
 | The stage | `src/world.js` | A workshop corner in the engine's Next Gen view; props from `gs.models.generate`, held in its hands, thrown with real weight by `gs.physics3d` |
+| Dice | `src/dice.js` | Real dice (`gs.tabletop.die`) thrown from its hands onto the rug in the stage's physics, read by which face lands on top (`gs.dice.Dice3D`). Other dice (a d20) are rolled with `gs.dice.roll` and the number floats over its head (`gs.fx3d.text3d`) |
+| Drawing pad | `src/doodle.js` | The pencil button (or the `doodle` tool) opens a sheet of paper over the stage. The engine's doodle model (`gs.doodle`, on the device) names what was drawn among 200 things, and it is made with the 3D generator. Only the name goes to Claude |
+| The sky outside | `src/place.js` | The device line also says whether the sun is up and the moon's phase, and a low battery (`gs.real`, worked out on the device, no permission) |
 | The backend | `server/turn.js` | One small handler that adds the key and streams Claude's reply back. Runs inside the Vite dev server (`server/dev.js`) and as a Cloudflare Worker (`worker/`) |
-| Its personality and tools | `server/persona.js` | The system prompt and its tools: `make`, `change`, `toss`, `clear`, `act`, `play`, `game_move`, `stop_game`, `think_harder` |
-| Games | `src/games/` | Games it plays with you on a table in front of it. Chess: the engine's living stone pieces, rules from chess.js and the engine's chess opponent picking its moves (fast, always legal, levels 1 to 5), while Claude reacts out loud to each move and a stretchy arm moves its pieces. `src/games/index.js` says how to add another |
+| Its personality and tools | `server/persona.js` | The system prompt and its tools: `make`, `change`, `toss`, `clear`, `roll`, `doodle`, `act`, `play`, `game_move`, `stop_game`, `think_harder` |
+| Games | `src/games/` | Games it plays with you on a table in front of it. Chess: the engine's living stone pieces, rules from chess.js and the engine's chess opponent picking its moves (fast, always legal, levels 1 to 5), while Claude reacts out loud to each move and a stretchy arm moves its pieces. Quiz: ten questions from the engine's bank of about 2,700 (`gs.trivia`, Open Trivia Database, CC BY-SA 4.0) on a card with four buzzers, starting easy and climbing; Reverie hosts, reading each question out and reacting to each answer, and is only told the answer once you've given yours. `src/games/index.js` says how to add another |
 
 Everyday chat goes to Claude Haiku 5.5 with low effort, for speed. When a question needs real thought, it calls
 `think_harder` and the rest of that turn goes to Claude Sonnet 5.5. Either can be changed with `REVERIE_QUICK_MODEL`
@@ -68,6 +72,7 @@ Only the Worker's own address may call the API from a browser. To host the page 
 REVERIE_FAKE=1 npm run dev -- --port 5179
 npm run smoke                 # wakes it, makes, changes and throws a prop, asks a deep question; pictures in tests/out/
 node tests/chess.mjs          # asks to play chess, taps a move, says a move, puts the board away
+node tests/kits.mjs           # rolls dice, plays three quiz questions (tap, button, said), draws a house and has it made
 ```
 
 ## Known gaps

@@ -6,6 +6,7 @@ import { makeCreature } from './creature.js';
 import { colours, tidyColours, keepColours } from './looks.js';
 import { describe } from './describe.js';
 import { GAMES } from './games/index.js';
+import { makeDice } from './dice.js';
 
 const CORE_LAMP = '#ff7020';     // the light its core casts, as made (moved with the glow colour)
 const HOLD_SIZE = .4;            // metres: the longest side of a prop in its hands
@@ -86,7 +87,7 @@ export function makeWorld() {
   let W = 360, H = 640, held = null, loose = [], seed = 1, t = 0, pops = [];
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), at = new THREE.Vector3();
   // a game on the stage (./games): the one being played, the ones made so far, and where the camera is heading
-  let game = null, onNews = () => {};
+  let game = null, onNews = () => {}, dice = null;
   const games = {}, HOME = { pos: [0, .78, 1.95], look: [0, .4, 0] }, camAt = { pos: [...HOME.pos], look: [...HOME.look] };
   const stage = {
     THREE, get scene() { return v.scene; }, get creature() { return creature; }, get physics() { return world; },
@@ -163,12 +164,14 @@ export function makeWorld() {
     /** What is in its hands and on the floor, in a line for Claude. */
     scene() {
       const floor = loose.map(e => e.short).slice(-6);
+      if (dice?.onFloor) floor.push(dice.onFloor);
       return `In your hands: ${held ? held.short : 'nothing'}.${floor.length ? ` On the floor: ${floor.join(', ')}.` : ''}`;
     },
     reset() {
       if (!v) setup();
       for (const e of loose) remove(e); loose = []; if (held) remove(held); held = null; creature.holding = false;
       fx.clear(); embers = makeEmbers(); creature.mood('calm');
+      dice ||= makeDice({ THREE, scene: v.scene, physics: world, creature, sparks: stage.sparks }); dice.clear();
       if (game) { game.stop(); game = null; }
     },
     resize(w, h) { W = w; H = h; },
@@ -192,6 +195,7 @@ export function makeWorld() {
       pops = pops.filter(p => p.t < .28);
       if (held) { held.pivot.rotation.y += dt * .5; held.pivot.position.y = held.pivot.userData.size.y * .3 + Math.sin(t * 2.4) * .01; }
       world.step(dt);
+      dice?.update(dt);
       for (const e of loose) if (e.pivot.position.y < -4) remove(e);
       loose = loose.filter(e => e.pivot.position.y >= -4);
       while (loose.length > 14) remove(loose.shift());
@@ -249,7 +253,7 @@ export function makeWorld() {
       release(held, true); return `Threw ${w} onto the floor.`;
     },
     async clear() {
-      const n = loose.length + (held ? 1 : 0);
+      const n = loose.length + (held ? 1 : 0) + (dice?.clear() || 0);
       for (const e of [...loose, ...(held ? [held] : [])]) { poof(e.pivot, '#ffffff'); remove(e); }
       loose = []; held = null; creature.holding = false; gs.sound.sounds.pop();
       return n ? `Cleared ${n} prop${n > 1 ? 's' : ''}.` : 'There was nothing to clear.';
@@ -264,6 +268,8 @@ export function makeWorld() {
       creature.gesture('tada'); poof(creature.core, creature.glowed('#ffd27a')); gs.sound.sounds.pop();
       return { text: `Your body is now ${r.colours.body} and your glow ${r.colours.glow}. It is remembered next time.` };
     },
+    /** Rolls dice ("2d6", "d20"): real ones thrown onto the rug where it can. Resolves a sentence for Claude. */
+    roll: text => dice.roll(text),
     async act(gesture, mood) {
       if (mood) creature.mood(mood); if (gesture) creature.gesture(gesture);
       return 'Done.';
