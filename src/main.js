@@ -99,8 +99,8 @@ async function boot() {
   brain = makeBrain({ world, onCaption: say, onStatus: setStatus, onTiming: showTiming });
   body = makeBody({ creature: world.creature, world });
   world.onNews = (text, loud) => brain.notice(text, loud);
-  voice = new Listener();
-  window.__reverie = { world, brain, body, gs };
+  voice = new Listener({ onProblem: () => listeningOff(), onNote: debug ? line => { timing.textContent = 'mic: ' + line; } : null });
+  window.__reverie = { world, brain, body, gs, voice };
   status.textContent = '';
   wake.hidden = false; wake.textContent = 'Tap to say hi';
   requestAnimationFrame(frame);
@@ -121,13 +121,20 @@ async function startListening() {
   const ok = await voice.start();
   mic.classList.toggle('on', !!ok);
   if (ok) input.placeholder = 'Listening… or type';
-  else {
-    input.placeholder = 'Say something, or type…';
-    setStatus(voice.problem === 'denied' ? 'The microphone is off. Tap the mic to try again, or type.' : "This browser can't listen, so type instead.");
-    if (voice.problem !== 'denied') mic.hidden = true;
-    input.focus({ preventScroll: true });
-  }
+  else listeningOff();
   return ok;
+}
+
+/** Listening stopped for good (refused, or this browser's recogniser isn't working): say so, and offer typing. */
+function listeningOff() {
+  mic.classList.remove('on');
+  input.placeholder = 'Type to Reverie…';
+  const p = voice.problem;
+  setStatus(p === 'denied' ? 'The microphone is off. Tap the mic to try again, or type.'
+    : p === 'broken' ? "Listening isn't working in this browser, so type instead. Tap the mic to try again."
+    : "This browser can't listen, so type instead.");
+  if (p === 'unavailable') mic.hidden = true;
+  input.focus({ preventScroll: true });
 }
 
 form.addEventListener('submit', e => {
@@ -140,7 +147,8 @@ mic.addEventListener('click', async () => {
   if (!awake) return wakeUp();   // (waking asks for the microphone itself)
   if (voice.listening || voice.want) { voice.stop(); mic.classList.remove('on'); input.placeholder = 'Say something, or type…'; return; }
   // (denied before: the browser may let it ask again, or the person has to allow it in the site settings)
-  if (voice.problem === 'denied') { voice.available = true; voice.problem = null; }
+  // ('broken': try every way again from the top)
+  if (voice.problem === 'denied' || voice.problem === 'broken') { if (voice.problem === 'broken') voice.way = voice.firstWay; voice.available = true; voice.problem = null; }
   if (await startListening()) setStatus('');
 });
 wake.addEventListener('click', wakeUp);

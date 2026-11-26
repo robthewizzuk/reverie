@@ -75,8 +75,10 @@ node tests/chess.mjs          # asks to play chess, taps a move, says a move, pu
 - **The voice downloads on first use.** Its Phonon voice comes from the engine's asset host. Until it has loaded, lines
   are shown as captions only. The voice has not been heard yet in this repo's own tests (the test machine could not
   reach that host).
-- **Listening** uses the browser's own speech recognition where there is one (Chrome, Safari, Edge). Elsewhere the mic
-  button hides and you type.
+- **Listening** uses the browser's own speech recognition where there is one (Chrome, Safari, Edge). It tries the best
+  way first (Chrome: an echo-cancelled mic track, on the device) and steps down by itself if a browser ignores that
+  (Edge goes straight to the plain way). Every recogniser event is logged as `[reverie] mic: …` in the console (and on
+  the page with `?debug`). If none works, it says so and you type. Elsewhere the mic button hides and you type.
 - **Talking over it** with the speaker on can pick up its own voice. It needs three or more words heard before it stops,
   which mostly avoids this. Headphones avoid it completely.
 - **AR mode** is not built yet. Chess is on the stage only, not on your floor.

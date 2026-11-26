@@ -3,69 +3,164 @@
 // on the live page it never started and never asked. Reverie is not a Game Scroll game: it uses the device's own
 // recogniser where the browser has one and the language is there, and the browser's usual one otherwise.
 // Same shape as gs.hear's Voice: start(), stop(), listening, available, text (what is being said now), next().
+//
+// Browsers differ in what their recogniser really does, and some fail without saying so (Edge took our microphone
+// track and the device-recogniser flag, then never heard a word). So it listens in the best way first and steps down
+// a way each time one shows it isn't working: an error, no audio soon after starting, or sessions that end at once.
+//   1. our echo-cancelled microphone track, on the device where it can      (Chrome)
+//   2. the recogniser's own microphone, on the device where it can
+//   3. the recogniser's own microphone, the browser's usual service          (Edge, Safari)
+//   4. the same, one phrase per session (not continuous), started again after each
+// Every event is logged to the console as "[reverie] mic: ...", and kept in .log, to see what a browser does.
 
 const R = typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition);
 const norm = s => String(s).toLowerCase().replace(/[^\p{L}\p{N}' ]+/gu, ' ').replace(/\s+/g, ' ').trim();
+const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+/** Edge (desktop and phone): its recogniser ignores a track and the device flag, so it starts at the plain way. */
+const EDGE = /\bEdg(e|A|iOS)?\//.test(ua) || !!navigator.userAgentData?.brands?.some(b => /Edge/.test(b.brand));
+const WAYS = ['track', 'own mic', 'plain', 'one at a time'];
+const AUDIO_WAIT = 4000;     // ms from start to the recogniser's audiostart before that way counts as not working
+const QUICK_END = 1500;      // a session that ends this soon with nothing heard counts as a failure
+const BAD = new Set(['network', 'audio-capture', 'language-not-supported', 'bad-grammar', 'phrases-not-supported']);
 
 export class Listener {
-  constructor({ language = navigator.language || 'en-GB' } = {}) {
+  constructor({ language = navigator.language || 'en-GB', onProblem = null, onNote = null } = {}) {
     this.language = language; this.text = ''; this.said = [];
     this.listening = false; this.want = false; this.rec = null; this.local = false;
+    this.onProblem = onProblem; this.onNote = onNote;
+    this.firstWay = this.way = EDGE ? 2 : 0;      // index into WAYS (Edge: straight to the plain way)
+    this.fails = 0;               // failures in a row at this way
+    this.log = [];
     // (a browser driven by tests has the class but no speech service: starting it there takes the page down)
     this.available = !!R && !navigator.webdriver;
-    /** Why it stopped for good, if it did: 'denied' (no microphone allowed), 'unavailable' or null. */
+    /** Why it stopped for good, if it did: 'denied' (no microphone allowed), 'unavailable', 'broken' or null. */
     this.problem = this.available ? null : 'unavailable';
+    this.note(`recogniser ${R ? (window.SpeechRecognition ? 'SpeechRecognition' : 'webkitSpeechRecognition') : 'none'}, ${EDGE ? 'Edge' : 'not Edge'}, language ${language}`);
+  }
+
+  note(what) {
+    const line = `${(performance.now() / 1000).toFixed(1)}s ${what}`;
+    this.log.push(line); if (this.log.length > 60) this.log.shift();
+    console.info(`[reverie] mic: ${what}`); this.onNote?.(what);
   }
 
   /** Asks for the microphone (the browser's prompt) and starts listening. Call from a tap. Resolves to true if it is. */
   async start() {
     if (this.listening) return true;
-    if (!this.available) return false;
+    if (!this.available) { this.note(`not starting: ${this.problem}`); return false; }
     // the prompt: asking for the microphone ourselves makes the browser show it now, and tells us plainly if it is refused
     try {
-      // kept open: where the browser lets the recogniser take a microphone track, it gets this echo-cancelled one, so
-      // Reverie's own voice from the speakers is taken out before it is heard
-      this.stream?.getTracks().forEach(t => t.stop());
+      this.release();
       this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+      const t = this.stream.getAudioTracks()[0];
+      this.micAllowed = true;
+      this.note(`microphone allowed: "${t?.label || 'unnamed'}", ${t?.readyState}${t?.muted ? ', muted' : ''}`);
+      // (only the first way listens to this stream: the others needed it just for the prompt)
+      if (WAYS[this.way] !== 'track') this.release();
     } catch (e) {
+      this.note(`microphone refused: ${e?.name} ${e?.message || ''}`);
       if (e?.name === 'NotAllowedError' || e?.name === 'SecurityError') { this.problem = 'denied'; this.available = false; return false; }
       // (no getUserMedia here, or no device: the recogniser asks by itself)
     }
     // on the device where it can (Chrome with the language downloaded), else the browser's usual recogniser
-    this.local = false;
+    this.canLocal = false;
     if ('processLocally' in R.prototype && typeof R.available === 'function') {
-      try { this.local = (await R.available({ langs: [this.language], processLocally: true })) === 'available'; } catch { this.local = false; }
+      try { const a = await R.available({ langs: [this.language], processLocally: true }); this.canLocal = a === 'available'; this.note(`on-device recogniser: ${a}`); }
+      catch (e) { this.note(`on-device check failed: ${e?.message || e}`); }
     }
-    this.want = true;
+    this.want = true; this.problem = null; this.fails = 0;
     return this.listen();
   }
 
+  /** The microphone stream we hold is only for way 1; elsewhere it is let go so the recogniser has the mic to itself. */
+  release() { this.stream?.getTracks().forEach(t => t.stop()); this.stream = null; }
+
+  /** This way isn't working: try the next one, or give up and say so. */
+  stepDown(why) {
+    clearTimeout(this.watch);
+    if (this.way < WAYS.length - 1) {
+      this.way++; this.fails = 0;
+      this.note(`not working (${why}): trying "${WAYS[this.way]}" next`);
+      if (WAYS[this.way] !== 'track') this.release();
+      if (this.rec) { const r = this.rec; this.rec = null; r.onend = null; try { r.abort(); } catch { /* gone */ } }
+      this.listening = false;
+      if (this.want) setTimeout(() => this.want && this.listen(), 250);
+      return;
+    }
+    this.note(`not working (${why}), and there is nothing left to try: listening is off`);
+    this.fail('broken');
+  }
+
+  fail(problem) {
+    this.problem = problem; this.want = false; this.listening = false; this.text = '';
+    if (problem !== 'denied') this.available = false;
+    clearTimeout(this.watch); this.release();
+    if (this.rec) { const r = this.rec; this.rec = null; r.onend = null; try { r.abort(); } catch { /* gone */ } }
+    this.onProblem?.(problem);
+  }
+
   listen() {
-    const rec = new R();
-    rec.lang = this.language; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
-    if (this.local) rec.processLocally = true;
+    const way = WAYS[this.way], rec = new R(), t0 = performance.now();
+    let audio = false, heard = false, empty = 0;
+    rec.lang = this.language; rec.continuous = way !== 'one at a time'; rec.interimResults = true; rec.maxAlternatives = 1;
+    const local = this.canLocal && this.way < 2;
+    if (local) rec.processLocally = true;
+    const ms = () => Math.round(performance.now() - t0);
+    rec.onstart = () => this.note(`start (${way}${local ? ', on device' : ''})`);
+    rec.onaudiostart = () => { audio = true; clearTimeout(this.watch); this.note(`audio start, ${ms()} ms`); };
+    rec.onsoundstart = () => this.note('sound start');
+    rec.onspeechstart = () => this.note('speech start');
+    rec.onspeechend = () => this.note('speech end');
+    rec.onnomatch = () => this.note('no match');
     rec.onresult = e => {
+      if (this.rec !== rec) return;
+      // (results that are all empty: the recogniser is getting silence, not us. Edge does this with our track)
+      const words = [...e.results].some(r => r[0]?.transcript?.trim());
+      if (!words) { if (++empty >= 3) this.stepDown('only empty results'); return; }
+      heard = true; empty = 0; this.fails = 0;
       let now = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i], t = norm(r[0].transcript);
-        if (r.isFinal) { if (t) { this.said.push(t); if (this.said.length > 8) this.said.shift(); } }
+        if (r.isFinal) { if (t) { this.said.push(t); if (this.said.length > 8) this.said.shift(); this.note(`heard "${t}"`); } }
         else now += (now ? ' ' : '') + t;
       }
       this.text = now;
     };
     rec.onerror = e => {
-      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { this.problem = 'denied'; this.want = false; this.available = false; }
-      // (the device recogniser can say its language isn't there after all: fall back to the usual one)
-      else if (e.error === 'language-not-supported' && this.local) this.local = false;
+      this.note(`error "${e.error}"${e.message ? ': ' + e.message : ''}, ${ms()} ms`);
+      if (this.rec !== rec) return;
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+        // (with our own microphone already allowed, a refusal here is the recogniser's service, not the person)
+        if (this.way < WAYS.length - 1) return this.stepDown(e.error);
+        return this.fail(this.micAllowed ? 'broken' : 'denied');
+      }
+      if (BAD.has(e.error)) return this.stepDown(e.error);
+      // ('no-speech' and 'aborted' are ordinary: it starts again when it ends)
     };
-    rec.onend = () => { this.listening = false; this.rec = null; this.text = ''; if (this.want) setTimeout(() => this.want && this.listen(), 200); };
-    const track = this.stream?.getAudioTracks().find(t => t.readyState === 'live');
+    rec.onend = () => {
+      clearTimeout(this.watch);
+      this.note(`end, ${ms()} ms${heard ? '' : ', nothing heard'}`);
+      if (this.rec !== rec) return;
+      this.listening = false; this.rec = null; this.text = '';
+      if (!this.want) return;
+      // ending at once, again and again, with nothing heard: this way isn't working
+      if (!heard && ms() < QUICK_END && ++this.fails >= 2) return this.stepDown('ends at once');
+      setTimeout(() => this.want && !this.rec && this.listen(), 200);
+    };
+    const track = way === 'track' ? this.stream?.getAudioTracks().find(t => t.readyState === 'live') : null;
     try {
-      // (start(track): Chrome's recogniser can listen to a track of ours; elsewhere the argument is ignored or refused)
-      if (track && this.trackOk !== false) { try { rec.start(track); this.trackOk = true; } catch { this.trackOk = false; rec.start(); } }
+      // (start(track): Chrome's recogniser can listen to a track of ours; elsewhere the argument is refused or ignored,
+      // and "ignored" is the trap: it then hears nothing, which the watch below catches)
+      if (track) { try { rec.start(track); } catch (e) { this.note(`start(track) refused: ${e?.message || e}`); this.rec = null; return this.stepDown('track refused'); } }
       else rec.start();
       this.rec = rec; this.listening = true;
-    } catch { this.listening = false; }
+    } catch (e) {
+      this.note(`start failed: ${e?.name} ${e?.message || ''}`);
+      this.listening = false;
+      if (this.want) { this.stepDown('start failed'); return this.want; }
+    }
+    clearTimeout(this.watch);
+    this.watch = setTimeout(() => { if (this.rec === rec && !audio && !heard) this.stepDown(`no audio after ${AUDIO_WAIT / 1000} s`); }, AUDIO_WAIT);
     return this.listening;
   }
 
@@ -74,7 +169,8 @@ export class Listener {
 
   stop() {
     this.want = false; this.listening = false; this.text = '';
-    this.stream?.getTracks().forEach(t => t.stop()); this.stream = null;
+    clearTimeout(this.watch); this.release();
     if (this.rec) { try { this.rec.abort(); } catch { /* gone */ } this.rec = null; }
+    this.note('stopped');
   }
 }
