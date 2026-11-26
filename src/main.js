@@ -3,7 +3,7 @@
 // lets the page make sound.
 import gs, { loadParts } from '../engine/src/gamescroll.js';
 import { makeWorld } from './world.js';
-import { makeBrain, VOICE } from './brain.js';
+import { makeBrain } from './brain.js';
 
 const $ = s => document.querySelector(s);
 const stage = $('#stage'), canvas = $('#view'), ctx = canvas.getContext('2d');
@@ -33,7 +33,8 @@ async function whenLoaded(fn) {
 }
 
 function setStatus(s) {
-  status.textContent = s === 'thinking' ? 'Thinking…' : s === 'thinking harder' ? 'Thinking harder…' : s.startsWith('error') ? 'Something went wrong: ' + s.slice(7) : s;
+  // (no "Thinking…" label: its core swirling and its head tilting say that)
+  status.textContent = s === 'thinking' || s === 'thinking harder' ? '' : s.startsWith('error') ? 'Something went wrong: ' + s.slice(7) : s;
   status.classList.toggle('error', s.startsWith('error'));
 }
 function say(line) { caption.textContent = line; caption.hidden = false; captionT = 4 + line.length * .06; }
@@ -48,12 +49,20 @@ function frame(now) {
   const dt = Math.min(.05, (now - (last || now)) / 1000); last = now;
   try {
     if (voice?.listening) {
-      const heard = voice.text.trim();
-      world.creature.state.listening = !!heard;
-      if (heard) input.placeholder = heard;
-      // talking over it: a few words heard while it speaks stop it (fewer could be its own voice in the mic)
-      if (heard.split(/\s+/).length >= 3 && brain.speaking) brain.interrupt();
-      const said = voice.next(); if (said) { input.placeholder = 'Say something, or type…'; brain.hear(said); }
+      // the mic hears its voice too: only words it did not just say count as yours
+      const heard = voice.text.trim(), yours = heard ? brain.yours(heard) : [];
+      world.creature.state.listening = yours.length > 0;
+      if (yours.length) input.placeholder = heard;
+      // talking over it: three words of yours heard while it speaks stop it
+      if (yours.length >= 3 && brain.speaking) brain.interrupt();
+      const said = voice.next();
+      if (said) {
+        input.placeholder = 'Say something, or type…';
+        // nearly all its own words: its voice coming back, not you ("make it bigger" after it said "make it" is yours)
+        const n = said.split(/\s+/).length, yoursN = brain.yours(said).length;
+        if (yoursN > 0 && yoursN / n > .3) brain.hear(said);
+        else console.info('[reverie] ignored its own voice: ' + said);
+      }
     }
     captionT -= dt; if (captionT < 0 && !brain?.speaking) caption.hidden = true;
     world.update(dt);
@@ -83,8 +92,8 @@ function wakeUp() {
   if (awake) return; awake = true; wake.hidden = true;
   const c = world.creature;
   c.gesture('wave'); c.mood('happy');
-  const hello = "Hi! I'm Claude. Ask me to make you something, anything at all.";
-  say(hello); c.face.say(hello, VOICE).catch(() => {});
+  const hello = "Hi! I'm Reverie. Ask me to make you something, anything at all.";
+  brain.speak(hello);   // (through its speaker, so the mic knows this is its voice)
   input.focus({ preventScroll: true });
   if (voice.available === false) mic.hidden = true;
 }
