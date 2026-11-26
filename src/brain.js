@@ -4,12 +4,11 @@
 // little more. Talking over it stops it at once.
 import gs from '../engine/src/gamescroll.js';
 import { weather, contextLine } from './place.js';
+import { sayOptions, setVoice } from './looks.js';
 
 const API = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '') + '/api/turn';
 const KEEP = 40;                 // messages kept in the conversation (older ones drop off, whole turns at a time)
 const MAX_STEPS = 5;             // model calls in one turn (tool rounds)
-// Its voice: the engine's Phonon voice, a British woman's, a little smaller and livelier than she is.
-export const VOICE = { voice: { kind: 'woman', lang: ['en-GB'], take: 2 }, size: .92, lively: .65 };
 const GESTURES = ['none', 'wave', 'point', 'tada', 'shrug', 'think', 'nod', 'shake', 'bounce'];
 const MOODS = ['calm', 'happy', 'excited', 'curious', 'sad', 'surprised'];
 
@@ -35,8 +34,8 @@ function makeSpeaker(creature, onCaption) {
       let shown = false; const show = () => { if (!shown && my === epoch) { shown = true; onCaption(line); } };
       said.push({ words: new Set(wordsOf(line)), until: Infinity }); if (said.length > 6) said.shift();
       const t0 = performance.now();
-      if (queue[0]) gs.sound.prepare(queue[0], VOICE).catch(() => {});
-      const ok = await creature.say(line, VOICE, show).catch(() => false);
+      if (queue[0]) gs.sound.prepare(queue[0], sayOptions()).catch(() => {});
+      const ok = await creature.say(line, sayOptions(), show).catch(() => false);
       show();   // (no voice here: the bubble alone, for as long as it takes to read)
       // no voice here (a browser that can't speak): give the line the time it takes to read
       if (!ok && my === epoch) await wait(Math.max(0, line.split(' ').length * 330 - (performance.now() - t0)));
@@ -48,7 +47,7 @@ function makeSpeaker(creature, onCaption) {
     line = spoken(line); if (!line) return;
     queue.push(line);
     if (!busy) { idle = new Promise(r => { endIdle = r; }); run(epoch); }
-    else if (queue.length === 1) gs.sound.prepare(line, VOICE).catch(() => {});
+    else if (queue.length === 1) gs.sound.prepare(line, sayOptions()).catch(() => {});
   }
   return {
     /** Text as it streams in: each whole sentence goes to the voice straight away. */
@@ -102,6 +101,9 @@ function checkInput(name, input) {
   if (!input || typeof input !== 'object') return 'no input';
   if ((name === 'make' || name === 'change') && (typeof input.words !== 'string' || !input.words.trim())) return 'words must be text';
   if (name === 'weather' && input.place != null && typeof input.place !== 'string') return 'place must be text';
+  if (name === 'voice' && input.name != null && typeof input.name !== 'string') return 'name must be text';
+  if (name === 'voice' && ['size', 'lively'].some(k => input[k] != null && typeof input[k] !== 'number')) return 'size and lively must be numbers';
+  if (name === 'colours' && ['body', 'glow'].some(k => input[k] != null && typeof input[k] !== 'string')) return 'colours must be text';
   if (name === 'act' && (!GESTURES.includes(input.gesture) || !MOODS.includes(input.mood))) return 'unknown gesture or mood';
   return null;
 }
@@ -122,9 +124,10 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
     if (name === 'think_harder') return Promise.resolve(deepNow
       ? { text: 'You are already thinking harder. Answer the question now.', error: true }
       : { text: 'Handed over to deeper thinking. You are now thinking harder about this question: answer it now, and do not call think_harder again.', deep: true });
-    const fn = { make: () => world.make(input.words), change: () => world.change(input.words), toss: () => world.toss(), weather: () => weather(input.place), clear: () => world.clear(), act: () => world.act(input.gesture, input.mood) }[name];
+    const fn = { make: () => world.make(input.words), change: () => world.change(input.words), toss: () => world.toss(), weather: () => weather(input.place), clear: () => world.clear(), act: () => world.act(input.gesture, input.mood), voice: async () => setVoice(input), colours: () => world.recolour(input) }[name];
     if (!fn) return Promise.resolve({ text: `There is no tool called ${name}.`, error: true });
-    return fn().then(text => ({ text }), e => ({ text: `It went wrong: ${String(e?.message || e).slice(0, 120)}`, error: true }));
+    // (a tool answers with a sentence, or with { text, error } when it was not done)
+    return fn().then(r => typeof r === 'string' ? { text: r } : r, e => ({ text: `It went wrong: ${String(e?.message || e).slice(0, 120)}`, error: true }));
   }
 
   async function step(tier, my, times) {

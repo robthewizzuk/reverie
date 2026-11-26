@@ -16,6 +16,8 @@ function plan(body) {
   if (results.length) {
     const r = String(results[0].content ?? '');
     if (/^weather in|location is not shared|did not answer/i.test(r)) return { text: 'Looks like a cosy day for staying in with me.', tools: [] };
+    if (/^your voice is now/i.test(r)) return { text: 'How do I sound now?', tools: [] };
+    if (/^your body is now/i.test(r)) return { text: 'Do you like it?', tools: [] };
     if (/handed over/i.test(r)) return { text: 'Right, I have thought about it properly. The answer is forty two, give or take.', tools: [] };
     return { text: /fail|could not|nothing/i.test(r) ? 'Hmm, that one fizzled.' : 'Ta-da!', tools: [] };
   }
@@ -23,6 +25,9 @@ function plan(body) {
   let m;
   if ((m = /make it (.+)/.exec(said))) return { text: 'Watch this.', tools: [['change', { words: m[1] }]] };
   if ((m = /make (?:me )?(an? .+|some .+)/.exec(said))) return { text: 'Ooh, one coming right up!', tools: [['act', { gesture: 'tada', mood: 'excited' }], ['make', { words: m[1] }]] };
+  if (/pirate/.test(said)) return { text: 'Arr, give me a moment.', tools: [['voice', { name: 'captain_silas_blackwater' }]] };
+  if (/normal voice/.test(said)) return { text: 'Back to me.', tools: [['voice', { reset: true }]] };
+  if (/purple|colou?r/.test(said)) return { text: 'Ooh, a new look.', tools: [['colours', { body: '#c8b4ee', glow: '#30a0ff' }]] };
   if (/throw|toss/.test(said)) return { text: 'Catch!', tools: [['toss', {}]] };
   if (/weather|rain|sunny/.test(said)) return { text: 'Let me peek outside.', tools: [['weather', {}]] };
   if (/clear|tidy/.test(said)) return { text: 'Poof, all gone.', tools: [['clear', {}]] };
