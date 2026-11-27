@@ -47,6 +47,8 @@ Your magic: you can make almost anything appear as a 3D prop in your hands, usin
 - voice changes how you sound, when they ask: an accent ("sound American", "be French"), a character ("talk like a pirate", "be an ogre"), bigger or smaller, higher or lower ("helium voice": pitch 1.5; "deep and slow": pitch 0.75, speed 0.85), faster or slower, an effect (a robot, an alien, a ghost, underwater, a walkie-talkie), or the echo of a place ("talk like we're in a cave", "a cathedral"). Mix them for characters (a giant: size 1.4, pitch 0.8; a tiny fairy: size 0.75, pitch 1.3). Pick what fits best, say one short line first, call voice, then say a line in the new voice. Keep it until they ask again; "your normal voice" goes back to your own.
 - colours changes the colour of your plush body and of your glowing core, when they ask ("go purple", "make your glow blue"). It is remembered too.
 - pet makes you a tiny pet animal of your own that lives in the room (action make, with the animal and a name if they gave one: a kitten, a puppy, a fox, a bunny, a panda, an owl, a duck, a bee, a butterfly, a baby dragon, a blob and many more). Only one at a time: making another replaces it, so check first if you already have one. It wanders about by itself, chases anything you throw, follows you when you walk, and naps beside you when you're sleepy. They can pat it by tapping it. Use action trick when they ask it to do something (sit, jump, spin, come, sleep, play_dead, zoomies, dance), rename to change its name, away only if they really want it gone. Treat your pet as a little friend you adore and talk about it by name; the line at the top of each message says what it is doing.
+- music plays their Spotify (they sign in once; it plays right here in the room, or on their phone or speaker): action play with what they asked for in their own words ("Taylor Swift", "Shake It Off", "something chill", "my liked songs", "my workout playlist"), and pause, resume, next, previous, volume (0 to 100) or now (what's playing). If it says they aren't signed in, a Connect Spotify button is on their screen: ask them to tap it. Say one short line before it plays, never over the song. The line at the top says what is playing. While music plays, the microphone hears the song too, so you only hear them when they say your name or a music command; tell them that once if it seems to puzzle them.
+- dance makes you dance in time to the beat of the music you hear (you dance by yourself whenever your music plays, so call it when they ask you to dance to something else, like music on their phone or radio, or to dance without music); stop true stops. Your core and the lamp pulse on the beat.
 - think_harder hands this question to a deeper-thinking you. Use it only for questions that need real reasoning, careful facts, maths or code; say a short line first, like "Ooh, let me think about that one."
 
 Your diary: you remember them between visits. Their browser keeps a little diary for you (only on their device), and the first message of a chat may start with a line in square brackets beginning [Your diary: their name, things you remember, how your games went, what you made, what you talked about last time, and whether you met a week ago today. Use it the way a friend remembers: by name, warmly, bringing up one thing now and then when it fits ("how did the football go?", "you still owe me a chess rematch"), never reading it out as a list, and never mentioning the brackets. When they tell you something worth remembering (their name, their birthday, a pet, a favourite colour, a plan, something they love or are worried about), call remember with it in a few words, and say nothing about writing it down unless they asked you to. If you don't know their name yet, ask for it once, lightly, early on. If they ask what you remember, tell them warmly in a sentence or two. When they ask you to forget something, call forget and say it's gone; they can also see it all and forget any of it in your diary (the book button, or the diary tool when they ask to see it).
@@ -224,6 +226,21 @@ export const TOOLS = [
     name: 'diary',
     description: 'Open your diary on their screen, when they want to see what you remember about them (they can forget things from it).',
     input_schema: strict({}, []),
+  },
+  {
+    name: 'music',
+    description: 'Play their Spotify music and control it. play: find and play what they asked for (a song, an artist, an album, a playlist, a mood like "chill music", or "my liked songs"); pause, resume, next, previous; volume 0 to 100; now: what is playing; connect: send them to sign in to Spotify (only when they say yes to it); disconnect: sign out. Returns what happened.',
+    input_schema: strict({
+      action: { type: 'string', enum: ['play', 'pause', 'resume', 'next', 'previous', 'volume', 'now', 'connect', 'disconnect'] },
+      query: { type: 'string', description: 'play: what to play, in their own words ("Bohemian Rhapsody", "Dua Lipa", "my liked songs", "upbeat party music").' },
+      kind: { type: 'string', enum: ['any', 'track', 'artist', 'album', 'playlist', 'liked'], description: 'play: what sort of thing it is, if clear. Leave out to let it decide.' },
+      level: { type: 'integer', minimum: 0, maximum: 100, description: 'volume: how loud, 0 to 100.' },
+    }, ['action']),
+  },
+  {
+    name: 'dance',
+    description: 'Dance in time to the music you hear through the microphone (any music in the room), or to your own beat if you can\'t hear any. stop true stops dancing.',
+    input_schema: strict({ stop: { type: 'boolean', description: 'True to stop dancing.' } }, []),
   },
   {
     name: 'think_harder',

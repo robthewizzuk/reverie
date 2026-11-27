@@ -159,6 +159,7 @@ function checkInput(name, input) {
   if (name === 'effect' && typeof input.kind !== 'string') return 'kind must be a show, like fireworks';
   if (name === 'smash' && input.how != null && !['smash', 'slice'].includes(input.how)) return 'how must be smash or slice';
   if (name === 'game_move' && (typeof input.move !== 'string' || !input.move.trim())) return 'move must be text';
+  if (name === 'music' && (typeof input.action !== 'string' || (input.query != null && typeof input.query !== 'string') || (input.level != null && typeof input.level !== 'number'))) return 'action must be text, query text and level a number';
   if (name === 'pet' && (!['make', 'trick', 'rename', 'away'].includes(input.action) || ['animal', 'name', 'colour', 'trick'].some(k => input[k] != null && typeof input[k] !== 'string'))) return 'action must be make, trick, rename or away, and the rest text';
   return null;
 }
