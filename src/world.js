@@ -463,6 +463,13 @@ export function makeWorld() {
       creature.gesture('tada'); gs.sound.sounds.pop();
       return { text: `The room's ${r.changed.join(', ')} ${r.changed.length > 1 ? 'are' : 'is'} now ${r.changed.map(k => r.colours[k]).join(', ')}. It is remembered next time.` };
     },
+    /** A burst of confetti round it, and a little hop (a birthday, a streak). */
+    celebrate() {
+      creature.gesture('tada'); creature.mood('excited');
+      const cols = ['#ff6b6b', '#ffd166', '#06d6a0', '#4cc9f0', '#c77dff'];
+      cols.forEach((color, i) => setTimeout(() => fx.sparks({ x: Math.cos(i * 1.26) * .3, y: .75 + (i % 2) * .1, z: .2 + Math.sin(i * 1.26) * .2 }, { color, count: 22, power: 1.1, light: false }), i * 140));
+      gs.sound.sounds.coin?.();
+    },
     async act(gesture, mood) {
       if (mood) creature.mood(mood); if (gesture) creature.gesture(gesture);
       return 'Done.';
