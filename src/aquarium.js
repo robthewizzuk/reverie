@@ -23,8 +23,8 @@ export function makeAquarium({ world, onNews = () => {} }) {
   root.position.set(tx, ty, tz);
   scene.add(root);
 
-  const fx = new gs.fx3d.Particles3D(scene);
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+  const disposeTree = obj => obj.traverse(m => { if (m.isMesh) { m.geometry?.dispose?.(); m.material?.dispose?.(); } });
 
   // ---- tank structure: base, sand bed, water block, glass shell, rim
   const base = new THREE.Mesh(rbox(TANK.w + .016, .016, TANK.d + .016, .005), pbr('#d8cab8', { rough: .5 }));
@@ -33,7 +33,8 @@ export function makeAquarium({ world, onNews = () => {} }) {
   const sand = new THREE.Mesh(rbox(TANK.w - .014, .022, TANK.d - .014, .006), pbr('#e2cca4', { rough: .95 }));
   sand.position.y = .024; sand.receiveShadow = true; root.add(sand);
 
-  const waterMat = new THREE.MeshPhysicalMaterial({ color: '#8ad8eb', transparent: true, opacity: .22, roughness: .12, transmission: .35, depthWrite: false });
+  // (no transmission: transmission triggers a full extra opaque-scene render pass every frame)
+  const waterMat = new THREE.MeshPhysicalMaterial({ color: '#8ad8eb', transparent: true, opacity: .22, roughness: .12, depthWrite: false });
   const water = new THREE.Mesh(new THREE.BoxGeometry(TANK.w - .012, TANK.h - .042, TANK.d - .012), waterMat);
   water.position.y = .028 + (TANK.h - .042) / 2; root.add(water);
 
@@ -64,6 +65,7 @@ export function makeAquarium({ world, onNews = () => {} }) {
   // decor group (rebuilt when state.decor changes)
   const decorGroup = new THREE.Group(); root.add(decorGroup);
   function rebuildDecor() {
+    for (const c of decorGroup.children) disposeTree(c);
     decorGroup.clear();
     const d = state.decor;
     if (d === 'none' || d === 'plants') {
@@ -174,7 +176,7 @@ export function makeAquarium({ world, onNews = () => {} }) {
 
   function syncSwimmers() {
     const alive = new Set(state.fish.map(f => f.id));
-    for (const [id, sw] of swimmers) if (!alive.has(id)) { root.remove(sw.mesh); swimmers.delete(id); }
+    for (const [id, sw] of swimmers) if (!alive.has(id)) { root.remove(sw.mesh); disposeTree(sw.mesh); swimmers.delete(id); }
     for (const f of state.fish) {
       if (swimmers.has(f.id)) continue;
       const mesh = buildSwimmerMesh(f);
@@ -246,7 +248,6 @@ export function makeAquarium({ world, onNews = () => {} }) {
         if (sw.mesh.userData.tail) sw.mesh.userData.tail.rotation.y = Math.sin(t * (sw.dart > 0 ? 22 : 10) + sw.phase) * .38;
       }
     }
-    fx.update(dt);
   }
 
   function tap(x, y, w, h) {

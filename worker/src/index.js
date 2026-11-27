@@ -38,14 +38,21 @@ async function videoCached(request, env, url) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (url.pathname.startsWith('/api/google/')) return await handleGoogle(request, env) ?? new Response('Not found', { status: 404 });
+    const isGoogle = url.pathname.startsWith('/api/google/');
     const helpers = /^\/api\/helpers(\/(stop|more))?\/?$/.test(url.pathname);   // (Reverie's background helpers: server/helpers.js)
-    if (url.pathname !== '/api/turn' && url.pathname !== '/api/warm' && url.pathname !== '/api/push' && url.pathname !== '/api/recap' && url.pathname !== '/api/shop' && url.pathname !== '/api/video' && !helpers) return new Response('Not found', { status: 404 });
+    if (!isGoogle && url.pathname !== '/api/turn' && url.pathname !== '/api/warm' && url.pathname !== '/api/push' && url.pathname !== '/api/recap' && url.pathname !== '/api/shop' && url.pathname !== '/api/video' && !helpers) return new Response('Not found', { status: 404 });
     const origin = request.headers.get('origin');
     const allowed = env.ALLOWED_ORIGIN === '*' || origin === url.origin || origin === env.ALLOWED_ORIGIN;
     if (origin && !allowed) return new Response('Forbidden', { status: 403 });
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors(env) });
-    const res = url.pathname === '/api/video' ? await videoCached(request, env, url) : helpers ? await handleHelpers(request, env) : url.pathname === '/api/push' ? await handlePush(request, env) : url.pathname === '/api/shop' ? await handleShop(request, env) : url.pathname === '/api/recap' ? await handleRecap(request, env) : url.pathname === '/api/warm' ? await handleWarm(request, env) : await handleTurn(request, env);
+    const res = isGoogle ? (await handleGoogle(request, env) ?? new Response('Not found', { status: 404 }))
+      : url.pathname === '/api/video' ? await videoCached(request, env, url)
+      : helpers ? await handleHelpers(request, env)
+      : url.pathname === '/api/push' ? await handlePush(request, env)
+      : url.pathname === '/api/shop' ? await handleShop(request, env)
+      : url.pathname === '/api/recap' ? await handleRecap(request, env)
+      : url.pathname === '/api/warm' ? await handleWarm(request, env)
+      : await handleTurn(request, env);
     const headers = new Headers(res.headers);
     for (const [k, v] of Object.entries(cors(env))) if (v) headers.set(k, v);
     return new Response(res.body, { status: res.status, headers });

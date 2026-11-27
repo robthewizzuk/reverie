@@ -10,17 +10,15 @@ const sha = async s => b64url(await crypto.subtle.digest('SHA-256', enc.encode(s
 
 /** One browser's times (or, named "vapid", the signing key). */
 export class Pusher extends DurableObject {
-  /** The public key, made the first time ("vapid" only). */
-  async key() {
+  async _vapid() {
     let k = await this.ctx.storage.get('vapid');
     if (!k) { k = await makeVapid(); await this.ctx.storage.put('vapid', k); }
-    return k.pub;
+    return k;
   }
+  /** The public key, made the first time ("vapid" only). */
+  async key() { return (await this._vapid()).pub; }
   /** A signed token for a push service ("vapid" only). */
-  async token(aud, sub) {
-    await this.key();
-    return vapidToken((await this.ctx.storage.get('vapid')).jwk, aud, sub);
-  }
+  async token(aud, sub) { return vapidToken((await this._vapid()).jwk, aud, sub); }
   /** This browser's times now (all of them, replacing the last list). An empty list forgets the browser. */
   async sync({ endpoint, times, from }) {
     if (!times.length) { await this.ctx.storage.deleteAlarm(); await this.ctx.storage.deleteAll(); return 0; }

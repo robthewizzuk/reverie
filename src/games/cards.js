@@ -16,10 +16,21 @@ const RANK_LABEL = { 1: 'A', 11: 'J', 12: 'Q', 13: 'K' };
 const rankText = r => RANK_LABEL[r] || String(r);
 
 export function makeCards(stage) {
-  const { THREE, scene, creature } = stage, { decal, wood, sounds } = gs.tabletop, { rbox, pbr } = gs.hd;
+  const { THREE, scene, creature } = stage, { decal, sounds } = gs.tabletop, { rbox, pbr } = gs.hd;
   const tw = clock();
   let root = null, cardGroup = null, game = null, mode = 'blackjack', level = 2, round = 0;
   let cardMeshes = [], tapTargets = [];
+  const cardGeo = rbox(CARD_W, CARD_T, CARD_H, .0015);
+  const cardMat = pbr('#f7f3e8', { rough: .55 });
+
+  function disposeCard(g) {
+    const face = g.userData?.face;
+    if (face) {
+      face.material?.map?.dispose?.();
+      face.material?.dispose?.();
+      face.geometry?.dispose?.();
+    }
+  }
 
   function drawBack(c, W, H, mystic = false) {
     c.fillStyle = mystic ? '#2c1e4a' : '#25446b';
@@ -65,7 +76,7 @@ export function makeCards(stage) {
 
   function makeCardMesh(card, faceUp, x, z, rotY = 0, tapAction = null) {
     const g = new THREE.Group();
-    const body = new THREE.Mesh(rbox(CARD_W, CARD_T, CARD_H, .0015), pbr('#f7f3e8', { rough: .55 }));
+    const body = new THREE.Mesh(cardGeo, cardMat);
     body.castShadow = true; body.receiveShadow = true; g.add(body);
     const face = decal(CARD_W * .94, CARD_H * .94, (c, W, H) => faceUp ? drawFace(c, W, H, card) : drawBack(c, W, H, !!card.tarot), { px: 256, lift: CARD_T * .6, rough: .5 });
     g.add(face);
@@ -81,7 +92,7 @@ export function makeCards(stage) {
 
   function rebuildTableCards() {
     if (!cardGroup || !game) return;
-    for (const m of cardMeshes) cardGroup.remove(m);
+    for (const m of cardMeshes) { cardGroup.remove(m); disposeCard(m); }
     cardMeshes = []; tapTargets = [];
     if (game.mode === 'blackjack') {
       const spread = (arr, z, hideSecond) => arr.forEach((c, i) => {
@@ -148,15 +159,14 @@ export function makeCards(stage) {
     return r.text;
   }
 
-  const ray = new THREE.Raycaster();
   return {
     id: 'cards', title: 'Cards', camera: CAMERA,
     get round() { return round; },
     get level() { return level; },
     async start(o = {}) {
       this.stop();
-      mode = modeOf(o.mode || 'blackjack');
-      level = o.level || 2; round++;
+      mode = o.mode ? modeOf(o.mode) : mode;
+      level = o.level ?? level; round++;
       game = makeCardGame(mode, { level });
       build(); scene.add(root);
       popIn(tw, root, .32);
@@ -172,6 +182,7 @@ export function makeCards(stage) {
     },
     stop() {
       tw.stop();
+      for (const m of cardMeshes) disposeCard(m);
       if (root) { scene.remove(root); root = null; cardGroup = null; cardMeshes = []; tapTargets = []; }
       game = null;
     },

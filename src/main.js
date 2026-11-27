@@ -197,7 +197,7 @@ function frame(now) {
     aquarium?.update(dt);
     capsules?.update(dt);
     watch.update(dt);
-    world.draw(ctx);
+    if (!document.hidden) world.draw(ctx);
   } catch (e) {
     if (!e?.kitLoading) { console.error(e); setStatus('error: ' + e.message); }
   }
@@ -313,7 +313,7 @@ async function boot() {
       helpers: input => helpers.manage(input),
       shop: input => shop.tool(input || {}),
       badges: async () => achievements.report(),
-      ...karaoke.tools,
+      karaoke: async input => { if (input?.action !== 'stop' && input?.action !== 'list' && jam?.playing) jam.stop(); return karaoke.tools.karaoke(input); },
       ...jam.tools,
       diary: async () => { diary.show(); return 'Your diary is open on their screen: everything you remember about them, and a way to forget any of it.'; },
       reminder: input => timers.tool(input),

@@ -28,13 +28,14 @@ export function makeCapsules({ world, memory, onNews = () => {} }) {
   const glassMat = new THREE.MeshPhysicalMaterial({ color: '#f4fbff', transparent: true, opacity: .34, roughness: .08, clearcoat: 1, depthWrite: false });
   const corkMat = pbr('#b58554', { rough: .9 });
   const scrollMat = pbr('#f5e6c4', { rough: .85 });
+  const COL_READY = new THREE.Color('#ffe066'), COL_SEALED = new THREE.Color('#a8d8ff');
 
   const jars = new Map();
 
   function syncJars() {
     const items = state.items;
     const alive = new Set(items.map(c => c.id));
-    for (const [id, j] of jars) if (!alive.has(id)) { root.remove(j.group); jars.delete(id); }
+    for (const [id, j] of jars) if (!alive.has(id)) { root.remove(j.group); j.orbMat.dispose(); jars.delete(id); }
     items.forEach((cap, idx) => {
       let j = jars.get(cap.id);
       if (!j) {
@@ -42,11 +43,11 @@ export function makeCapsules({ world, memory, onNews = () => {} }) {
         const glass = new THREE.Mesh(jarGeo, glassMat); g.add(glass);
         const cork = new THREE.Mesh(corkGeo, corkMat); cork.position.y = .102; cork.castShadow = true; g.add(cork);
         const scroll = new THREE.Mesh(scrollGeo, scrollMat); scroll.position.set(-.006, .038, 0); scroll.rotation.z = .24; g.add(scroll);
-        const orbMat = new THREE.MeshBasicMaterial({ color: '#ffd97d' });
+        const orbMat = new THREE.MeshBasicMaterial({ color: COL_SEALED });
         const orb = new THREE.Mesh(orbGeo, orbMat); orb.position.set(.008, .046, .004); g.add(orb);
         g.userData = { id: cap.id };
         root.add(g);
-        j = { group: g, orb, orbMat, basePos: new THREE.Vector3(), phase: idx * 1.9 };
+        j = { group: g, orb, orbMat, wasReady: false, basePos: new THREE.Vector3(), phase: idx * 1.9 };
         jars.set(cap.id, j);
       }
       const [x, y, z] = onBoard(SHELF, SLOTS[idx % SLOTS.length]);
@@ -63,10 +64,10 @@ export function makeCapsules({ world, memory, onNews = () => {} }) {
     const now = Date.now();
     for (const j of jars.values()) {
       const ready = j.cap.openAt <= now;
+      if (ready !== j.wasReady) { j.wasReady = ready; j.orbMat.color.copy(ready ? COL_READY : COL_SEALED); }
       j.orb.position.y = .044 + Math.sin(t * (ready ? 4.5 : 1.8) + j.phase) * .006;
       const s = ready ? 1.15 + Math.sin(t * 6 + j.phase) * .18 : .78 + Math.sin(t * 2 + j.phase) * .08;
       j.orb.scale.setScalar(s);
-      j.orbMat.color.set(ready ? '#ffe066' : '#a8d8ff');
       if (ready) {
         j.group.rotation.z = Math.sin(t * 10 + j.phase) * .07;
         j.group.position.y = j.basePos.y + Math.abs(Math.sin(t * 5 + j.phase)) * .008;
