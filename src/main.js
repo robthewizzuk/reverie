@@ -15,6 +15,7 @@ import { makeShow } from './show.js';
 import { makeMemory } from './memory.js';
 import { surpriseFor, briefingNote, funDay } from './daily.js';
 import { makeDiary } from './diary.js';
+import { makeRecapper } from './recap.js';
 
 const $ = s => document.querySelector(s);
 const stage = $('#stage'), canvas = $('#view'), ctx = canvas.getContext('2d');
@@ -26,6 +27,8 @@ const debug = new URLSearchParams(location.search).has('debug');
 let W = 0, H = 0, world, brain, body, voice, pad, diary, mood, show, last = 0, awake = false, captionT = 0, nextAt = 0;
 // its diary, kept in this browser (memory.js), and today's surprise (daily.js): { surprise, holding, funDay }
 const memory = makeMemory();
+// (now and then the chat is boiled down into the diary: recap.js)
+const recapper = makeRecapper({ memory });
 const today = { surprise: null, holding: null, funDay: funDay() };
 let overnight = Promise.resolve();
 // which kind of fun each of Claude's tools is, for its mood (mood.js FUN)
@@ -163,12 +166,13 @@ async function boot() {
   world.creature.cheer = mood.cheer;
   setTone(() => toneOf(mood.cheer));
   brain = makeBrain({ world, onCaption: say, onStatus: setStatus, onTiming: showTiming,
-    memo: () => memory.summary(), onHeard: text => { memory.said('you', text); mood.fun('chat'); },
+    memo: () => memory.summary(), onHeard: text => { memory.said('you', text); recapper.poke(); mood.fun('chat'); },
     onTool: (name, input, r) => { noted(name, input, r); if (!r?.error && FUN_OF[name]) mood.fun(FUN_OF[name]); },
     tools: {
       window: input => world.daylight.set(input),
       doodle: async () => { pad.show(); return 'The drawing pad is open on their screen. When they press Make it!, you will hear what they drew and it appears in your hands.'; },
       remember: async input => memory.remember(input),
+      recall: async input => memory.recall(input),
       forget: async input => { const r = memory.forget(input); brain.refreshMemo(); return r; },
       briefing: async () => { today.surprise ||= await surpriseFor(); return briefingNote(memory, { weather: await weatherHere(), surprise: today.surprise }); },
       show: input => show.open({ find: typeof input?.find === 'string' ? input.find : '' }),
@@ -179,7 +183,10 @@ async function boot() {
   world.onSay = line => { if (brain.busy || brain.speaking) return false; brain.speak(line); return true; };
   world.pad = pad;
   voice = new Listener({ onProblem: () => listeningOff(), onNote: debug ? line => { timing.textContent = 'mic: ' + line; } : null });
-  window.__reverie = { world, brain, body, gs, voice, pad, memory, diary, today, mood, show };
+  // (which games they play most, for the diary's habits)
+  const play0 = world.play.bind(world);
+  world.play = (game, o) => { memory.note('play', { game }); return play0(game, o); };
+  window.__reverie = { world, brain, body, gs, voice, pad, memory, diary, today, mood, show, recapper };
   requestAnimationFrame(frame);
   // every shader the room needs, built in the background before it wakes (the driver's own threads), so none is built
   // in the middle of a chat: a whole room's shaders built in one frame was a stall of a second or more
@@ -253,7 +260,7 @@ let lastEnd = '';
 function gameNews(text) {
   const g = world.game, key = (g?.id || '') + ':' + (g?.round ?? '');
   let end = null;
-  if (/^\[chess\]/.test(text)) end = /checkmate: they beat you/i.test(text) ? ['chess', { result: 'won' }] : /checkmate: you won/i.test(text) ? ['chess', { result: 'lost' }] : /stalemate|game is a draw/i.test(text) ? ['chess', { result: 'drawn' }] : null;
+  if (/^\[chess\]/.test(text)) { const level = g?.level; end = /checkmate: they beat you/i.test(text) ? ['chess', { result: 'won', level }] : /checkmate: you won/i.test(text) ? ['chess', { result: 'lost', level }] : /stalemate|game is a draw/i.test(text) ? ['chess', { result: 'drawn', level }] : null; }
   else if (/^\[quiz\] That was the last question/.test(text)) { const m = /scored (\d+) out of (\d+)/.exec(text); if (m) end = ['quiz', { score: +m[1], of: +m[2] }]; }
   if (!end) return;
   // (the same ending can be told twice; a new round is a new game object start)
