@@ -4,6 +4,7 @@
 import gs, { loadParts } from '../engine/src/gamescroll.js';
 import { speed, fpsFor, tick as tickHz, screenHz } from '../engine/src/kit/speed.js';
 import { makeWorld } from './world.js';
+import { makeLook } from './look.js';
 import { makeBrain } from './brain.js';
 import { makeBody } from './body.js';
 import { Listener } from './listen.js';
@@ -20,7 +21,7 @@ const $ = s => document.querySelector(s);
 const stage = $('#stage'), canvas = $('#view'), ctx = canvas.getContext('2d');
 const input = $('#say'), form = $('#bar'), mic = $('#mic'), caption = $('#caption'), status = $('#status'), wake = $('#wake'), timing = $('#timing');
 const gamebar = $('#gamebar'), gameText = $('#gamebar span'), gameButtons = $('#gamebar div');
-const draw = $('#draw'), book = $('#book'), look = $('#look');
+const draw = $('#draw'), book = $('#book'), look = $('#look'), recentre = $('#recentre');
 const debug = new URLSearchParams(location.search).has('debug');
 
 let W = 0, H = 0, world, brain, body, voice, pad, diary, mood, show, last = 0, awake = false, captionT = 0, nextAt = 0;
@@ -119,6 +120,8 @@ function frame(now) {
     const c = world.creature; c.cheer += (mood.cheer - c.cheer) * (1 - Math.exp(-dt * 1.5));   // (its body follows its mood, gently)
     brain.update();
     showGame();
+    if (recentre.hidden === looking.moved) recentre.hidden = !looking.moved;
+    canvas.classList.toggle('looking', looking.dragging);
     world.update(dt);
     world.draw(ctx);
   } catch (e) {
@@ -133,6 +136,7 @@ async function boot() {
   world = makeWorld();
   await whenLoaded(() => world.reset());
   world.resize(W, H);
+  world.look = looking;
   // a new day (and not the first ever): something it made overnight is waiting in its hands, made now while it wakes
   const visit = memory.peek();
   overnight = surpriseFor().then(async s => {
@@ -301,15 +305,22 @@ wake.addEventListener('click', wakeUp);
 look.addEventListener('click', () => { if (!show) return; wakeUp(); if (show.open) show.close(); else show.open(); });
 draw.addEventListener('click', () => { if (!pad) return; wakeUp(); if (pad.open) pad.hide(); else pad.show(); });
 book.addEventListener('click', () => { if (!diary) return; if (diary.open) diary.hide(); else diary.show(); });
-canvas.addEventListener('pointerdown', e => {
-  speed.inputAt = performance.now();
-  if (!world) return;
-  if (!awake) return wakeUp();
-  const r = canvas.getBoundingClientRect(), hit = world.tap(e.clientX - r.left, e.clientY - r.top);
-  if (hit === 'game') return;
-  if (hit === 'creature') { body.poke(); mood.fun('poke'); gs.sound.sounds.boing?.(); }
-  else if (hit === 'prop') world.toss();
+// a press on the room: a tap pokes Reverie, tosses what it holds or plays a game; a drag, pinch or scroll looks around
+// (look.js), and the button in the corner looks back at Reverie
+const looking = makeLook({
+  el: canvas,
+  onTap(x, y) {
+    if (!world) return;
+    if (!awake) return wakeUp();
+    const hit = world.tap(x, y);
+    if (hit === 'game') return;
+    if (hit === 'creature') { body.poke(); mood.fun('poke'); gs.sound.sounds.boing?.(); }
+    else if (hit === 'prop') world.toss();
+  },
+  onMove() { speed.inputAt = performance.now(); },
 });
+canvas.addEventListener('pointerdown', () => { speed.inputAt = performance.now(); });
+recentre.addEventListener('click', () => looking.recentre());
 
 // The line above the chat bar while a game is on: how it stands, and its buttons (Undo, New game, Done).
 let barKey = '';
