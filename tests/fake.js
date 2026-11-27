@@ -10,13 +10,14 @@
 //   "roll ..."        -> roll;  "quiz me" -> play quiz;  "[quiz] ..." -> a quip;  "answer b" -> game_move;  "draw" -> doodle;  "[doodle] ..." -> a quip
 //   "square <x>"      -> game_move (noughts);  "[noughts|twenty|draw and guess] ..." -> a quip;  a counted question -> "Nope!"
 //   "make me a pet fox called pip" -> pet make;  "pet sit" -> pet trick;  "[pet] ..." / "[mood] ..." -> a quip
+//   "my badges" -> badges;  "[achievement] ..." -> a cheer with a fanfare
 //   "tell me a joke" -> a line with sound cues;  "a ghost in a cave" / "helium" -> voice with an effect, echo, pitch and speed
 //   anything else     -> a friendly line with a wave
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const lastUser = messages => [...messages].reverse().find(m => m.role === 'user');
 const textOf = m => typeof m.content === 'string' ? m.content : (m.content.find(b => b.type === 'text')?.text ?? '');
 // (without the device's line at the top: where and when they are)
-const saidOf = m => textOf(m).replace(/^\[(Your diary|From the device)[^\]]*\]\n/gm, '').replace(/ \(You were interrupted[^)]*\)$/, '');
+const saidOf = m => textOf(m).replace(/^\[(Your diary|Badges they have|From the device)[^\]]*\]\n/gm, '').replace(/ \(You were interrupted[^)]*\)$/, '');
 
 function plan(body) {
   const u = lastUser(body.messages);
@@ -37,6 +38,7 @@ function plan(body) {
     if (/^Written in your diary/.test(r)) return { text: 'Got it, I will remember that.', tools: [] };
     if (/^Forgot /.test(r)) return { text: 'Poof, forgotten.', tools: [] };
     if (/^\[Their daily briefing/.test(r)) return { text: 'Here is your briefing: it is a lovely day for making things.', tools: [] };
+    if (/^(No badges yet|They have \d+ of \d+ badges)/.test(r)) return { text: 'Look at all those trophies!', tools: [] };
     if (/diary is open/i.test(r)) return { text: 'There it is, my diary.', tools: [] };
     if (/^Answered /.test(r)) return { text: 'Ooh.', tools: [] };
     if (/noughts and crosses board is set up/i.test(r)) return { text: 'Crosses, your move.', tools: [] };
@@ -52,6 +54,8 @@ function plan(body) {
   let m0;
   const said = saidOf(u).replace(/^\[[a-z ]+[,:][^\]]*\]\s*/, '').toLowerCase().replace(/^(\[(pet|mood)\][^\n]*\n+)+(?=\S)/, '');
   if (/^\[(noughts|twenty|draw and guess|quest)\]/.test(said)) return { text: /they won/.test(said) ? 'No fair!' : /you won/.test(said) ? 'Three in a row!' : /round is over/.test(said) ? 'What a round of drawings!' : /treasure chest with/.test(said) ? 'And they lived happily ever after!' : /last heart/.test(said) ? 'And the owl flew them home.' : 'Hmm, interesting.', tools: [] };
+  if (/^\[achievement\]/.test(said)) return { text: '[fanfare] Woohoo, a new badge for you!', tools: [] };
+  if (/\b(badges?|trophies|achievements?)\b/.test(said)) return { text: 'Let me look at my shelf.', tools: [['badges', {}]] };
   if (/\(they guessed it|\(they gave up/.test(said)) return { text: 'Ta-da, there it is!', tools: [] };
   if (/\(question \d+ of 20/.test(said)) return { text: 'Nope!', tools: [] };
   if (/\(the die is being thrown/.test(said)) return { text: 'Here it goes...', tools: [] };

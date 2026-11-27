@@ -493,6 +493,8 @@ export function makeWorld() {
       creature.gesture('tada'); gs.sound.sounds.pop();
       return { text: `The room's ${r.changed.join(', ')} ${r.changed.length > 1 ? 'are' : 'is'} now ${r.changed.map(k => r.colours[k]).join(', ')}. It is remembered next time.` };
     },
+    /** A little shower of sparks at a point in the room (trophies.js). */
+    sparks: (p, colour, n) => stage.sparks(p, colour, n),
     /** A burst of confetti round it, and a little hop (a birthday, a streak). */
     celebrate() {
       creature.gesture('tada'); creature.mood('excited');
