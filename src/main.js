@@ -7,17 +7,24 @@ import { makeWorld } from './world.js';
 import { makeBrain } from './brain.js';
 import { makeBody } from './body.js';
 import { Listener } from './listen.js';
-import { askPlace } from './place.js';
+import { askPlace, placeAt, weather } from './place.js';
 import { makePad, madeFrom } from './doodle.js';
+import { makeMemory } from './memory.js';
+import { surpriseFor, briefingNote, funDay } from './daily.js';
+import { makeDiary } from './diary.js';
 
 const $ = s => document.querySelector(s);
 const stage = $('#stage'), canvas = $('#view'), ctx = canvas.getContext('2d');
 const input = $('#say'), form = $('#bar'), mic = $('#mic'), caption = $('#caption'), status = $('#status'), wake = $('#wake'), timing = $('#timing');
 const gamebar = $('#gamebar'), gameText = $('#gamebar span'), gameButtons = $('#gamebar div');
-const draw = $('#draw');
+const draw = $('#draw'), book = $('#book');
 const debug = new URLSearchParams(location.search).has('debug');
 
-let W = 0, H = 0, world, brain, body, voice, pad, last = 0, awake = false, captionT = 0, nextAt = 0;
+let W = 0, H = 0, world, brain, body, voice, pad, diary, last = 0, awake = false, captionT = 0, nextAt = 0;
+// its diary, kept in this browser (memory.js), and today's surprise (daily.js): { surprise, holding, funDay }
+const memory = makeMemory();
+const today = { surprise: null, holding: null, funDay: funDay() };
+let overnight = Promise.resolve();
 
 // What the engine's speed kit is told is being played, so the 3D view paces and tunes itself as it does for a Next Gen
 // game in the app: 60 frames a second on a phone or a laptop's browser (not every refresh of a 120 Hz screen, which is
@@ -58,7 +65,7 @@ function setStatus(s) {
   status.textContent = s === 'thinking' || s === 'thinking harder' ? '' : s.startsWith('error') ? 'Something went wrong: ' + s.slice(7) : s;
   status.classList.toggle('error', s.startsWith('error'));
 }
-function say(line) { caption.textContent = line; caption.hidden = false; captionT = 4 + line.length * .06; }
+function say(line) { memory.said('me', line); caption.textContent = line; caption.hidden = false; captionT = 4 + line.length * .06; }
 function showTiming(t) {
   const ms = x => x == null ? '–' : Math.round(x - t.start) + ' ms';
   const line = `first words ${ms(t.text)} · first tool ${ms(t.tool)} · whole turn ${ms(t.end)}`;
@@ -119,15 +126,31 @@ async function boot() {
   world = makeWorld();
   await whenLoaded(() => world.reset());
   world.resize(W, H);
+  // a new day (and not the first ever): something it made overnight is waiting in its hands, made now while it wakes
+  const visit = memory.peek();
+  overnight = surpriseFor().then(async s => {
+    today.surprise = s;
+    if (!visit.newDay || visit.first) return;
+    const r = await whenLoaded(() => world.make(s.build)).catch(() => '');
+    if (world.held && /^Made/.test(r)) today.holding = world.held.short || s.build;
+  }).catch(e => console.warn('[reverie] surprise', e));
   // the drawing pad: what they draw is named on the device and made real; Reverie hears what it was
   pad = makePad({ el: $('#pad'), onOpen: () => { world.creature.mood('curious'); world.creature.gesture('point'); },
-    onDrawn: async guesses => { const news = await madeFrom(guesses, world); console.info('[reverie] ' + news); brain.notice(news, true); } });
+    onDrawn: async guesses => { const news = await madeFrom(guesses, world); console.info('[reverie] ' + news); if (world.held) memory.note('doodle', { what: world.held.short }); brain.notice(news, true); } });
+  diary = makeDiary({ el: $('#diary'), memory, today: () => today, onForget: () => brain.refreshMemo() });
   brain = makeBrain({ world, onCaption: say, onStatus: setStatus, onTiming: showTiming,
-    tools: { doodle: async () => { pad.show(); return 'The drawing pad is open on their screen. When they press Make it!, you will hear what they drew and it appears in your hands.'; } } });
+    memo: () => memory.summary(), onHeard: text => memory.said('you', text), onTool: noted,
+    tools: {
+      doodle: async () => { pad.show(); return 'The drawing pad is open on their screen. When they press Make it!, you will hear what they drew and it appears in your hands.'; },
+      remember: async input => memory.remember(input),
+      forget: async input => { const r = memory.forget(input); brain.refreshMemo(); return r; },
+      briefing: async () => { today.surprise ||= await surpriseFor(); return briefingNote(memory, { weather: await weatherHere(), surprise: today.surprise }); },
+      diary: async () => { diary.show(); return 'Your diary is open on their screen: everything you remember about them, and a way to forget any of it.'; },
+    } });
   body = makeBody({ creature: world.creature, world });
-  world.onNews = (text, loud) => brain.notice(text, loud);
+  world.onNews = (text, loud) => { gameNews(text); brain.notice(text, loud); };
   voice = new Listener({ onProblem: () => listeningOff(), onNote: debug ? line => { timing.textContent = 'mic: ' + line; } : null });
-  window.__reverie = { world, brain, body, gs, voice, pad };
+  window.__reverie = { world, brain, body, gs, voice, pad, memory, diary, today };
   requestAnimationFrame(frame);
   // every shader the room needs, built in the background before it wakes (the driver's own threads), so none is built
   // in the middle of a chat: a whole room's shaders built in one frame was a stall of a second or more
@@ -147,11 +170,58 @@ const HELLOS = [
 
 function wakeUp() {
   if (awake) return; awake = true; wake.hidden = true;
-  const c = world.creature;
+  const c = world.creature, visit = memory.visit();
   c.gesture('wave'); c.mood('happy');
-  brain.speak(HELLOS[Math.floor(Math.random() * HELLOS.length)]);   // (through its speaker, so the mic knows this is its voice)
+  // (through its speaker, so the mic knows this is its voice): the tour the first time, after that a hello by name
+  brain.speak(visit.first ? HELLOS[Math.floor(Math.random() * HELLOS.length)] : welcome(visit));
+  if (memory.birthdayToday() || [7, 30, 100].includes(memory.visits.streak) && visit.newDay) world.celebrate?.();
   // the browser's prompts, from this tap: the microphone, then where they are (for the weather and local things)
-  startListening().finally(() => askPlace());
+  const asked = startListening().finally(() => askPlace());
+  if (visit.newDay && !visit.first) dailyBriefing(visit, asked).catch(e => console.warn('[reverie] briefing', e));
+}
+
+/** Its hello on a later visit: by name if it knows it, for the time of day, and a hint of the surprise on a new day. */
+function welcome(visit) {
+  const n = memory.name ? ', ' + memory.name : '', h = new Date().getHours();
+  if (memory.birthdayToday()) return `Happy birthday${n}! Oh, this is the best day!`;
+  const hi = h < 5 ? `Ooh, a midnight visit${n}!` : h < 12 ? `Good morning${n}!` : h < 17 ? `Good afternoon${n}!` : h < 22 ? `Good evening${n}!` : `Hello, night owl${n}!`;
+  if (!visit.newDay) return [`Welcome back${n}!`, `Oh, you're back${n}!`, `Hello again${n}!`][Math.floor(Math.random() * 3)];
+  return hi + (visit.away > 6 ? " I've missed you!" : '') + (today.holding ? ' Look what I made while you were away!' : " I've got something for you.");
+}
+
+const weatherHere = async () => placeAt() ? weather('').catch(() => null) : null;
+const wait = ms => new Promise(r => setTimeout(r, ms));
+
+/** The first visit of a day: the briefing, said by Claude after its hello (with the weather once the place is known). */
+async function dailyBriefing(visit, asked) {
+  await Promise.race([Promise.all([overnight, asked]), wait(7000)]);
+  const wx = await Promise.race([weatherHere(), wait(4000).then(() => null)]);
+  if (!today.surprise) return;
+  for (let i = 0; i < 40 && brain.busy; i++) await wait(500);   // (they got talking first: after that turn)
+  memory.once('surprise');
+  memory.note('day', { line: today.holding ? `found ${today.holding} waiting, and ${today.surprise.show}` : `the day's surprise was ${today.surprise.show}` });
+  brain.hear(briefingNote(memory, { weather: wx, surprise: today.surprise, firstToday: true, holding: today.holding, visit }), { at: performance.now(), news: true, keep: true });
+}
+
+/** A tool Claude used, for the records: things it made, and dice. */
+function noted(name, input, r) {
+  if (r?.error) return;
+  if ((name === 'make' || name === 'change') && /^(Made|Changed)/.test(r.text) && world.held) memory.note('made', { what: world.held.short || input.words });
+  else if (name === 'roll') memory.note('roll');
+}
+
+/** How a game ended, from its news (games/index.js), for the records: once a game. */
+let lastEnd = '';
+function gameNews(text) {
+  const g = world.game, key = (g?.id || '') + ':' + (g?.round ?? '');
+  let end = null;
+  if (/^\[chess\]/.test(text)) end = /checkmate: they beat you/i.test(text) ? ['chess', { result: 'won' }] : /checkmate: you won/i.test(text) ? ['chess', { result: 'lost' }] : /stalemate|game is a draw/i.test(text) ? ['chess', { result: 'drawn' }] : null;
+  else if (/^\[quiz\] That was the last question/.test(text)) { const m = /scored (\d+) out of (\d+)/.exec(text); if (m) end = ['quiz', { score: +m[1], of: +m[2] }]; }
+  if (!end) return;
+  // (the same ending can be told twice; a new round is a new game object start)
+  const id = end[0] + JSON.stringify(end[1]) + key + Math.floor(performance.now() / 15000);
+  if (id === lastEnd) return; lastEnd = id;
+  memory.note(...end);
 }
 
 async function startListening() {
@@ -191,6 +261,7 @@ mic.addEventListener('click', async () => {
 });
 wake.addEventListener('click', wakeUp);
 draw.addEventListener('click', () => { if (!pad) return; wakeUp(); if (pad.open) pad.hide(); else pad.show(); });
+book.addEventListener('click', () => { if (!diary) return; if (diary.open) diary.hide(); else diary.show(); });
 canvas.addEventListener('pointerdown', e => {
   speed.inputAt = performance.now();
   if (!world) return;
