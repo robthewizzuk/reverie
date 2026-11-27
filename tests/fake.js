@@ -16,6 +16,7 @@
 //   "new word" -> teach word;  "test me" -> teach quiz;  "[lesson] ..." -> a quip;  "end the lesson" -> teach end
 //   "set a timer for <n> seconds|minutes [for <x>]" / "remind me at <time> to <x>" / "cancel the <x>" / "snooze it" /
 //   "what reminders" -> reminder;  "[reminder|timer] ..." -> a line saying so
+//   "find me <x>[ under £n]" -> shop find;  "[shop] ..." -> a quip;  "buy number <n>" / "buy it" -> shop buy;  "show my shopping" -> shop show
 //   "tell me a joke" -> a line with sound cues;  "a ghost in a cave" / "helium" -> voice with an effect, echo, pitch and speed
 //   "what's on today" -> calendar list;  "add <x> tomorrow at <h>" -> calendar add;  "check my email" -> email inbox
 //   "reply to sam ..." -> email draft;  "send it" -> email send;  "[calendar|email|google] ..." -> a quip
@@ -41,10 +42,13 @@ function plan(body) {
     if (/^Threw |^Rolled /.test(r)) return { text: 'There we go!', tools: [] };
     if (/camera window is open/i.test(r)) return { text: 'Go on, show me something!', tools: [] };
     if (/drawing pad is open/i.test(r)) return { text: 'Go on, draw me something!', tools: [] };
+    if (/shopping helper has gone off/.test(r)) return { text: 'Off it goes, shopping!', tools: [] };
     if (/^Made .*as your pet|does |is now called|gone off/.test(r)) return { text: 'Aww, look at it!', tools: [] };
     if (/^Sent \w+ (off|back out)/.test(r)) return { text: 'Off it goes!', tools: [] };
     if (/^Not sent/.test(r)) return { text: 'Hmm, my helpers are busy.', tools: [] };
     if (/ is (searching|reading|getting started|thinking|writing)| finished| was called back|full report/.test(r)) return { text: 'Let me see, my helpers are busy bees.', tools: [] };
+    if (/^A confirm button/.test(r)) return { text: 'Tap the button to finish on their site. I can never pay for you.', tools: [] };
+    if (/^The cards are back/.test(r)) return { text: 'There they are again.', tools: [] };
     if (/^Written in your diary/.test(r)) return { text: 'Got it, I will remember that.', tools: [] };
     if (/^Forgot /.test(r)) return { text: 'Poof, forgotten.', tools: [] };
     if (/^\[Their daily briefing/.test(r)) return { text: 'Here is your briefing: it is a lovely day for making things.', tools: [] };
@@ -104,6 +108,10 @@ function plan(body) {
   if (/^\[helper\]/.test(said)) return { text: /without an answer/.test(said) ? 'Aw, my helper came back empty-handed.' : 'My helper is back! The short answer is yes.', tools: [] };
   if ((m0 = /^(?:send a helper to|look into|find out) (.+)/.exec(said))) return { text: "I'll send Pip off to find out!", tools: [['send_helper', { name: 'Pip', task: m0[1] }]] };
   if (/how are my helpers|what are my helpers/.test(said)) return { text: 'Let me check.', tools: [['helpers', { action: 'status' }]] };
+  if (/^\[shop\]/.test(said)) return { text: /is back with/.test(said) ? 'Number one is the cheapest, and number two is my pick!' : 'Okay!', tools: [] };
+  if ((m0 = /^find me (.+?)(?: under £?(\d+))?$/.exec(said))) return { text: 'Ooh, shopping! Let me send a helper.', tools: [['shop', { action: 'find', query: m0[1], ...(m0[2] ? { budget: +m0[2] } : {}) }]] };
+  if ((m0 = /^buy (?:number (\d)|it)/.exec(said))) return { text: 'Good choice.', tools: [['shop', { action: 'buy', ...(m0[1] ? { pick: +m0[1] } : {}) }]] };
+  if (/^show my shopping/.test(said)) return { text: 'Here you go.', tools: [['shop', { action: 'show' }]] };
   if (/^\[doodle\]/.test(said)) return { text: 'What a lovely drawing!', tools: [] };
   if (/^\[a new day/.test(said)) return { text: /in your hands now/.test(said) ? 'Good morning! I made you something overnight. Here is your briefing, and a puzzle.' : 'Good morning! Here is your briefing.', tools: [] };
   if ((m0 = /my name is (\w+)/.exec(said))) return { text: `Lovely to meet you, ${m0[1]}!`, tools: [['remember', { name: m0[1][0].toUpperCase() + m0[1].slice(1) }]] };
@@ -201,4 +209,24 @@ export async function fakeRecap(request) {
   }
   const theirs = b.lines.filter(l => l.who === 'you').map(l => l.text);
   return new Response(JSON.stringify({ recap: theirs.length ? `We chatted about ${theirs.slice(0, 2).join(' and ').slice(0, 80)}.` : '', add, update: [], drop: [], name: '' }), { headers: { 'content-type': 'application/json' } });
+}
+
+/** A scripted shopping helper (POST /api/shop): a little progress, then three offers on made-up shop pages. */
+export async function fakeShop(request) {
+  const body = await request.json(), enc = new TextEncoder();
+  const q = String(body.query || 'a thing');
+  const stream = new ReadableStream({
+    async start(ctl) {
+      const send = o => ctl.enqueue(enc.encode(`data: ${JSON.stringify(o)}\n\n`));
+      send({ type: 'progress', text: `Searching: ${q} UK price` }); await wait(400);
+      send({ type: 'progress', text: 'Looking at shop-one.example' }); await wait(400);
+      send({ type: 'done', result: { query: q, summary: 'Three shops have it; the second is the best value with free delivery.', kind: 'headphones', best: 2, dropped: 0, ms: 800, offers: [
+        { name: `${q} (black)`, retailer: 'Shop One', price: 44.99, was: 59.99, url: 'https://shop-one.example/p/123', site: 'shop-one.example', exact: true, stock: 'in stock', delivery: '£3.95', note: '4.5 stars' },
+        { name: `${q} (black)`, retailer: 'Shop Two', price: 47.5, url: 'https://shop-two.example/item/9', site: 'shop-two.example', exact: true, stock: 'in stock', delivery: 'free', note: '' },
+        { name: `${q} (white)`, retailer: 'Shop Three', price: 52, url: 'https://shop-three.example/x', site: 'shop-three.example', exact: true, stock: 'low stock', delivery: 'click and collect', note: '' },
+      ] } });
+      ctl.close();
+    },
+  });
+  return new Response(stream, { headers: { 'content-type': 'text/event-stream' } });
 }

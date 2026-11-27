@@ -9,10 +9,11 @@ import { Readable } from 'node:stream';
 import { handleTurn, handleWarm } from './turn.js';
 import { handleRecap } from './recap.js';
 import { handleGoogle } from './google.js';
-import { fakeTurn, fakeRecap } from '../tests/fake.js';
+import { fakeTurn, fakeRecap, fakeShop } from '../tests/fake.js';
 import { fakeGoogle } from '../tests/fake-google.js';
 import { handleHelpers } from './helpers.js';
 import { fakeHelpers } from '../tests/fake-helpers.js';
+import { handleShop } from './shop.js';
 
 export function reverieApi(env) {
   const fake = env.REVERIE_FAKE === '1' && !env.GOOGLE_CLIENT_ID ? fakeGoogle() : null;
@@ -24,8 +25,8 @@ export function reverieApi(env) {
         // (push for reminders runs on the Worker only: here the page keeps them while it is open)
         if ((req.url || '').startsWith('/api/push')) { res.statusCode = 404; res.setHeader('content-type', 'application/json'); return res.end('{"error":"push runs on the Worker only"}'); }
         const path = req.url || '', google = path.startsWith('/api/google/');
-        const warm = path.startsWith('/api/warm'), recap = path.startsWith('/api/recap'), helpers = path.startsWith('/api/helpers');
-        if (!path.startsWith('/api/turn') && !google && !warm && !helpers && !recap) return next();
+        const warm = path.startsWith('/api/warm'), recap = path.startsWith('/api/recap'), helpers = path.startsWith('/api/helpers'), shop = path.startsWith('/api/shop');
+        if (!path.startsWith('/api/turn') && !google && !warm && !helpers && !recap && !shop) return next();
         const ac = new AbortController();
         res.on('close', () => { if (!res.writableEnded) ac.abort(); });
         const chunks = []; for await (const c of req) chunks.push(c);
@@ -39,6 +40,7 @@ export function reverieApi(env) {
           : google ? await handleGoogle(request, googleEnv, fake ? { fetch: fake.fetch, authUrl: `http://${req.headers.host}/api/google/fake_consent` } : {}) ?? new Response('Not found', { status: 404 })
           : warm ? (env.REVERIE_FAKE === '1' ? Response.json({ ok: true, fake: true }) : await handleWarm(request, env))
           : helpers ? (env.REVERIE_FAKE === '1' ? await fakeHelpers(request) : await handleHelpers(request, env))
+          : shop ? (env.REVERIE_FAKE === '1' ? await fakeShop(request) : await handleShop(request, env))
           : recap ? (env.REVERIE_FAKE === '1' ? await fakeRecap(request) : await handleRecap(request, env))
           : env.REVERIE_FAKE === '1' ? await fakeTurn(request) : await handleTurn(request, env);
         res.statusCode = response.status;
