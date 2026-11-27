@@ -9,6 +9,8 @@ import { makeBody } from './body.js';
 import { Listener } from './listen.js';
 import { askPlace, placeAt, weather } from './place.js';
 import { makePad, madeFrom } from './doodle.js';
+import { makeMood, toneOf } from './mood.js';
+import { setTone } from './looks.js';
 import { makeShow } from './show.js';
 import { makeMemory } from './memory.js';
 import { surpriseFor, briefingNote, funDay } from './daily.js';
@@ -21,11 +23,13 @@ const gamebar = $('#gamebar'), gameText = $('#gamebar span'), gameButtons = $('#
 const draw = $('#draw'), book = $('#book'), look = $('#look');
 const debug = new URLSearchParams(location.search).has('debug');
 
-let W = 0, H = 0, world, brain, body, voice, pad, diary, show, last = 0, awake = false, captionT = 0, nextAt = 0;
+let W = 0, H = 0, world, brain, body, voice, pad, diary, mood, show, last = 0, awake = false, captionT = 0, nextAt = 0;
 // its diary, kept in this browser (memory.js), and today's surprise (daily.js): { surprise, holding, funDay }
 const memory = makeMemory();
 const today = { surprise: null, holding: null, funDay: funDay() };
 let overnight = Promise.resolve();
+// which kind of fun each of Claude's tools is, for its mood (mood.js FUN)
+const FUN_OF = { make: 'make', change: 'change', toss: 'toss', place: 'place', room_colours: 'room', colours: 'colours', roll: 'roll', doodle: 'doodle', play: 'game', game_move: 'move', voice: 'voice', show: 'show' };
 
 // What the engine's speed kit is told is being played, so the 3D view paces and tunes itself as it does for a Next Gen
 // game in the app: 60 frames a second on a phone or a laptop's browser (not every refresh of a 120 Hz screen, which is
@@ -111,6 +115,8 @@ function frame(now) {
     }
     captionT -= dt; if (captionT < 0 && !brain?.speaking) caption.hidden = true;
     if (awake) body.update(dt);
+    mood.update(dt);
+    const c = world.creature; c.cheer += (mood.cheer - c.cheer) * (1 - Math.exp(-dt * 1.5));   // (its body follows its mood, gently)
     brain.update();
     showGame();
     world.update(dt);
@@ -146,8 +152,19 @@ async function boot() {
       if (now) { brain.interrupt('shown something'); brain.hear(text, { at: performance.now(), news: true, image }); } else brain.notice(text, loud, image);
     } });
   diary = makeDiary({ el: $('#diary'), memory, today: () => today, onForget: () => brain.refreshMemo() });
+  // its mood: lifted by play, shown in its body, glow and voice, and told to Claude; a level up is a little burst of hearts
+  mood = makeMood({ onLevel: (level, up) => {
+    console.info(`[reverie] mood: ${level}`);
+    if (!up) return;
+    const c = world.creature, at = c.coreAt(new gs.hd.THREE.Vector3());
+    world.floaties.burst({ x: at.x, y: at.y + .3, z: at.z }, { n: 6 }); gs.sound.sounds.heart?.(); if (!c.busy) c.gesture('bounce');
+  } });
+  world.mood = mood; world.addLine(() => mood.line());
+  world.creature.cheer = mood.cheer;
+  setTone(() => toneOf(mood.cheer));
   brain = makeBrain({ world, onCaption: say, onStatus: setStatus, onTiming: showTiming,
-    memo: () => memory.summary(), onHeard: text => memory.said('you', text), onTool: noted,
+    memo: () => memory.summary(), onHeard: text => { memory.said('you', text); mood.fun('chat'); },
+    onTool: (name, input, r) => { noted(name, input, r); if (!r?.error && FUN_OF[name]) mood.fun(FUN_OF[name]); },
     tools: {
       window: input => world.daylight.set(input),
       doodle: async () => { pad.show(); return 'The drawing pad is open on their screen. When they press Make it!, you will hear what they drew and it appears in your hands.'; },
@@ -157,12 +174,12 @@ async function boot() {
       show: input => show.open({ find: typeof input?.find === 'string' ? input.find : '' }),
       diary: async () => { diary.show(); return 'Your diary is open on their screen: everything you remember about them, and a way to forget any of it.'; },
     } });
-  body = makeBody({ creature: world.creature, world });
-  world.onNews = (text, loud) => { gameNews(text); brain.notice(text, loud); };
+  body = makeBody({ creature: world.creature, world, mood });
+  world.onNews = (text, loud) => { gameNews(text); if (/^\[(chess|quiz|noughts|twenty|draw and guess|quest)/.test(text)) mood.fun(/checkmate|you win|you won|they won|last question|well played|right!|guessed it|treasure/i.test(text) ? 'win' : 'move'); brain.notice(text, loud); };
   world.onSay = line => { if (brain.busy || brain.speaking) return false; brain.speak(line); return true; };
   world.pad = pad;
   voice = new Listener({ onProblem: () => listeningOff(), onNote: debug ? line => { timing.textContent = 'mic: ' + line; } : null });
-  window.__reverie = { world, brain, body, gs, voice, pad, memory, diary, today, show };
+  window.__reverie = { world, brain, body, gs, voice, pad, memory, diary, today, mood, show };
   requestAnimationFrame(frame);
   // every shader the room needs, built in the background before it wakes (the driver's own threads), so none is built
   // in the middle of a chat: a whole room's shaders built in one frame was a stall of a second or more
@@ -184,6 +201,14 @@ function wakeUp() {
   if (awake) return; awake = true; wake.hidden = true;
   const c = world.creature, visit = memory.visit();
   c.gesture('wave'); c.mood('happy');
+  // back after a long while: it missed them (Claude hears it with the first thing they say), and the pet runs to say hello
+  if (mood.missed) {
+    const d = mood.missed >= 36 ? `${Math.round(mood.missed / 24)} days` : `${Math.round(mood.missed)} hours`;
+    brain.notice(`[mood] They are back after ${d} away. You missed them and are really glad to see them.`);
+    world.floaties.burst({ x: 0, y: .75, z: .1 }, { n: 7 });
+  }
+  mood.fun('chat');
+  world.keeper?.greet();
   world.daylight.sound(true);   // (the rain's patter, now the page may make sound)
   // (through its speaker, so the mic knows this is its voice): the tour the first time, after that a hello by name
   brain.speak(visit.first ? HELLOS[Math.floor(Math.random() * HELLOS.length)] : welcome(visit));
@@ -282,7 +307,7 @@ canvas.addEventListener('pointerdown', e => {
   if (!awake) return wakeUp();
   const r = canvas.getBoundingClientRect(), hit = world.tap(e.clientX - r.left, e.clientY - r.top);
   if (hit === 'game') return;
-  if (hit === 'creature') { body.poke(); gs.sound.sounds.boing?.(); }
+  if (hit === 'creature') { body.poke(); mood.fun('poke'); gs.sound.sounds.boing?.(); }
   else if (hit === 'prop') world.toss();
 });
 

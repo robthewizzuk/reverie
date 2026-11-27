@@ -9,6 +9,7 @@
 //   "show me something" / "show find a cup" -> show;  "[show] ..." -> a quip (a copy: place on the shelf)
 //   "roll ..."        -> roll;  "quiz me" -> play quiz;  "[quiz] ..." -> a quip;  "answer b" -> game_move;  "draw" -> doodle;  "[doodle] ..." -> a quip
 //   "square <x>"      -> game_move (noughts);  "[noughts|twenty|draw and guess] ..." -> a quip;  a counted question -> "Nope!"
+//   "make me a pet fox called pip" -> pet make;  "pet sit" -> pet trick;  "[pet] ..." / "[mood] ..." -> a quip
 //   anything else     -> a friendly line with a wave
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const lastUser = messages => [...messages].reverse().find(m => m.role === 'user');
@@ -31,6 +32,7 @@ function plan(body) {
     if (/^Threw |^Rolled /.test(r)) return { text: 'There we go!', tools: [] };
     if (/camera window is open/i.test(r)) return { text: 'Go on, show me something!', tools: [] };
     if (/drawing pad is open/i.test(r)) return { text: 'Go on, draw me something!', tools: [] };
+    if (/^Made .*as your pet|does |is now called|gone off/.test(r)) return { text: 'Aww, look at it!', tools: [] };
     if (/^Written in your diary/.test(r)) return { text: 'Got it, I will remember that.', tools: [] };
     if (/^Forgot /.test(r)) return { text: 'Poof, forgotten.', tools: [] };
     if (/^\[Their daily briefing/.test(r)) return { text: 'Here is your briefing: it is a lovely day for making things.', tools: [] };
@@ -47,7 +49,7 @@ function plan(body) {
     return { text: /fail|could not|nothing/i.test(r) ? 'Hmm, that one fizzled.' : 'Ta-da!', tools: [] };
   }
   let m0;
-  const said = saidOf(u).replace(/^\[[a-z ]+[,:][^\]]*\]\s*/, '').toLowerCase();
+  const said = saidOf(u).replace(/^\[[a-z ]+[,:][^\]]*\]\s*/, '').toLowerCase().replace(/^(\[(pet|mood)\][^\n]*\n+)+(?=\S)/, '');
   if (/^\[(noughts|twenty|draw and guess|quest)\]/.test(said)) return { text: /they won/.test(said) ? 'No fair!' : /you won/.test(said) ? 'Three in a row!' : /round is over/.test(said) ? 'What a round of drawings!' : /treasure chest with/.test(said) ? 'And they lived happily ever after!' : /last heart/.test(said) ? 'And the owl flew them home.' : 'Hmm, interesting.', tools: [] };
   if (/\(they guessed it|\(they gave up/.test(said)) return { text: 'Ta-da, there it is!', tools: [] };
   if (/\(question \d+ of 20/.test(said)) return { text: 'Nope!', tools: [] };
@@ -75,6 +77,8 @@ function plan(body) {
   if ((m = /^roll (.+)/.exec(said))) return { text: 'Rolling!', tools: [['roll', { dice: m[1].replace(/^(a|the) /, '') }]] };
   if (/^draw/.test(said)) return { text: 'Ooh, a drawing!', tools: [['doodle', {}]] };
   if ((m = /^move (?!the )(\S+)/.exec(said))) return { text: 'Ooh.', tools: [['game_move', { move: m[1] }]] };
+  if ((m = /(?:get|make) (?:me )?an? (?:pet )?(\w+)(?: called (\w+))?/.exec(said)) && /pet|called/.test(said)) return { text: 'A pet! Hold on.', tools: [['pet', { action: 'make', animal: m[1], ...(m[2] ? { name: m[2] } : {}) }]] };
+  if ((m = /^pet (sit|jump|spin|come|sleep|play_dead|zoomies|dance)/.exec(said))) return { text: 'Watch this.', tools: [['pet', { action: 'trick', trick: m[1] }]] };
   const SPOT = /(by the window|on the windowsill|on the workbench|on the shelf|on the rug|left of you|right of you|in front of you|back left corner|by the barrel|front left|front right|your hands|away)/;
   if ((m = /make (?:me )?(an? .+?) and put it (.+)/.exec(said))) return { text: 'Coming right up, and I know just where.', tools: [['place', { item: m[1], spot: SPOT.exec(m[2])?.[1] || m[2] }]] };
   if ((m = /^put it (.+)/.exec(said))) return { text: 'Hup, over we go.', tools: [['place', { item: 'it', spot: SPOT.exec(m[1])?.[1] || m[1] }]] };
@@ -92,6 +96,7 @@ function plan(body) {
   if (/weather|rain|sunny/.test(said)) return { text: 'Let me peek outside.', tools: [['weather', {}]] };
   if (/clear|tidy/.test(said)) return { text: 'Poof, all gone.', tools: [['clear', {}]] };
   if (/think|why|how does/.test(said)) return { text: 'Ooh, let me think about that one.', tools: [['think_harder', {}]] };
+  if (/^\[(pet|mood)\]/.test(said)) return { text: 'Aww.', tools: [] };
   return { text: 'Hello! I am a little test version of me. Ask me to make you something.', tools: [['act', { gesture: 'wave', mood: 'happy' }]] };
 }
 

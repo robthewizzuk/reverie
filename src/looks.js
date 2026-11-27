@@ -53,12 +53,18 @@ function tidyVoice(input, base) {
 // engine maps each spoken word back to the written one, so the mouth stays in step ("Reverie's" is covered too).
 export const SAY_AS = { Reverie: 'rev uh ree' };
 
-/** The options for gs.sound.say / prepare, for the voice it has now. */
+// its mood's share of the voice (mood.js toneOf): { lively, size, mood } added to the voice it chose, or null
+let tone = () => null;
+/** Who says how its mood colours its voice: a function returning { lively, size, mood } (mood.js toneOf). */
+export function setTone(fn) { tone = fn || (() => null); }
+
+/** The options for gs.sound.say / prepare, for the voice it has now (and the mood it is in). */
 export function sayOptions() {
-  const v = now.voice;
+  const v = now.voice, t = tone() || {};
   // (a voice by name: the fragment is its name as the engine lists it, "Jule (built in", so "jule" never finds "jules")
   const voice = v.name ? { like: [v.name.replace(/_/g, ' ') + ' (built in'] } : { kind: 'woman', lang: ['en-GB'], take: 2 };
-  return { voice, respell: SAY_AS, size: v.size, lively: v.lively, ...(v.effect !== 'none' ? { fx: v.effect } : {}) };
+  const size = Math.max(.7, Math.min(1.4, v.size * (t.size ?? 1))), lively = Math.max(0, Math.min(1, v.lively + (t.lively ?? 0)));
+  return { voice, respell: SAY_AS, size: +size.toFixed(3), lively: +lively.toFixed(3), ...(t.mood ? { mood: t.mood } : {}), ...(v.effect !== 'none' ? { fx: v.effect } : {}) };
 }
 
 /** A sentence saying what a voice is, for Claude. */
