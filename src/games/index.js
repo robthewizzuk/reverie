@@ -29,6 +29,7 @@ import { makeNoughts } from './noughts.js';
 import { makeTwenty } from './twenty.js';
 import { makeDraw } from './draw.js';
 import { makeQuest } from './quest.js';
+import { makeLesson } from './lesson.js';
 
 export const GAMES = {
   chess: { title: 'Chess', tag: 'chess', make: makeChess },
@@ -37,4 +38,6 @@ export const GAMES = {
   twenty: { title: 'Twenty Questions', tag: 'twenty', make: makeTwenty },
   draw_and_guess: { title: 'Draw and Guess', tag: 'draw and guess', make: makeDraw },
   quest: { title: 'Dice Quest', tag: 'quest', make: makeQuest },
+  // (a lesson is started by the teach tool, with its topic, not by play)
+  lesson: { title: 'Lesson', tag: 'lesson', make: makeLesson },
 };

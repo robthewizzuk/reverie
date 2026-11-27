@@ -12,6 +12,8 @@
 //   "make me a pet fox called pip" -> pet make;  "pet sit" -> pet trick;  "[pet] ..." / "[mood] ..." -> a quip
 //   "dance" -> dance;  "stop dancing" -> dance stop;  "play music <x>" -> music play;  "pause the music" -> music pause
 //   "send a helper to <x>" / "look into <x>" -> send_helper;  "how are my helpers" -> helpers;  "[helper] ..." -> retells it
+//   "teach me about <x>" / "teach me <language>" -> teach start;  "board" -> teach board (with a picture prop);
+//   "new word" -> teach word;  "test me" -> teach quiz;  "[lesson] ..." -> a quip;  "end the lesson" -> teach end
 //   "tell me a joke" -> a line with sound cues;  "a ghost in a cave" / "helium" -> voice with an effect, echo, pitch and speed
 //   "what's on today" -> calendar list;  "add <x> tomorrow at <h>" -> calendar add;  "check my email" -> email inbox
 //   "reply to sam ..." -> email draft;  "send it" -> email send;  "[calendar|email|google] ..." -> a quip
@@ -20,7 +22,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const lastUser = messages => [...messages].reverse().find(m => m.role === 'user');
 const textOf = m => typeof m.content === 'string' ? m.content : (m.content.find(b => b.type === 'text')?.text ?? '');
 // (without the device's line at the top: where and when they are)
-const saidOf = m => textOf(m).replace(/^\[(Your diary|From the device)[^\]]*\]\n/gm, '').replace(/ \(You were interrupted[^)]*\)$/, '');
+const saidOf = m => textOf(m).replace(/^\[(Your diary|Learning together|From the device)[^\]]*\]\n/gm, '').replace(/ \(You were interrupted[^)]*\)$/, '');
 
 function plan(body) {
   const u = lastUser(body.messages);
@@ -52,6 +54,9 @@ function plan(body) {
     if (/newest first:/.test(r)) return { text: /Sam/.test(r) ? 'Sam wants to know if you are still up for Saturday.' : 'A few new emails.', tools: [] };
     if (/^Drafted, and saved/.test(r)) return { text: 'I wrote it in your drafts. Shall I send it?', tools: [] };
     if (/connected their Google account yet/.test(r)) return { text: 'Tap Connect on your screen first.', tools: [] };
+    if (/chalkboard is up/.test(r)) return { text: "Class is in session! Let's start with the big picture.", tools: [] };
+    if (/^Written on the board|is on the board|^The question is on the board/.test(r)) return { text: 'Have a look at that.', tools: [] };
+    if (/^The lesson is over/.test(r)) return { text: 'Gold star for you!', tools: [] };
     if (/^Answered /.test(r)) return { text: 'Ooh.', tools: [] };
     if (/^You (are|stopped|were not) danc/.test(r) || /^(Playing|Paused|Skipped)|Spotify/.test(r)) return { text: 'Wheee!', tools: [] };
     if (/noughts and crosses board is set up/i.test(r)) return { text: 'Crosses, your move.', tools: [] };
@@ -72,6 +77,14 @@ function plan(body) {
   if (/\(the die is being thrown/.test(said)) return { text: 'Here it goes...', tools: [] };
   if (/^\[chess\]/.test(said)) return { text: /taking your/.test(said) ? 'Hey! I needed that.' : /checkmate/.test(said) ? 'Good game!' : 'Hmm, interesting.', tools: [] };
   if (/^\[quiz\]/.test(said)) return { text: /: right!/.test(said) ? 'Correct, you clever thing!' : /last question/.test(said) ? 'What a round!' : 'Ooh, so close.', tools: [] };
+  if (/^\[lesson\]/.test(said)) return { text: /answered the quiz question right/.test(said) ? 'Yes! Spot on.' : 'Not quite, but close!', tools: [] };
+  if ((m0 = /^teach me (?:about )?(spanish|french|german|italian|japanese)(?: (?:food|words))?/.exec(said))) return { text: '¡Hola! Let us learn some words.', tools: [['teach', { action: 'start', language: m0[1][0].toUpperCase() + m0[1].slice(1), topic: 'food', level: 'beginner' }]] };
+  if ((m0 = /^teach me (?:about )?(.+)/.exec(said))) return { text: 'Ooh, I love this one.', tools: [['teach', { action: 'start', topic: m0[1] }]] };
+  if (/^board/.test(said)) return { text: 'Right, here is how it works.', tools: [['teach', { action: 'board', title: 'How a volcano erupts', lines: ['Hot rock melts deep down', 'It rises because it is light', 'Pressure builds up', 'Boom: lava comes out!'], emoji: '🌋', picture: 'a volcano' }]] };
+  if (/^new word/.test(said)) return { text: 'Here is a tasty one.', tools: [['teach', { action: 'word', word: 'la manzana', meaning: 'the apple', sounds_like: 'lah man-THAH-nah', example: 'Me gusta la manzana: I like the apple' }]] };
+  if (/^test me on the word/.test(said)) return { text: 'Quick one!', tools: [['teach', { action: 'quiz', question: 'What does la manzana mean?', choices: ['the bread', 'the apple', 'the cheese'], answer: 1, word: 'la manzana' }]] };
+  if (/^test me/.test(said)) return { text: 'Pop quiz!', tools: [['teach', { action: 'quiz', question: 'What comes out of a volcano?', choices: ['Lava', 'Water', 'Ice cream', 'Sand'], answer: 0 }]] };
+  if (/^end the lesson/.test(said)) return { text: 'What a lesson!', tools: [['teach', { action: 'end', learned: ['magma rises because it is light', 'pressure makes it erupt'], next: 'kinds of volcano' }]] };
   if (/^\[show\]/.test(said)) return /want a 3d copy/.test(said) ? { text: 'Ooh, one for the shelf!', tools: [['place', { item: 'a yellow rubber duck', spot: 'on the shelf' }]] }
     : { text: /surprise hatched/.test(said) ? 'A surprise, from a barcode!' : /photo is attached/.test(said) ? 'Ooh, what a lovely thing.' : 'Ha!', tools: [] };
   const sm = /^(?:show|look)(?: at)?(?: me)?(?: something)?(?: find (?:me )?(.+))?$/.exec(said);

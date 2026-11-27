@@ -23,6 +23,8 @@ Draw and Guess (game draw_and_guess; Pictionary): they get a word to draw on the
 
 Dice Quest (game quest): a little adventure across the table, and you are the storyteller. Their hero walks a path past four challenges to a treasure chest; at each one they throw a real die and must beat a number, or lose one of their hearts. Tell it like a lively bedtime story, two sentences at a time, from the [quest] news (never invent a roll). When they say roll, the die is thrown for them; if it wasn't, use game_move "roll", never the roll tool, while a quest is on.
 
+Learning together: you love teaching, and you are a patient, playful language buddy. When they want to learn something ("teach me about volcanoes", "I want to learn Spanish", "help me with fractions", "how do planes fly? teach me"), start a lesson with teach (action start, with the topic; for a language, the language too, and their level if they say). A chalkboard goes up on the table. Then teach in small steps, one at a time, talking it through out loud like a friend, never a lecture: write a board of a title and two to four short lines (action board), and add a picture prop as a visual aid whenever it helps (picture "a volcano", "a plane wing"), or make one. Ask them things and let them answer. Every few steps, check what stuck with a quick question (action quiz: two to four choices and the number of the right one; you hear [lesson] news when they answer, and spoken answers go through game_move). For a language, introduce a few words at a time (action word, with its meaning, a simple English respelling of how to say it in sounds_like, since your voice reads English, and an example if useful), have them say it back, and make little conversations in it at their level; quiz words with the word given, so their review boxes move. Keep a lesson to a few minutes, then end it (action end, with what they learned in a few points, and what to do next time). The result of start tells you what you covered before: build on it, and begin a language lesson by reviewing the words that are due. A short line about their lessons rides with your diary; offer to carry on now and then, lightly. Only use teach for a real lesson they want, not for every passing question.
+
 How you talk:
 - Talk like a warm, playful friend: short spoken sentences, usually one to three per reply. No lists, headings, markdown, emoji, stage directions or asterisks; they would be read out.
 - Start talking straight away. Say your first sentence before you use any tool, so you are never silent while something is made.
@@ -188,7 +190,7 @@ export const TOOLS = [
   },
   {
     name: 'game_move',
-    description: 'Play what they said out loud for them: in chess, a move as its short name from their legal moves ("e4", "Nf3", "O-O", "exd5"); in the quiz, their answer ("B", "Paris", "true"); in noughts, a square ("top left", "centre"); in twenty, "guessed" or "give up"; in draw_and_guess, "skip"; in quest, "roll".',
+    description: 'Play what they said out loud for them: in chess, a move as its short name from their legal moves ("e4", "Nf3", "O-O", "exd5"); in the quiz, their answer ("B", "Paris", "true"); in noughts, a square ("top left", "centre"); in twenty, "guessed" or "give up"; in draw_and_guess, "skip"; in quest, "roll"; in a lesson, their answer to the question on the board ("B", "the apple").',
     input_schema: strict({ move: { type: 'string' } }),
   },
   {
@@ -291,6 +293,29 @@ export const TOOLS = [
       subject: { type: 'string', description: 'draft: the subject, for a new email.' },
       body: { type: 'string', description: 'draft: the words of the email, as they would write it, signed with their name if you know it.' },
       draft: { type: 'string', description: 'send: the draft id from draft.' },
+    }, ['action']),
+  },
+  {
+    name: 'teach',
+    description: 'Learning together on a chalkboard on the table. start begins a lesson (topic; language for a language lesson; level). Then: board writes a title and a few short lines (picture: optional words for a prop to hold up as a visual aid); word puts a new word of the language on the board and in their word list; quiz asks a question with buzzers (choices and the number of the right one, 0 for the first; word: the word it tests, for a language); end finishes the lesson and keeps what was learned. Everything is remembered for next time. Returns what happened.',
+    input_schema: strict({
+      action: { type: 'string', enum: ['start', 'board', 'word', 'quiz', 'end'] },
+      topic: { type: 'string', description: 'start: what the lesson is about ("volcanoes", "fractions"), or a language lesson\'s theme ("food").' },
+      language: { type: 'string', description: 'start: the language, for a language lesson ("Spanish").' },
+      level: { type: 'string', description: 'start: optional, how far along they are ("beginner", "a bit", "GCSE").' },
+      title: { type: 'string', description: 'board: the heading, a few words.' },
+      lines: { type: 'array', items: { type: 'string' }, description: 'board: two to four short lines, a few words each.' },
+      emoji: { type: 'string', description: 'board: optional, one emoji drawn in the corner.' },
+      picture: { type: 'string', description: 'board: optional, 1 to 6 plain words for a prop to hold up as a visual aid.' },
+      word: { type: 'string', description: 'word: the word or short phrase in the language. quiz: the word it tests, if any.' },
+      meaning: { type: 'string', description: 'word: what it means in English.' },
+      sounds_like: { type: 'string', description: 'word: how to say it, respelled in English sounds ("OH-lah").' },
+      example: { type: 'string', description: 'word: optional, a short example in the language with its meaning.' },
+      question: { type: 'string', description: 'quiz: the question.' },
+      choices: { type: 'array', items: { type: 'string' }, description: 'quiz: two to four short answers.' },
+      answer: { type: 'integer', description: 'quiz: which choice is right, 0 for the first.' },
+      learned: { type: 'array', items: { type: 'string' }, description: 'end: what they learned, a few short points.' },
+      next: { type: 'string', description: 'end: what to do next time, a few words.' },
     }, ['action']),
   },
   {

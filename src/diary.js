@@ -6,8 +6,9 @@ import { prettyDay, daysBetween, dayOf } from './memory.js';
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const nice = ymd => new Date(ymd + 'T12:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
 
-/** el: the #diary element. memory: memory.js. onForget(): after anything is forgotten (so the chat reads it again). */
-export function makeDiary({ el, memory, today = () => ({}), onForget = () => {}, google = null }) {
+/** el: the #diary element. memory: memory.js. onForget(): after anything is forgotten (so the chat reads it again).
+ * extra(): more sections of the sheet as HTML (the lessons, from learn.js), or ''. */
+export function makeDiary({ el, memory, today = () => ({}), onForget = () => {}, google = null, extra = () => '' }) {
   const body = el.querySelector('.pages'), wipe = el.querySelector('[data-id="wipe"]');
   let armed = 0;
 
@@ -40,6 +41,7 @@ export function makeDiary({ el, memory, today = () => ({}), onForget = () => {},
     if (g?.ready) parts.push(`<section class="google"><h3>Gmail and calendar</h3>${g.connected
       ? `<p>Connected${g.email ? ` as ${esc(g.email)}` : ''}. I can read your calendar and email and write drafts, and I ask you on screen before I send an email or add an event.</p><button type="button" class="small" data-id="google-off">Disconnect Google</button>`
       : `<p class="soft">Connect your Google account and I can tell you what's on today, add things to your calendar, and help with your email.</p><button type="button" class="small" data-id="google-on">Connect Google</button>`}</section>`);
+    try { const x = extra(); if (x) parts.push(x); } catch (e) { console.warn('[reverie] diary', e); }
     body.innerHTML = parts.join('');
   }
 
@@ -53,6 +55,7 @@ export function makeDiary({ el, memory, today = () => ({}), onForget = () => {},
       if (Date.now() - armed > 4000) { armed = Date.now(); wipe.textContent = 'Tap again to forget everything'; wipe.classList.add('armed'); return; }
       memory.wipe(); armed = 0; disarm(); onForget('everything'); render(); return;
     }
+    if (b.dataset.unlearn) { onForget('lesson:' + b.dataset.unlearn); render(); return; }
     if (b.dataset.drop) { memory.drop(b.dataset.drop); onForget('a fact'); render(); }
     else if (b.dataset.forget) { memory.forget({ what: b.dataset.forget }); onForget(b.dataset.forget); render(); }
   });
