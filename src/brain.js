@@ -153,9 +153,9 @@ export function gameAsked(text) {
   const game = /\bchess\b/.test(t) ? 'chess' : /\b(quiz|trivia|quiz me)\b/.test(t) ? 'quiz'
     : /\b(noughts|naughts|tic.?tac.?toe|x'?s and o'?s)\b/.test(t) ? 'noughts' : /\b(twenty|20) questions\b/.test(t) ? 'twenty'
     : /\b(draw and guess|draw ?& ?guess|pictionary|guess (what i'?m drawing|my drawing(s)?))\b/.test(t) ? 'draw_and_guess'
-    : /\b(dice quest|dice adventure|quest|adventure game)\b/.test(t) ? 'quest' : null;
+    : /\b(dice quest|dice adventure|quest|adventure game)\b/.test(t) ? 'quest' : /\b(escape room|escape game|escape the room)\b/.test(t) ? 'escape' : null;
   if (!game || /\b(stop|quit|end|enough|no more|don'?t|not now|later|rules|history|who invented)\b/.test(t)) return null;
-  if (!/\b(play|game|match|fancy|let'?s|up for|challenge|set up|get out|board|again|rematch|wanna|want to|quiz me|another|round|start|do a|have a|host|guess my|go on a|tell me a)\b/.test(t) && !/^\W*(chess|quiz|trivia|noughts and crosses|tic tac toe|twenty questions|draw and guess|pictionary|dice quest)\W*$/.test(t)) return null;
+  if (!/\b(play|game|match|fancy|let'?s|up for|challenge|set up|get out|board|again|rematch|wanna|want to|quiz me|another|round|start|do a|have a|host|guess my|go on a|tell me a)\b/.test(t) && !/^\W*(chess|quiz|trivia|noughts and crosses|tic tac toe|twenty questions|draw and guess|pictionary|dice quest|escape room)\W*$/.test(t)) return null;
   const level = /\b(easy|gentle|beginner|go easy)\b/.test(t) ? 1 : /\b(hardest|master|best you can|full strength)\b/.test(t) ? 5 : /\b(hard|tough|serious)\b/.test(t) ? 4 : undefined;
   return { game, level };
 }
@@ -261,7 +261,7 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
     const wantsGame = !o.news && gameAsked(text);
     if (wantsGame && (world.game?.id !== wantsGame.game || ['done', 'won', 'lost', 'over'].includes(world.game.state))) {
       const r = await world.play(wantsGame.game, { level: wantsGame.level });
-      text += `\n(The ${(GAMES[wantsGame.game]?.title || wantsGame.game).toLowerCase()} ${wantsGame.game === 'draw_and_guess' ? 'game' : wantsGame.game === 'chess' ? 'board' : 'table'} was set up straight away when they asked: ${r} Don't call play or make for it; just react.)`;
+      text += `\n(The ${(GAMES[wantsGame.game]?.title || wantsGame.game).toLowerCase()} ${wantsGame.game === 'draw_and_guess' ? 'game' : wantsGame.game === 'chess' ? 'board' : wantsGame.game === 'escape' ? 'puzzle' : 'table'} was set up straight away when they asked: ${r} Don't call play or make for it; just react.)`;
     }
     turnCtx = world.game?.context() || '';
     const my = ++turn;

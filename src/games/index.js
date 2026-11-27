@@ -23,6 +23,7 @@ import { makeNoughts } from './noughts.js';
 import { makeTwenty } from './twenty.js';
 import { makeDraw } from './draw.js';
 import { makeQuest } from './quest.js';
+import { makeEscape } from './escape.js';
 
 export const GAMES = {
   chess: { title: 'Chess', make: makeChess },
@@ -31,4 +32,5 @@ export const GAMES = {
   twenty: { title: 'Twenty Questions', make: makeTwenty },
   draw_and_guess: { title: 'Draw and Guess', make: makeDraw },
   quest: { title: 'Dice Quest', make: makeQuest },
+  escape: { title: 'Escape Room', make: makeEscape },
 };
