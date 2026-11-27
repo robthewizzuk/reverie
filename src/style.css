@@ -268,3 +268,16 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 #karaoke .next { margin: 0; min-height: 1.3em; font: 500 clamp(14px, 3.6vw, 18px)/1.3 system-ui, sans-serif; color: #ffffff80; }
 #music:not([hidden]) ~ #karaoke { bottom: 64px; }
 #gamebar:not([hidden]) ~ #karaoke { bottom: 112px; }
+/* pocket jam session (jam.js): looping groove bar + 6 tactile sound pads */
+#jam { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); width: min(calc(100% - 28px), 560px); box-sizing: border-box;
+  padding: 10px 12px 12px; border-radius: 20px; background: #170d1fd9; backdrop-filter: blur(10px); color: #fff;
+  box-shadow: 0 6px 28px #0008, 0 0 0 1px #ffffff14 inset; }
+#jam[hidden] { display: none; }
+#jam header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; padding: 0 4px; }
+#jam .title { font: 700 13.5px/1.2 system-ui, sans-serif; color: #ffe3f1; }
+#jam header button { width: 28px; height: 28px; border: 0; border-radius: 14px; background: #ffffff1f; color: #fff; cursor: pointer; }
+#jam .pads { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+#jam .pads button { height: 42px; border: 0; border-radius: 12px; background: color-mix(in srgb, var(--pad, #ff8a5b) 28%, #2a1d35);
+  box-shadow: inset 0 -2px 0 var(--pad, #ff8a5b); color: #fff; font: 700 12px/1 system-ui, sans-serif; cursor: pointer; transition: transform .08s; }
+#jam .pads button:active { transform: scale(.94); background: var(--pad, #ff8a5b); color: #1b1122; }
+@media (max-width: 420px) { #jam .pads { grid-template-columns: repeat(3, 1fr); } }
