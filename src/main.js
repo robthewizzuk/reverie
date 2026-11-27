@@ -26,6 +26,7 @@ import { useLearning } from './games/lesson.js';
 import { makeReminders } from './reminders.js';
 import { makeTimers } from './timers.js';
 import { makeRecapper } from './recap.js';
+import { makeShop } from './shop.js';
 
 const $ = s => document.querySelector(s);
 const stage = $('#stage'), canvas = $('#view'), ctx = canvas.getContext('2d');
@@ -34,7 +35,7 @@ const gamebar = $('#gamebar'), gameText = $('#gamebar span'), gameButtons = $('#
 const draw = $('#draw'), book = $('#book'), look = $('#look'), recentre = $('#recentre'), helperList = $('#helpers');
 const debug = new URLSearchParams(location.search).has('debug');
 
-let W = 0, H = 0, world, brain, body, voice, pad, diary, mood, show, shaker, music, helpers, wisps, google, timers, last = 0, awake = false, captionT = 0, nextAt = 0;
+let W = 0, H = 0, world, brain, body, voice, pad, diary, mood, show, shaker, music, helpers, wisps, google, timers, shop, last = 0, awake = false, captionT = 0, nextAt = 0;
 // its diary, kept in this browser (memory.js), and today's surprise (daily.js): { surprise, holding, funDay }
 const memory = makeMemory();
 // what you are learning together (learn.js), kept beside the diary; the lessons write their days in the diary too
@@ -188,6 +189,14 @@ async function boot() {
       // (a press of Show is them talking: it answers now, even mid-sentence)
       if (now) { brain.interrupt('shown something'); brain.hear(text, { at: performance.now(), news: true, image }); } else brain.notice(text, loud, image);
     } });
+  // shopping: a helper looks across UK shops, the offers come back as cards; buying is always their own tap through
+  // (its results are said as soon as Reverie is free, however long that takes: a helper can come back mid-chat)
+  shop = makeShop({ el: $('#shop'), world, onNews: async (text, loud) => {
+    console.info('[reverie] ' + text.slice(0, 160));
+    if (!loud) return brain.notice(text, false);
+    for (let t = 0; t < 120 && (brain.busy || brain.speaking || world.creature.state.listening); t++) await new Promise(r => setTimeout(r, 500));
+    brain.hear(text, { at: performance.now(), news: true });
+  } });
   // Gmail and the calendar: read when asked; sending an email or adding an event only on a tap of Yes on its card
   google = makeGoogle({ el: $('#ask'), onNews: (text, loud) => { console.info('[reverie] ' + text); brain.notice(text, loud); } });
   google.check();
@@ -246,6 +255,7 @@ async function boot() {
       ...music.tools,
       send_helper: input => helpers.send(input),
       helpers: input => helpers.manage(input),
+      shop: input => shop.tool(input || {}),
       diary: async () => { diary.show(); return 'Your diary is open on their screen: everything you remember about them, and a way to forget any of it.'; },
       reminder: input => timers.tool(input),
     } });
@@ -266,7 +276,7 @@ async function boot() {
   // (which games they play most, for the diary's habits)
   const play0 = world.play.bind(world);
   world.play = (game, o) => { memory.note('play', { game }); return play0(game, o); };
-  window.__reverie = { world, brain, body, gs, voice, pad, memory, learning, diary, today, mood, show, shaker, music, helpers, google, reminders, timers, recapper };
+  window.__reverie = { world, brain, body, gs, voice, pad, memory, learning, diary, today, mood, show, shaker, music, helpers, google, reminders, timers, recapper, shop };
   requestAnimationFrame(frame);
   // every shader the room needs, built in the background before it wakes (the driver's own threads), so none is built
   // in the middle of a chat: a whole room's shaders built in one frame was a stall of a second or more
