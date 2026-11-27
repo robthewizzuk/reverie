@@ -12,7 +12,8 @@ const SURE = .3;     // how sure the model must be before Reverie makes its gues
  */
 export function makePad({ el, onDrawn = () => {}, onOpen = () => {} }) {
   const cv = el.querySelector('canvas'), c = cv.getContext('2d');
-  let model = null, strokes = [], drawing = false, loading = null;
+  let model = null, strokes = [], drawing = false, loading = null, game = null, liveAt = 0;
+  const title = el.querySelector('p'), row = el.querySelector('div'), plain = { title: title.textContent, row: row.innerHTML };
 
   function load() {
     loading ||= (async () => {
@@ -35,15 +36,36 @@ export function makePad({ el, onDrawn = () => {}, onOpen = () => {} }) {
   }
   const at = e => { const r = cv.getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
   cv.addEventListener('pointerdown', e => { cv.setPointerCapture(e.pointerId); drawing = true; strokes.push([at(e)]); redraw(); });
-  cv.addEventListener('pointermove', e => { if (!drawing) return; const p = at(e), s = strokes.at(-1), q = s.at(-1); if (Math.hypot(p.x - q.x, p.y - q.y) > 2) { s.push(p); redraw(); } });
-  const end = () => { drawing = false; };
+  cv.addEventListener('pointermove', e => {
+    if (!drawing) return; const p = at(e), s = strokes.at(-1), q = s.at(-1);
+    if (Math.hypot(p.x - q.x, p.y - q.y) > 2) { s.push(p); redraw(); }
+    // a game hears the drawing as it grows too, a few times a second
+    if (game && performance.now() - liveAt > 450) { liveAt = performance.now(); game.onDraw?.(strokes); }
+  });
+  const end = () => { if (drawing && game) game.onDraw?.(strokes); drawing = false; };
   cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
 
   const pad = {
     get open() { return !el.hidden; },
     /** Shows the pad (empty), and starts the model loading. */
     show() { strokes = []; el.hidden = false; fit(); load().catch(e => console.warn('[reverie] doodle:', e)); onOpen(); },
-    hide() { el.hidden = true; drawing = false; },
+    hide() { el.hidden = true; drawing = false; if (game) pad.leave(); },
+    /**
+     * A game takes the pad over (games/draw.js): o.title is the line over the paper, o.buttons [{ id, label }] the row
+     * under it, o.onButton(id) hears them and o.onDraw(strokes) hears the drawing as it grows. The stage shows above it.
+     */
+    take(o) {
+      game = o; el.classList.add('game'); strokes = []; el.hidden = false;
+      row.replaceChildren(...(o.buttons || []).map(x => { const b = document.createElement('button'); b.type = 'button'; b.dataset.id = x.id; b.textContent = x.label; return b; }));
+      pad.title = o.title || ''; fit(); load().catch(e => console.warn('[reverie] doodle:', e));
+    },
+    /** The game is done with the pad: it goes back to how it was, and away. */
+    leave() { const g = game; if (!g) return; game = null; el.classList.remove('game'); title.textContent = plain.title; row.innerHTML = plain.row; el.hidden = true; drawing = false; strokes = []; g.onLeave?.(); },
+    set title(s) { title.textContent = s; },
+    get strokes() { return strokes; },
+    /** The model's guesses for what is drawn now, at once (none until it has loaded): [{ name, sure }] most likely first. */
+    guessNow(among) { return model && strokes.some(s => s.length > 1) ? model.guess(strokes, among ? { among } : undefined) : []; },
+    load,
     clear() { strokes = []; redraw(); },
     /** What the model makes of the drawing: its top guesses, most likely first ([] for an empty page). */
     async guess() {
@@ -55,6 +77,7 @@ export function makePad({ el, onDrawn = () => {}, onOpen = () => {} }) {
   };
   el.addEventListener('click', async e => {
     const id = e.target.closest('button')?.dataset.id; if (!id) return;
+    if (game) { if (id === 'clear') pad.clear(); game.onButton?.(id); return; }
     if (id === 'cancel') pad.hide();
     else if (id === 'clear') pad.clear();
     else if (id === 'done') {

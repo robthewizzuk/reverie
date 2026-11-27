@@ -3,10 +3,12 @@
 //   "make a <thing>"  -> says a line and calls make
 //   "make it <x>"     -> says a line and calls change
 //   "throw it"        -> toss;  "clear"  -> clear;  "think ..." -> think_harder, then a deep answer
+//   "show me a sunset [with rain]" / "make it snow|rain|storm|night" / "the real sky" -> window
 //   "make <x> and put it <spot>" / "put it <spot>" / "move the <x> <spot>" -> place;  "paint the walls <c>" -> room_colours
 //   "play chess"      -> play;  "[chess] ..." (news from the board) -> a quip;  "move e4" -> game_move;  "stop playing" -> stop_game
 //   "show me something" / "show find a cup" -> show;  "[show] ..." -> a quip (a copy: place on the shelf)
 //   "roll ..."        -> roll;  "quiz me" -> play quiz;  "[quiz] ..." -> a quip;  "answer b" -> game_move;  "draw" -> doodle;  "[doodle] ..." -> a quip
+//   "square <x>"      -> game_move (noughts);  "[noughts|twenty|draw and guess] ..." -> a quip;  a counted question -> "Nope!"
 //   "make me a pet fox called pip" -> pet make;  "pet sit" -> pet trick;  "[pet] ..." / "[mood] ..." -> a quip
 //   anything else     -> a friendly line with a wave
 const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -36,13 +38,22 @@ function plan(body) {
     if (/^\[Their daily briefing/.test(r)) return { text: 'Here is your briefing: it is a lovely day for making things.', tools: [] };
     if (/diary is open/i.test(r)) return { text: 'There it is, my diary.', tools: [] };
     if (/^Answered /.test(r)) return { text: 'Ooh.', tools: [] };
+    if (/noughts and crosses board is set up/i.test(r)) return { text: 'Crosses, your move.', tools: [] };
+    if (/Twenty Questions is set up/.test(r)) return { text: "I'm thinking of something. Twenty questions, go!", tools: [] };
+    if (/Draw and Guess is on/.test(r)) return { text: 'Draw, draw, draw!', tools: [] };
+    if (/Dice Quest is set up/.test(r)) return { text: 'Once upon a time, a brave little hero set off. Roll!', tools: [] };
+    if (/^Put their cross/.test(r)) return { text: 'Hmm.', tools: [] };
+    if (/^(They got it|You showed them)/.test(r)) return { text: 'Ta-da!', tools: [] };
     if (/^Played /.test(r)) return { text: 'Bold.', tools: [] };
     if (/handed over/i.test(r)) return { text: 'Right, I have thought about it properly. The answer is forty two, give or take.', tools: [] };
     return { text: /fail|could not|nothing/i.test(r) ? 'Hmm, that one fizzled.' : 'Ta-da!', tools: [] };
   }
   let m0;
-  // (news from its pet or its mood rides ahead of what they said: a quip if it is all there is)
-  const said = saidOf(u).replace(/^\[(chess|quiz),[^\]]*\]\s*/, '').toLowerCase().replace(/^(\[(pet|mood)\][^\n]*\n+)+(?=\S)/, '');
+  const said = saidOf(u).replace(/^\[[a-z ]+[,:][^\]]*\]\s*/, '').toLowerCase().replace(/^(\[(pet|mood)\][^\n]*\n+)+(?=\S)/, '');
+  if (/^\[(noughts|twenty|draw and guess|quest)\]/.test(said)) return { text: /they won/.test(said) ? 'No fair!' : /you won/.test(said) ? 'Three in a row!' : /round is over/.test(said) ? 'What a round of drawings!' : /treasure chest with/.test(said) ? 'And they lived happily ever after!' : /last heart/.test(said) ? 'And the owl flew them home.' : 'Hmm, interesting.', tools: [] };
+  if (/\(they guessed it|\(they gave up/.test(said)) return { text: 'Ta-da, there it is!', tools: [] };
+  if (/\(question \d+ of 20/.test(said)) return { text: 'Nope!', tools: [] };
+  if (/\(the die is being thrown/.test(said)) return { text: 'Here it goes...', tools: [] };
   if (/^\[chess\]/.test(said)) return { text: /taking your/.test(said) ? 'Hey! I needed that.' : /checkmate/.test(said) ? 'Good game!' : 'Hmm, interesting.', tools: [] };
   if (/^\[quiz\]/.test(said)) return { text: /: right!/.test(said) ? 'Correct, you clever thing!' : /last question/.test(said) ? 'What a round!' : 'Ooh, so close.', tools: [] };
   if (/^\[show\]/.test(said)) return /want a 3d copy/.test(said) ? { text: 'Ooh, one for the shelf!', tools: [['place', { item: 'a yellow rubber duck', spot: 'on the shelf' }]] }
@@ -61,6 +72,8 @@ function plan(body) {
   if (/stop playing|put it away/.test(said)) return { text: 'Fine, fine.', tools: [['stop_game', {}]] };
   let m;
   if ((m = /^answer (.+)/.exec(said))) return { text: 'Locking it in.', tools: [['game_move', { move: m[1] }]] };
+  if ((m = /^square (.+)/.exec(said))) return { text: 'Brave.', tools: [['game_move', { move: m[1] }]] };
+  if (/^i give up/.test(said)) return { text: 'Ha!', tools: [['game_move', { move: 'give up' }]] };
   if ((m = /^roll (.+)/.exec(said))) return { text: 'Rolling!', tools: [['roll', { dice: m[1].replace(/^(a|the) /, '') }]] };
   if (/^draw/.test(said)) return { text: 'Ooh, a drawing!', tools: [['doodle', {}]] };
   if ((m = /^move (?!the )(\S+)/.exec(said))) return { text: 'Ooh.', tools: [['game_move', { move: m[1] }]] };
@@ -71,6 +84,9 @@ function plan(body) {
   if ((m = /^put it (.+)/.exec(said))) return { text: 'Hup, over we go.', tools: [['place', { item: 'it', spot: SPOT.exec(m[1])?.[1] || m[1] }]] };
   if ((m = /^(?:move|bring) the (\w+) (.+)/.exec(said))) return { text: 'On it.', tools: [['place', { item: m[1], spot: /back|me/.test(m[2]) ? 'your hands' : SPOT.exec(m[2])?.[1] || m[2] }]] };
   if ((m = /^paint the (walls|floor|rug|wood) (.+)/.exec(said))) return { text: 'Ooh, redecorating.', tools: [['room_colours', { [m[1]]: m[2] }]] };
+  if ((m = /^show me (?:a |an |the )?(sunset|sunrise|night|midnight|dawn|dusk|noon|morning|evening|golden hour)(?: with (\w+))?/.exec(said))) return { text: 'Ooh, watch the window.', tools: [['window', { time: m[1], ...(m[2] ? { weather: m[2] } : {}) }]] };
+  if ((m = /^make it (snow|rain|storm|foggy|cloudy|night)\b/.exec(said))) return { text: 'Ooh, watch the window.', tools: [['window', m[1] === 'night' ? { time: 'night' } : { weather: { foggy: 'fog' }[m[1]] || m[1] }]] };
+  if (/real sky/.test(said)) return { text: 'Back to the real sky.', tools: [['window', { time: 'live', weather: 'live' }]] };
   if ((m = /make it (.+)/.exec(said))) return { text: 'Watch this.', tools: [['change', { words: m[1] }]] };
   if ((m = /make (?:me )?(an? .+|some .+)/.exec(said))) return { text: 'Ooh, one coming right up!', tools: [['act', { gesture: 'tada', mood: 'excited' }], ['make', { words: m[1] }]] };
   if (/pirate/.test(said)) return { text: 'Arr, give me a moment.', tools: [['voice', { name: 'captain_silas_blackwater' }]] };

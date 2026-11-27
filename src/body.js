@@ -8,11 +8,12 @@
 // late at night...) and it does that move more in moments like that, and nowhere else. What it learns stays in this
 // browser (localStorage), so it remembers what you like next time.
 import gs from '../engine/src/gamescroll.js';
+import { latenessAt } from './daylight.js';
 
 /** The moves the rules (and the coach) choose between. 'perk' is not one: that is a reaction, always made. */
 export const IDLES = ['rest', 'glance', 'peek', 'sway', 'hop', 'stretch'];
 const LIKE_WINDOW = 4;           // seconds after a move in which a poke counts as liking it
-const DROWSY_AFTER = 90;         // seconds alone before it gets drowsy (half that late at night)
+const DROWSY_AFTER = 90;         // seconds alone before it gets drowsy (a fifth of that at bedtime)
 const GAP = [2.5, 6];            // seconds between idle moves (longer the longer it's left alone)
 
 // Reverie is a page, not a Game Scroll card, so the coach's corrections are kept in this browser's own storage
@@ -36,7 +37,7 @@ function rules(s, r = Math.random) {
     peek: s.holding ? 3 : s.props ? 1.2 : 0,
     sway: (s.quiet > 12 ? 2 : .6) * (.6 + c * .8),
     hop: (s.pokes > .3 ? 2.2 : .35) * (.3 + c * 1.8),
-    stretch: s.holding ? 0 : s.quiet > 40 ? 1.6 + s.night : .15,
+    stretch: s.holding ? 0 : s.quiet > 40 ? 1.6 + s.night + s.late * 2 : .15 + s.late * 1.2,   // (a stretch is its yawn: often at bedtime)
   };
   const left = IDLES.filter(a => w[a] > 0), out = [];
   while (left.length) {
@@ -61,7 +62,7 @@ export function makeBody({ creature, world, hour = hourNow, mood = null }) {
   function look() {
     const night = Math.cos((hour() - 3) / 24 * Math.PI * 2);
     const props = world.props;
-    const s = { quiet, holding: creature.holding, props, pokes, night: Math.max(0, night), cheer: mood ? mood.cheer : .5 };
+    const s = { quiet, holding: creature.holding, props, pokes, night: Math.max(0, night), late: latenessAt(hour()), cheer: mood ? mood.cheer : .5 };
     const see = [clamp(quiet / 60, 0, 1) * 2 - 1, s.holding ? 1 : -1, clamp(props / 3, 0, 1) * 2 - 1, clamp(pokes, 0, 1) * 2 - 1, night];
     return { s, see };
   }
@@ -82,7 +83,7 @@ export function makeBody({ creature, world, hour = hourNow, mood = null }) {
       // (a game on the table: it is busy playing, so no idle moves and no dozing off)
       if (busy || world.game) { quiet = 0; creature.drowsy = false; next = Math.max(next, 1.5); return; }
       quiet += dt;
-      creature.drowsy = quiet > DROWSY_AFTER * (1 - .5 * look().s.night);
+      { const s = look().s; creature.drowsy = quiet > DROWSY_AFTER * Math.min(1 - .5 * s.night, 1 - .8 * s.late); }
       if (creature.busy) { next = Math.max(next, 1); return; }   // (a gesture Claude asked for comes first)
       if ((next -= dt) > 0) return;
       const { s, see } = look();

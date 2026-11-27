@@ -166,6 +166,7 @@ async function boot() {
     memo: () => memory.summary(), onHeard: text => { memory.said('you', text); mood.fun('chat'); },
     onTool: (name, input, r) => { noted(name, input, r); if (!r?.error && FUN_OF[name]) mood.fun(FUN_OF[name]); },
     tools: {
+      window: input => world.daylight.set(input),
       doodle: async () => { pad.show(); return 'The drawing pad is open on their screen. When they press Make it!, you will hear what they drew and it appears in your hands.'; },
       remember: async input => memory.remember(input),
       forget: async input => { const r = memory.forget(input); brain.refreshMemo(); return r; },
@@ -174,7 +175,9 @@ async function boot() {
       diary: async () => { diary.show(); return 'Your diary is open on their screen: everything you remember about them, and a way to forget any of it.'; },
     } });
   body = makeBody({ creature: world.creature, world, mood });
-  world.onNews = (text, loud) => { gameNews(text); if (/^\[(chess|quiz)/.test(text)) mood.fun(/checkmate|you win|you won|last question|well played|right!/i.test(text) ? 'win' : 'move'); brain.notice(text, loud); };
+  world.onNews = (text, loud) => { gameNews(text); if (/^\[(chess|quiz|noughts|twenty|draw and guess|quest)/.test(text)) mood.fun(/checkmate|you win|you won|they won|last question|well played|right!|guessed it|treasure/i.test(text) ? 'win' : 'move'); brain.notice(text, loud); };
+  world.onSay = line => { if (brain.busy || brain.speaking) return false; brain.speak(line); return true; };
+  world.pad = pad;
   voice = new Listener({ onProblem: () => listeningOff(), onNote: debug ? line => { timing.textContent = 'mic: ' + line; } : null });
   window.__reverie = { world, brain, body, gs, voice, pad, memory, diary, today, mood, show };
   requestAnimationFrame(frame);
@@ -206,6 +209,7 @@ function wakeUp() {
   }
   mood.fun('chat');
   world.keeper?.greet();
+  world.daylight.sound(true);   // (the rain's patter, now the page may make sound)
   // (through its speaker, so the mic knows this is its voice): the tour the first time, after that a hello by name
   brain.speak(visit.first ? HELLOS[Math.floor(Math.random() * HELLOS.length)] : welcome(visit));
   if (memory.birthdayToday() || [7, 30, 100].includes(memory.visits.streak) && visit.newDay) world.celebrate?.();
