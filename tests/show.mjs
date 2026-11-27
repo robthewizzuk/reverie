@@ -17,7 +17,7 @@ const browser = await chromium.launch({ args: ['--enable-unsafe-swiftshader', '-
 const page = await browser.newPage({ viewport: { width: 420, height: 820 }, deviceScaleFactor: 1, permissions: ['camera'] });
 // the camera: a canvas drawn here, showing a toy (a yellow ball on a table) or a QR code (window.__cam)
 await page.addInitScript(qr => {
-  window.__cam = 'toy'; window.__camStops = 0;
+  window.__cam = 'toy'; window.__camStops = 0; window.__camAsks = 0;
   const cv = document.createElement('canvas'); cv.width = 640; cv.height = 480; const c = cv.getContext('2d');
   const paint = () => {
     c.fillStyle = '#efe8dc'; c.fillRect(0, 0, 640, 480);
@@ -32,6 +32,7 @@ await page.addInitScript(qr => {
   };
   paint(); setInterval(paint, 100);
   navigator.mediaDevices.getUserMedia = async () => {
+    window.__camAsks++;
     const s = cv.captureStream(15);
     for (const t of s.getTracks()) { const stop = t.stop.bind(t); t.stop = () => { window.__camStops++; stop(); }; }
     return s;
@@ -55,7 +56,7 @@ await page.waitForTimeout(500);
 
 // Claude opens the camera window
 await page.fill('#say', 'show me something'); await page.press('#say', 'Enter');
-await page.waitForFunction(() => window.__reverie.show.open && window.__reverie.show.photo(), null, { timeout: 120000 }).catch(() => fail('the camera window did not open with a picture'));
+await page.waitForFunction(() => window.__reverie.show.isOpen && window.__reverie.show.photo(), null, { timeout: 120000 }).catch(() => fail('the camera window did not open with a picture'));
 await idle();
 await page.waitForTimeout(800);
 await shot('1-open');
@@ -102,8 +103,17 @@ await shot('4-hatched');
 // closing lets the camera go
 await page.click('#show button[data-id="close"]');
 await page.waitForTimeout(300);
-const after = await page.evaluate(() => ({ open: window.__reverie.show.open, stops: window.__camStops }));
+const after = await page.evaluate(() => ({ open: window.__reverie.show.isOpen, stops: window.__camStops }));
 if (after.open || !after.stops) fail('the camera was not let go: ' + JSON.stringify(after));
+
+// the camera button in the corner opens the window (and asks for the camera), and a second press closes it
+const asks = await page.evaluate(() => window.__camAsks);
+await page.click('#look');
+await page.waitForFunction(() => window.__reverie.show.isOpen && window.__reverie.show.photo(), null, { timeout: 60000 }).catch(() => fail('the camera button did not open the camera window'));
+if (await page.evaluate(() => window.__camAsks) <= asks) fail('the camera button did not ask for the camera');
+await page.click('#look');
+await page.waitForTimeout(300);
+if (await page.evaluate(() => window.__reverie.show.isOpen)) fail('a second press of the camera button did not close the window');
 if (errors.length) fail('page errors: ' + errors.join(' | '));
 await browser.close();
 console.log(process.exitCode ? 'show: failed' : 'show: ok');
