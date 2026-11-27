@@ -167,6 +167,8 @@ export function makeWorld() {
   let game = null, onNews = () => {}, onSay = () => false, pad = null, dice = null;
   // its pet (pet.js), made once the room is; its mood (mood.js, set by the page); more lines for Claude's scene line
   let keeper = null, mood = null;
+  // looking around (look.js, set by the page): drags and pinches swing the camera off its seat
+  let look = null;
   const lines = [];
   const games = {}, HOME = { pos: [0, .78, 1.95], look: [0, .4, 0] }, camAt = { pos: [...HOME.pos], look: [...HOME.look] };
   const stage = {
@@ -391,7 +393,10 @@ export function makeWorld() {
       dice ||= makeDice({ THREE, scene: v.scene, physics: world, creature, sparks: stage.sparks }); dice.clear();
       if (game) { game.stop(); game = null; }
     },
-    resize(w, h) { W = w; H = h; },
+    resize(w, h) { W = w; H = h; look?.size(w, h); },
+    /** Looking around the room (look.js): the page's drags, pinches and scrolls. */
+    get look() { return look; },
+    set look(l) { look = l; l?.size(W, H); },
     update(dt) {
       t += dt;
       // a tall screen sees as wide as a square one would, so the creature never crops at the sides
@@ -400,7 +405,8 @@ export function makeWorld() {
       // the camera eases to the game's seat and back
       const goal = game?.camera || HOME, ck = 1 - Math.exp(-dt * 3);
       for (const k of ['pos', 'look']) for (let i = 0; i < 3; i++) camAt[k][i] += (goal[k][i] - camAt[k][i]) * ck;
-      v.cam.position.set(...camAt.pos); v.cam.lookAt(...camAt.look);
+      const seen = look ? look.view(camAt, dt, goal) : camAt;
+      v.cam.position.set(...seen.pos); v.cam.lookAt(...seen.look);
       game?.update(dt);
       if (acts.length) { if (acts[0](dt)) acts.shift(); body.place(creature.root.position.x, .33, creature.root.position.z); }
       creature.update(dt, v.cam);

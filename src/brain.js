@@ -4,13 +4,20 @@
 // little more. Talking over it stops it at once.
 import gs from '../engine/src/gamescroll.js';
 import { weather, contextLine } from './place.js';
-import { sayOptions, setVoice } from './looks.js';
+import { sayOptions, setVoice, echoNow } from './looks.js';
+import { splitCues } from './cues.js';
+import { playCue } from './sounds.js';
 import { GAMES } from './games/index.js';
 
 const API = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '') + '/api/turn';
 const KEEP = 40;                 // messages kept in the conversation (older ones drop off, whole turns at a time)
 const KEEP_PHOTOS = 2;           // photos from show and tell sent along (the newest ones)
 const MAX_STEPS = 5;             // model calls in one turn (tool rounds)
+// The first thing it says after being quiet can be a clause (up to a comma) rather than the whole sentence: the voice
+// writes a line to sound before it plays it, so a short first line is heard sooner, and the rest is written while it
+// plays. Only a clause of 24 characters or more and 4 words or more, so it never stops after "Ooh,".
+const FIRST_CUT = /^([\s\S]{24,}?[,;:–—])\s+/;
+const RETRY_WAIT = 400;          // ms before a turn that failed before it said or did anything is tried once more
 const GESTURES = ['none', 'wave', 'point', 'tada', 'shrug', 'think', 'nod', 'shake', 'bounce'];
 const MOODS = ['calm', 'happy', 'excited', 'curious', 'sad', 'surprised'];
 
@@ -32,21 +39,28 @@ function near(a, b) {
   return d + (a.length - i) + (b.length - j) <= 1;
 }
 
-/** Says sentences in order, one after another, with the mouth moving; the next is written while one is said. */
-function makeSpeaker(creature, onCaption) {
+// The room's echo (looks.js): set on the mixer before each line, so a voice change is heard from its next word
+// (and it comes back if anything reset the mixer)
+const roomEcho = () => { try { gs.sound.mixer.place(echoNow(), .3); } catch { /* no audio yet */ } };
+
+/** Says sentences in order, one after another, with the mouth moving; the next is written while one is said.
+ * A sound cue in the words ("[drumroll]", cues.js) plays in its place, between the words before and after it. */
+export function makeSpeaker(creature, onCaption) {
   let queue = [], busy = false, epoch = 0, buf = '', idle = Promise.resolve(), endIdle = () => {};
   // what it said lately, as words, so the mic can tell its own voice from yours (said: { words, until })
   let said = [];
   const wait = ms => new Promise(r => setTimeout(r, ms));
+  const nextLine = () => queue.find(x => typeof x === 'string');
   async function run(my) {
     busy = true; creature.state.speaking = true;
     while (queue.length && my === epoch) {
       const line = queue.shift();
+      if (typeof line !== 'string') { roomEcho(); const s = playCue(line.cue); if (s > 0) await wait(s * 1000); continue; }
       // the bubble shows when the voice starts, not while the line is still being made ready
       let shown = false; const show = () => { if (!shown && my === epoch) { shown = true; onCaption(line); } };
       said.push({ words: new Set(wordsOf(line)), until: Infinity }); if (said.length > 6) said.shift();
-      const t0 = performance.now();
-      if (queue[0]) gs.sound.prepare(queue[0], sayOptions()).catch(() => {});
+      const t0 = performance.now(); roomEcho();
+      const next = nextLine(); if (next) gs.sound.prepare(next, sayOptions()).catch(() => {});
       const ok = await creature.say(line, sayOptions(), show).catch(() => false);
       show();   // (no voice here: the bubble alone, for as long as it takes to read)
       // no voice here (a browser that can't speak): give the line the time it takes to read
@@ -55,12 +69,16 @@ function makeSpeaker(creature, onCaption) {
     }
     if (my === epoch) { busy = false; creature.state.speaking = false; endIdle(); }
   }
-  function push(line) {
-    line = spoken(line); if (!line) return;
-    queue.push(line);
-    if (!busy) { idle = new Promise(r => { endIdle = r; }); run(epoch); }
-    else if (queue.length === 1) gs.sound.prepare(line, sayOptions()).catch(() => {});
+  function push(text) {
+    let added = 0;
+    for (const part of splitCues(text)) {
+      const line = typeof part === 'string' ? spoken(part) : part; if (!line) continue;
+      queue.push(line); added++;
+      if (busy && typeof line === 'string' && nextLine() === line) gs.sound.prepare(line, sayOptions()).catch(() => {});
+    }
+    if (added && !busy) { idle = new Promise(r => { endIdle = r; }); run(epoch); }
   }
+  const words = () => [...queue.filter(x => typeof x === 'string'), buf].join(' ').trim();
   return {
     /** Text as it streams in: each whole sentence goes to the voice straight away. */
     feed(text) {
@@ -68,6 +86,11 @@ function makeSpeaker(creature, onCaption) {
       for (;;) {
         const m = /^([\s\S]*?[.!?…]+["')\]]*)\s+/.exec(buf);
         if (m && m[1].trim().length >= 2) { push(m[1]); buf = buf.slice(m[0].length); continue; }
+        // quiet until now: a first clause goes to the voice at once (the rest of its sentence follows on)
+        if (!busy && !queue.length) {
+          const c = FIRST_CUT.exec(buf);
+          if (c && c[1].trim().split(/\s+/).length >= 4) { push(c[1]); buf = buf.slice(c[0].length); continue; }
+        }
         // a long run with no full stop yet: say up to its last comma
         if (buf.length > 160) { const i = buf.lastIndexOf(', '); if (i > 40) { push(buf.slice(0, i + 1)); buf = buf.slice(i + 2); continue; } }
         break;
@@ -75,14 +98,14 @@ function makeSpeaker(creature, onCaption) {
     },
     flush() { if (buf.trim()) push(buf); buf = ''; },
     /** Everything said so far in this reply that is still to come, for "you were interrupted". */
-    get pending() { return [...queue, buf].join(' ').trim(); },
+    get pending() { return words(); },
     get talking() { return busy; },
     /** The words in `text` that are not its own voice coming back through the mic: everything while it is quiet, and
      * only the words it has not just said while it talks or has just stopped (an echo reaches the mic late). */
     yours(text) {
       const now = performance.now(), mine = new Set();
       for (const x of said) if (now - x.until < ECHO_KEEP) for (const w of x.words) mine.add(w);
-      for (const w of wordsOf([...queue, buf].join(' '))) mine.add(w);   // (about to be said: the reply streams ahead of the voice)
+      for (const w of wordsOf(words())) mine.add(w);   // (about to be said: the reply streams ahead of the voice)
       const words = wordsOf(text);
       return { words, yours: mine.size ? words.filter(w => !mine.has(w) && ![...mine].some(m => near(w, m))) : words };
     },
@@ -109,6 +132,10 @@ async function readEvents(res, onEvent) {
   }
 }
 
+const wait = ms => new Promise(r => setTimeout(r, ms));
+/** A failure worth one more try: the connection, a busy or broken server, a cut-off reply. Not a missing key or a bad request. */
+const transient = e => !/key|backend said 4\d\d|not JSON|must |refus/i.test(String(e?.message || e)) || /backend said 429/.test(String(e?.message));
+
 /** A message they sent (words, maybe with a photo), not tool results. */
 const saidByThem = m => m.role === 'user' && (typeof m.content === 'string' || (Array.isArray(m.content) && !m.content.some(b => b.type === 'tool_result')));
 
@@ -118,7 +145,8 @@ function checkInput(name, input) {
   if ((name === 'make' || name === 'change') && (typeof input.words !== 'string' || !input.words.trim())) return 'words must be text';
   if (name === 'weather' && input.place != null && typeof input.place !== 'string') return 'place must be text';
   if (name === 'voice' && input.name != null && typeof input.name !== 'string') return 'name must be text';
-  if (name === 'voice' && ['size', 'lively'].some(k => input[k] != null && typeof input[k] !== 'number')) return 'size and lively must be numbers';
+  if (name === 'voice' && ['size', 'lively', 'pitch', 'speed'].some(k => input[k] != null && typeof input[k] !== 'number')) return 'size, lively, pitch and speed must be numbers';
+  if (name === 'voice' && ['effect', 'echo'].some(k => input[k] != null && typeof input[k] !== 'string')) return 'effect and echo must be names';
   if (name === 'colours' && ['body', 'glow'].some(k => input[k] != null && typeof input[k] !== 'string')) return 'colours must be text';
   if (name === 'act' && (!GESTURES.includes(input.gesture) || !MOODS.includes(input.mood))) return 'unknown gesture or mood';
   if (name === 'play' && typeof input.game !== 'string') return 'game must be a name';
@@ -147,7 +175,9 @@ export function gameAsked(text) {
 }
 
 export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, onTiming = () => {}, tools: extra = {}, memo = () => '', onHeard = () => {}, onTool = () => {} }) {
-  const creature = world.creature, speaker = makeSpeaker(creature, onCaption);
+  // (ask: what they said for the turn now running, so the rest of it can join it; spoke: its voice has started)
+  let ask = null, times = null;   // (times: the turn now running's, for onTiming)
+  const creature = world.creature, speaker = makeSpeaker(creature, line => { if (ask && ask.my === turn) ask.spoke = true; if (times && times.voice == null) { times.voice = performance.now(); if (times.end) onTiming(times); } onCaption(line); });
   let history = [], turn = 0, ctl = null, cut = '', deepNow = false;
   // a game's news (games/index.js): quiet news waits for the next thing said; loud news gets a reaction when it's free
   let news = [], loudAt = 0, turnCtx = '', newsImage = null;
@@ -195,25 +225,28 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
       .then(r => { try { onTool(name, input, r); } catch (e) { console.warn('[reverie] onTool', e); } return r; });
   }
 
-  async function step(tier, my, times) {
+  async function step(tier, my, times, did) {
     ctl = new AbortController();
-    const tools = new Map(), running = [];
+    const tools = new Map(), running = [], texts = new Set();
     let final = null, failed = null, firstText = true;
     const res = await fetch(API, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ tier, messages: trimmed() }), signal: ctl.signal });
     if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || `the backend said ${res.status}`); }
     await readEvents(res, ev => {
       if (my !== turn) return;
       if (ev.type === 'content_block_start' && ev.content_block.type === 'tool_use') tools.set(ev.index, { id: ev.content_block.id, name: ev.content_block.name, json: '' });
+      else if (ev.type === 'content_block_start' && ev.content_block.type === 'text') texts.add(ev.index);
+      else if (ev.type === 'content_block_stop' && texts.has(ev.index)) speaker.flush();   // (its words are whole: the last sentence goes now, not after the tools' words)
       else if (ev.type === 'content_block_delta') {
         if (ev.delta.type === 'text_delta') {
           if (firstText) { firstText = false; times.text ??= performance.now(); creature.state.thinking = false; onStatus(''); }
+          did.something = true;
           speaker.feed(ev.delta.text);
         } else if (ev.delta.type === 'input_json_delta' && tools.has(ev.index)) tools.get(ev.index).json += ev.delta.partial_json;
       } else if (ev.type === 'content_block_stop' && tools.has(ev.index)) {
         // the tool's words are complete: start it now, while Claude goes on
         const tl = tools.get(ev.index); let input = null;
         try { input = tl.json ? JSON.parse(tl.json) : {}; } catch { input = null; }
-        times.tool ??= performance.now();
+        times.tool ??= performance.now(); did.something = true;
         running.push(runTool(tl.name, input).then(r => ({ ...r, id: tl.id, name: tl.name })));
       } else if (ev.type === 'final') final = ev.message;
       else if (ev.type === 'error') failed = ev;
@@ -233,14 +266,37 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
     return { results, content: final.content, stop: final.stop_reason };
   }
 
+  /**
+   * What they said, or news. o.more: the rest of what they said for the turn now running, all of it (the listener
+   * answered at a pause, and they went on): that turn is taken back and this one asked instead. Without it, words
+   * they add before its voice has started join what they said too ("can you make me" ... "a red hat"), so a pause
+   * in the middle of a sentence is one question, not two.
+   */
   async function hear(text, o = {}) {
     text = String(text || '').trim().slice(0, 1000); if (!text) return;
-    if (!o.news) try { onHeard(text); } catch { /* the diary's problem */ }
+    // the rest of a phrase whose first part has already been answered in full: nothing new, or a turn of its own
+    if (o.more && ask && ask.my === turn && ask.done) {
+      const before = new Set(wordsOf(ask.said));
+      if (wordsOf(text).every(w => before.has(w))) return;
+      o = { ...o, more: false };
+    }
+    // still finishing what they were saying: that turn is taken back, as if it never went, and asked again whole
+    const prev = !o.news && ask && ask.my === turn && !ask.done && (o.more || !ask.spoke) && !world.game?.heard ? ask : null;
+    if (prev) {
+      console.info(`[reverie] ${o.more ? 'heard the rest' : 'joined on'}: "${prev.said}" + "${text}"`);
+      if (!o.more) text = prev.said + ' ' + text;
+      history.length = prev.at;
+      news = prev.news.concat(news); newsImage ||= prev.newsImage; cut = prev.cut || cut;
+      if (ctl) { ctl.abort(); ctl = null; }
+      speaker.stop();
+    }
+    if (!o.news) try { onHeard(text, !!prev); } catch { /* the diary's problem */ }
+    const asked = { said: text, image: o.image || null, news: news.slice(), newsImage, cut };
     // a game hears what they said too (Twenty Questions counts a question, spots a guess) and may add a note
     const heard = !o.news && world.game?.heard?.(text);
     if (heard) text += '\n' + heard;
     // game news not yet passed on goes first, so it knows what happened on the board
-    let image = o.image || null;
+    let image = o.image || prev?.image || null;
     if (news.length) { text = news.join('\n') + '\n\n' + text; news = []; loudAt = 0; image ||= newsImage; }
     newsImage = null;
     // "let's play chess": the board goes up at once, before Claude has said a word (so it can't make a prop board instead)
@@ -251,6 +307,7 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
     }
     turnCtx = world.game?.context() || '';
     const my = ++turn;
+    ask = o.news ? null : { ...asked, my, at: history.length, spoke: false };
     // talking over it: it stops, and is told what it didn't get to say
     if (ctl) { ctl.abort(); ctl = null; }
     // (o.keep: its own line goes on first, as with the daily briefing after its hello)
@@ -262,11 +319,19 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
     history.push({ role: 'user', content: image ? [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: image } }, { type: 'text', text: words }] : words });
     creature.state.thinking = true; creature.state.listening = false;
     creature.gesture('nod'); onStatus('thinking');
-    const times = { start: o.at ?? performance.now() };
+    const t = times = { start: o.at ?? performance.now(), heard: performance.now() };
     let tier = 'quick', errored = false; deepNow = false;
     try {
       for (let n = 0; n < MAX_STEPS; n++) {
-        const r = await step(tier, my, times);
+        // (a hiccup before it said or did anything, a dropped connection or a busy server: tried once more, unseen)
+        const did = { something: false };
+        let r;
+        try { r = await step(tier, my, t, did); } catch (e) {
+          if (e?.name === 'AbortError' || my !== turn || did.something || !transient(e)) throw e;
+          console.info('[reverie] trying the turn again: ' + (e?.message || e));
+          await wait(RETRY_WAIT); if (my !== turn) return;
+          r = await step(tier, my, t, did);
+        }
         if (!r || my !== turn) return;
         history.push({ role: 'assistant', content: r.content });
         if (!r.results.length) break;
@@ -280,9 +345,9 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
       errored = true; onStatus('error: ' + e.message);
       console.warn('[reverie]', e);
     } finally {
-      if (my === turn) { creature.state.thinking = false; ctl = null; if (!errored) onStatus(''); }
-      times.end = performance.now();
-      onTiming(times);
+      if (my === turn) { creature.state.thinking = false; ctl = null; if (!errored) onStatus(''); if (ask?.my === my) ask.done = true; }
+      t.end = performance.now();
+      if (my === turn) onTiming(t);
     }
   }
 
@@ -303,7 +368,12 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
       hear(said, { at: performance.now(), news: true, image });
     },
     /** You started talking: it stops and listens. */
-    interrupt(why = '') { if (speaker.talking || ctl) console.info('[reverie] stopped: ' + (why || 'interrupted')); turn++; if (ctl) { ctl.abort(); ctl = null; } if (speaker.talking) cut = speaker.pending || cut; speaker.stop(); creature.state.thinking = false; creature.state.listening = true; },
+    interrupt(why = '', o = {}) {
+      if (speaker.talking || ctl) console.info('[reverie] stopped: ' + (why || 'interrupted'));
+      // (o.rest: they are still saying the thing this turn answers: it stops, and the rest of it takes the turn back)
+      if (o.rest && ask && ask.my === turn) { if (ctl) { ctl.abort(); ctl = null; } speaker.stop(); ask.spoke = false; creature.state.thinking = false; creature.state.listening = true; turn++; ask.my = turn; return; }
+      turn++; if (ctl) { ctl.abort(); ctl = null; } if (speaker.talking) cut = speaker.pending || cut; speaker.stop(); creature.state.thinking = false; creature.state.listening = true;
+    },
     get history() { return history; },
     get speaking() { return speaker.talking; },
     /** What the mic heard, split into all its words and the ones that are yours (not its own voice coming back). */

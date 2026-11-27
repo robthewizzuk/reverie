@@ -143,9 +143,11 @@ export function makeMemory({ store = globalThis.localStorage, clock = () => new 
       else if (kind === 'day' && o.line) log(o.line);
       save();
     },
-    /** A line of the chat ('you' or 'me'), so it can recall what you talked about last time. */
-    said(who, text) {
+    /** A line of the chat ('you' or 'me'), so it can recall what you talked about last time. again: it replaces their last line. */
+    said(who, text, again = false) {
       text = clean(text, 140); if (!text) return;
+      // (again: the rest of what they were saying, in place of the part said a moment ago)
+      if (again && m.chat.at(-1)?.who === who) m.chat.pop();
       m.chat.push({ who, text, day: today() }); if (m.chat.length > MAX_CHAT) m.chat.shift();
       save();
     },
