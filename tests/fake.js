@@ -5,6 +5,7 @@
 //   "throw it"        -> toss;  "clear"  -> clear;  "think ..." -> think_harder, then a deep answer
 //   "make <x> and put it <spot>" / "put it <spot>" / "move the <x> <spot>" -> place;  "paint the walls <c>" -> room_colours
 //   "play chess"      -> play;  "[chess] ..." (news from the board) -> a quip;  "move e4" -> game_move;  "stop playing" -> stop_game
+//   "show me something" / "show find a cup" -> show;  "[show] ..." -> a quip (a copy: place on the shelf)
 //   "roll ..."        -> roll;  "quiz me" -> play quiz;  "[quiz] ..." -> a quip;  "answer b" -> game_move;  "draw" -> doodle;  "[doodle] ..." -> a quip
 //   anything else     -> a friendly line with a wave
 const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -26,6 +27,7 @@ function plan(body) {
     if (/chess board is set up/i.test(r)) return { text: 'Your move. No pressure.', tools: [] };
     if (/quiz table is set up/i.test(r)) return { text: 'First question, here we go!', tools: [] };
     if (/^Threw |^Rolled /.test(r)) return { text: 'There we go!', tools: [] };
+    if (/camera window is open/i.test(r)) return { text: 'Go on, show me something!', tools: [] };
     if (/drawing pad is open/i.test(r)) return { text: 'Go on, draw me something!', tools: [] };
     if (/^Written in your diary/.test(r)) return { text: 'Got it, I will remember that.', tools: [] };
     if (/^Forgot /.test(r)) return { text: 'Poof, forgotten.', tools: [] };
@@ -40,6 +42,10 @@ function plan(body) {
   const said = saidOf(u).replace(/^\[(chess|quiz),[^\]]*\]\s*/, '').toLowerCase();
   if (/^\[chess\]/.test(said)) return { text: /taking your/.test(said) ? 'Hey! I needed that.' : /checkmate/.test(said) ? 'Good game!' : 'Hmm, interesting.', tools: [] };
   if (/^\[quiz\]/.test(said)) return { text: /: right!/.test(said) ? 'Correct, you clever thing!' : /last question/.test(said) ? 'What a round!' : 'Ooh, so close.', tools: [] };
+  if (/^\[show\]/.test(said)) return /want a 3d copy/.test(said) ? { text: 'Ooh, one for the shelf!', tools: [['place', { item: 'a yellow rubber duck', spot: 'on the shelf' }]] }
+    : { text: /surprise hatched/.test(said) ? 'A surprise, from a barcode!' : /photo is attached/.test(said) ? 'Ooh, what a lovely thing.' : 'Ha!', tools: [] };
+  const sm = /^(?:show|look)(?: at)?(?: me)?(?: something)?(?: find (?:me )?(.+))?$/.exec(said);
+  if (sm) return { text: 'Show me!', tools: [['show', sm[1] ? { find: sm[1] } : {}]] };
   if (/^\[doodle\]/.test(said)) return { text: 'What a lovely drawing!', tools: [] };
   if (/^\[a new day/.test(said)) return { text: /in your hands now/.test(said) ? 'Good morning! I made you something overnight. Here is your briefing, and a puzzle.' : 'Good morning! Here is your briefing.', tools: [] };
   if ((m0 = /my name is (\w+)/.exec(said))) return { text: `Lovely to meet you, ${m0[1]}!`, tools: [['remember', { name: m0[1][0].toUpperCase() + m0[1].slice(1) }]] };
