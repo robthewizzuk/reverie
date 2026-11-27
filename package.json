@@ -13,6 +13,7 @@
     "test:show": "node tests/show.mjs",
     "test:body": "node tests/body.mjs",
     "test:sounds": "node tests/sounds.mjs",
+    "test:reminders": "node tests/reminders.mjs && node tests/push.mjs",
     "worker:dev": "npm run build && cd worker && wrangler dev",
     "deploy": "npm run build && cd worker && wrangler deploy"
   },
