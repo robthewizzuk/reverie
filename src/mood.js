@@ -20,6 +20,7 @@ export const FUN = {
   room: [.015, .3], roll: [.02, .45], doodle: [.04, .6], game: [.04, .5], win: [.06, .8], move: [.006, .15],
   show: [.03, .5], poke: [.012, .35], pet: [.025, .5], newpet: [.08, 1], trick: [.015, .4], voice: [.01, .3],
   smash: [.015, .4], effect: [.012, .35], shake: [.01, .3], wear: [.015, .35],
+  watch: [.03, .5],
 };
 const REST = .42;               // where joy settles back to on its own
 const SETTLE_HOURS = 30;        // about how long it takes to drift most of the way back

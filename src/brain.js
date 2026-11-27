@@ -167,6 +167,7 @@ function checkInput(name, input) {
   if (name === 'calendar' && (!['list', 'add'].includes(input.action) || ['day', 'title', 'start', 'end', 'where', 'notes'].some(k => input[k] != null && typeof input[k] !== 'string') || ['days', 'minutes'].some(k => input[k] != null && typeof input[k] !== 'number'))) return 'action must be list or add, days and minutes numbers, the rest text';
   if (name === 'email' && (!['inbox', 'search', 'read', 'draft', 'send'].includes(input.action) || ['q', 'id', 'reply_to', 'to', 'subject', 'body', 'draft'].some(k => input[k] != null && typeof input[k] !== 'string') || input.max != null && typeof input.max !== 'number')) return 'action must be inbox, search, read, draft or send, max a number, the rest text';
   if (name === 'garden' && (!['plant', 'water', 'pick', 'dig_up', 'rename'].includes(input.action) || ['plant', 'pot', 'name', 'colour'].some(k => input[k] != null && typeof input[k] !== 'string'))) return 'action must be plant, water, pick, dig_up or rename, and the rest text';
+  if (name === 'watch' && (typeof input.action !== 'string' || ['video', 'words', 'chatter'].some(k => input[k] != null && typeof input[k] !== 'string') || (input.seconds != null && typeof input.seconds !== 'number'))) return 'action must be text, seconds a number, and the rest text';
   if (name === 'pet' && (!['make', 'trick', 'rename', 'away'].includes(input.action) || ['animal', 'name', 'colour', 'trick'].some(k => input[k] != null && typeof input[k] !== 'string'))) return 'action must be make, trick, rename or away, and the rest text';
   return null;
 }
@@ -184,7 +185,7 @@ export function gameAsked(text) {
   return { game, level };
 }
 
-export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, onTiming = () => {}, tools: extra = {}, memo = () => '', onHeard = () => {}, onTool = () => {} }) {
+export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, onTiming = () => {}, tools: extra = {}, memo = () => '', onHeard = () => {}, onTool = () => {}, context = () => '' }) {
   // (ask: what they said for the turn now running, so the rest of it can join it; spoke: its voice has started)
   let ask = null, times = null;   // (times: the turn now running's, for onTiming)
   const creature = world.creature, speaker = makeSpeaker(creature, line => { if (ask && ask.my === turn) ask.spoke = true; if (times && times.voice == null) { times.voice = performance.now(); if (times.end) onTiming(times); } onCaption(line); });
@@ -319,7 +320,8 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
       const r = await world.play(wantsGame.game, { level: wantsGame.level });
       text += `\n(The ${(GAMES[wantsGame.game]?.title || wantsGame.game).toLowerCase()} ${wantsGame.game === 'draw_and_guess' ? 'game' : wantsGame.game === 'chess' ? 'board' : wantsGame.game === 'escape' ? 'puzzle' : 'table'} was set up straight away when they asked: ${r} Don't call play or make for it; just react.)`;
     }
-    turnCtx = world.game?.context() || '';
+    // (and anything else on the go that isn't a game: a video being watched together, watch.js)
+    turnCtx = [world.game?.context(), context()].filter(Boolean).join('\n');
     const my = ++turn;
     ask = o.news ? null : { ...asked, my, at: history.length, spoke: false };
     // talking over it: it stops, and is told what it didn't get to say

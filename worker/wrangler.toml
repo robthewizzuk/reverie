@@ -2,6 +2,7 @@
 # which streams Claude's replies. Page and API share one address, so no CORS or VITE_API_URL is needed.
 #   npx wrangler login                            (once, with your Cloudflare account)
 #   npx wrangler secret put ANTHROPIC_API_KEY     (once; the key is stored by Cloudflare, never in this repo)
+#   npx wrangler secret put YOUTUBE_API_KEY       (optional: lets Reverie search YouTube for a video to watch)
 #   npm run deploy                                (from the repo root: builds the page, then deploys)
 # Local: npm run worker:dev serves dist/ and the API at http://localhost:8787, with the key read from
 # worker/.dev.vars (gitignored): ANTHROPIC_API_KEY=...

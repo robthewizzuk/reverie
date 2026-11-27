@@ -1,6 +1,7 @@
 // The Claude routes inside `npm run dev`: POST /api/turn runs server/turn.js (and /api/recap server/recap.js) in the Vite dev server, with the key
 // read from .env.local (or the shell). /api/google/* runs server/google.js the same way (Gmail and the calendar, with
-// GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET from .env.local). Nothing here reaches the page's bundle.
+// GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET from .env.local). GET /api/video runs server/video.js.
+// Nothing here reaches the page's bundle.
 //
 // REVERIE_FAKE=1 answers with a scripted Claude instead (tests/fake.js): no key, no network. The smoke test uses it.
 // /api/helpers* (Reverie's background helpers, server/helpers.js) runs here too, faked the same way (tests/fake-helpers.js).
@@ -9,11 +10,12 @@ import { Readable } from 'node:stream';
 import { handleTurn, handleWarm } from './turn.js';
 import { handleRecap } from './recap.js';
 import { handleGoogle } from './google.js';
-import { fakeTurn, fakeRecap, fakeShop } from '../tests/fake.js';
+import { fakeTurn, fakeRecap, fakeShop, fakeVideo } from '../tests/fake.js';
 import { fakeGoogle } from '../tests/fake-google.js';
 import { handleHelpers } from './helpers.js';
 import { fakeHelpers } from '../tests/fake-helpers.js';
 import { handleShop } from './shop.js';
+import { handleVideo } from './video.js';
 
 export function reverieApi(env) {
   const fake = env.REVERIE_FAKE === '1' && !env.GOOGLE_CLIENT_ID ? fakeGoogle() : null;
@@ -22,6 +24,12 @@ export function reverieApi(env) {
     name: 'reverie-api',
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
+        if ((req.url || '').startsWith('/api/video')) {
+          const request = new Request('http://localhost' + req.url);
+          const response = env.REVERIE_FAKE === '1' ? fakeVideo(request) : await handleVideo(request, env);
+          res.statusCode = response.status; response.headers.forEach((v, k) => res.setHeader(k, v));
+          return res.end(await response.text());
+        }
         // (push for reminders runs on the Worker only: here the page keeps them while it is open)
         if ((req.url || '').startsWith('/api/push')) { res.statusCode = 404; res.setHeader('content-type', 'application/json'); return res.end('{"error":"push runs on the Worker only"}'); }
         const path = req.url || '', google = path.startsWith('/api/google/');
