@@ -32,6 +32,19 @@ function near(a, b) {
   return d + (a.length - i) + (b.length - j) <= 1;
 }
 
+/** Cuts the whole sentences off the front of text as it streams in, giving each to take(line); returns what is left. */
+function cut(buf, take) {
+  for (;;) {
+    const m = /^([\s\S]*?[.!?…]+["')\]]*)\s+/.exec(buf);
+    if (m && m[1].trim().length >= 2) { take(m[1]); buf = buf.slice(m[0].length); continue; }
+    // a long run with no full stop yet: say up to its last comma
+    if (buf.length > 160) { const i = buf.lastIndexOf(', '); if (i > 40) { take(buf.slice(0, i + 1)); buf = buf.slice(i + 2); continue; } }
+    return buf;
+  }
+}
+/** The lines a whole text is said as (as speak() cuts it), each as the voice gets it. */
+const linesOf = text => { const out = [], rest = cut(text + ' ', l => out.push(spoken(l))); if (rest.trim()) out.push(spoken(rest)); return out.filter(Boolean); };
+
 /** Says sentences in order, one after another, with the mouth moving; the next is written while one is said. */
 function makeSpeaker(creature, onCaption) {
   let queue = [], busy = false, epoch = 0, buf = '', idle = Promise.resolve(), endIdle = () => {};
@@ -63,16 +76,7 @@ function makeSpeaker(creature, onCaption) {
   }
   return {
     /** Text as it streams in: each whole sentence goes to the voice straight away. */
-    feed(text) {
-      buf += text;
-      for (;;) {
-        const m = /^([\s\S]*?[.!?…]+["')\]]*)\s+/.exec(buf);
-        if (m && m[1].trim().length >= 2) { push(m[1]); buf = buf.slice(m[0].length); continue; }
-        // a long run with no full stop yet: say up to its last comma
-        if (buf.length > 160) { const i = buf.lastIndexOf(', '); if (i > 40) { push(buf.slice(0, i + 1)); buf = buf.slice(i + 2); continue; } }
-        break;
-      }
-    },
+    feed(text) { buf += text; buf = cut(buf, push); },
     flush() { if (buf.trim()) push(buf); buf = ''; },
     /** Everything said so far in this reply that is still to come, for "you were interrupted". */
     get pending() { return [...queue, buf].join(' ').trim(); },
@@ -310,6 +314,9 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
     yours: text => speaker.yours(text),
     /** Says a line of its own (not from Claude), such as its hello. */
     speak(line) { speaker.feed(line + ' '); speaker.flush(); },
+    /** Writes a line's sound ahead of time (its hello, while the room gets ready), so when it is said it starts at once.
+     * The voice itself starts loading now if it hasn't. Resolves true once every sentence of it is written. */
+    prepare(text) { return Promise.all(linesOf(text).map(l => gs.sound.prepare(l, sayOptions()).catch(() => false))).then(r => r.every(Boolean)); },
     get busy() { return !!ctl || creature.state.thinking; },
     /** The diary changed outside the chat (forgotten from the diary sheet): it is read again for the next turn. */
     refreshMemo() { memoText = null; },
