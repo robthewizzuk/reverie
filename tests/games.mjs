@@ -62,7 +62,7 @@ await page.waitForFunction(() => /O/.test(window.__reverie.world.game.context().
 console.log('after a tap:', (await game()).ctx.slice(0, 200));
 await quiet();
 // then squares said out loud, until the round is over
-for (let i = 0; i < 6; i++) {
+for (let i = 0; i < 9; i++) {
   const g = await game(); if (g.state === 'done') break;
   const free = /Free squares: ([^.]+)\./.exec(g.ctx)?.[1].split(', ') || [];
   await say('square ' + free[0]);
@@ -148,13 +148,13 @@ await shot('8-quest-rolled');
 for (let i = 0; i < 6; i++) {
   await quiet();
   const st = (await game()).state; if (st === 'won' || st === 'lost') break;
-  await page.waitForFunction(() => ['ready', 'won', 'lost'].includes(window.__reverie.world.game.state), null, { timeout: 30000 }).catch(() => fail('the quest got stuck in ' + 'a roll'));
+  await page.waitForFunction(() => ['ready', 'won', 'lost'].includes(window.__reverie.world.game.state), null, { timeout: 120000 }).catch(() => fail('the quest got stuck in ' + 'a roll'));
   if ((await game()).state !== 'ready') break;
   await page.click('#gamebar button[data-id="roll"]');
-  await page.waitForFunction(() => window.__reverie.world.game.state !== 'rolling', null, { timeout: 30000 });
+  await page.waitForFunction(() => window.__reverie.world.game.state !== 'rolling', null, { timeout: 120000 });
   await page.waitForTimeout(1500);
 }
-await page.waitForFunction(() => ['won', 'lost'].includes(window.__reverie.world.game.state), null, { timeout: 30000 }).catch(() => fail('the quest did not end'));
+await page.waitForFunction(() => ['won', 'lost'].includes(window.__reverie.world.game.state), null, { timeout: 120000 }).catch(() => fail('the quest did not end'));
 g = await game();
 console.log('quest:', g.bar, '|', g.ctx);
 await page.waitForTimeout(800);

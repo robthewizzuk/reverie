@@ -234,17 +234,17 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
 
   async function hear(text, o = {}) {
     text = String(text || '').trim().slice(0, 1000); if (!text) return;
-    // a game hears what they said first (Twenty Questions counts a question, spots a guess) and may add a note
+    if (!o.news) try { onHeard(text); } catch { /* the diary's problem */ }
+    // a game hears what they said too (Twenty Questions counts a question, spots a guess) and may add a note
     const heard = !o.news && world.game?.heard?.(text);
     if (heard) text += '\n' + heard;
     // game news not yet passed on goes first, so it knows what happened on the board
-    if (!o.news) try { onHeard(text); } catch { /* the diary's problem */ }
     let image = o.image || null;
     if (news.length) { text = news.join('\n') + '\n\n' + text; news = []; loudAt = 0; image ||= newsImage; }
     newsImage = null;
     // "let's play chess": the board goes up at once, before Claude has said a word (so it can't make a prop board instead)
     const wantsGame = !o.news && gameAsked(text);
-    if (wantsGame && (world.game?.id !== wantsGame.game || world.game.state === 'done')) {
+    if (wantsGame && (world.game?.id !== wantsGame.game || ['done', 'won', 'lost', 'over'].includes(world.game.state))) {
       const r = await world.play(wantsGame.game, { level: wantsGame.level });
       text += `\n(The ${(GAMES[wantsGame.game]?.title || wantsGame.game).toLowerCase()} ${wantsGame.game === 'draw_and_guess' ? 'game' : wantsGame.game === 'chess' ? 'board' : 'table'} was set up straight away when they asked: ${r} Don't call play or make for it; just react.)`;
     }

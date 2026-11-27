@@ -98,7 +98,8 @@ export function makeQuest(stage) {
     if (state !== 'ready') return null;
     const my = clk.epoch, c = here(), n = need(c);
     state = 'rolling';
-    const faces = await stage.throwDice?.(1) || [Math.ceil(Math.random() * 6)];
+    let faces = [];
+    try { faces = await stage.throwDice?.(1) || []; } catch (e) { console.warn('[reverie] quest dice:', e); }
     if (!alive(my)) return null;
     const v = faces[0] || Math.ceil(Math.random() * 6), ok = v >= n;
     rolls.push({ challenge: c.prop, v, ok });
