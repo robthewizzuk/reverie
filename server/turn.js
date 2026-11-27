@@ -4,6 +4,8 @@
 // environment (ANTHROPIC_API_KEY), never in the page.
 //
 //   POST /api/turn  { tier: 'quick' | 'deep', messages: MessageParam[] }
+//   POST /api/warm  (no body): reads the system prompt and tools into the API's cache while the page wakes, so the first
+//                   turn reads them instead of paying for them in its wait. -> { ok, ms } or { error }
 //   -> text/event-stream: each Claude stream event as `data: {...}`, then `data: {"type":"final","message":{...}}`
 //      (the whole reply, thinking blocks included, for the page to keep in its history), or `{"type":"error"}`.
 import Anthropic from '@anthropic-ai/sdk';
@@ -43,7 +45,10 @@ export function requestFor(body, env = {}) {
     // The same system prompt and tools for both models, always: Claude's thinking blocks are bound to everything
     // before them, so a prompt that changed with the model would make the quick model's thinking invalid when the deep
     // one reads it (a 400). The "answer now" note for the deep model rides in think_harder's result instead.
-    system: [{ type: 'text', text: SYSTEM }],
+    // The tools and the system prompt are the same on every turn, every chat and both models' turns: cached for an hour
+    // (a cache read keeps it alive), so a chat picked up after a cup of tea starts as fast as one in full flow. The
+    // conversation after them is cached by the top-level marker below, for 5 minutes (a 1-hour part must come first).
+    system: [{ type: 'text', text: SYSTEM, cache_control: { type: 'ephemeral', ttl: '1h' } }],
     tools: TOOLS.map(t => ({ ...t, eager_input_streaming: true })),
     tool_choice: { type: 'auto' },
     output_config: { effort: deep ? 'medium' : 'low' },
@@ -58,6 +63,35 @@ export function requestFor(body, env = {}) {
   // the server; Haiku 5.5 does not (the page answers a refusal itself).
   if (/sonnet-5-5|opus-5|fable/.test(model)) { req.betas.push('server-side-fallback-2026-07-01'); req.fallbacks = 'default'; }
   return req;
+}
+
+// When this server last warmed the cache (one warm an hour per running server is plenty: it lives an hour, and turns keep it alive)
+let warmedAt = 0;
+const WARM_EVERY = 50 * 60e3;
+
+/** The warm-up request: the quick model's turn, with a stand-in message and max_tokens 0 (the prompt is read and
+ * cached, nothing is written or billed as output). Exported for the tests. */
+export function warmRequestFor(env = {}) {
+  const req = requestFor({ tier: 'quick', messages: [{ role: 'user', content: 'warm up' }] }, env);
+  delete req.cache_control;   // (the cache is keyed at the end of the system prompt, not at the stand-in message)
+  return { ...req, max_tokens: 0 };
+}
+
+/** Handles POST /api/warm. */
+export async function handleWarm(request, env = {}) {
+  if (request.method !== 'POST') return json(405, { error: 'POST only' });
+  if (!env.ANTHROPIC_API_KEY) return json(500, { error: 'ANTHROPIC_API_KEY is not set on the server.' });
+  if (Date.now() - warmedAt < WARM_EVERY) return json(200, { ok: true, skipped: true });
+  warmedAt = Date.now();
+  const t0 = Date.now();
+  try {
+    const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY, maxRetries: 0 });
+    const m = await client.beta.messages.create(warmRequestFor(env));
+    return json(200, { ok: true, ms: Date.now() - t0, written: m.usage?.cache_creation_input_tokens ?? null, read: m.usage?.cache_read_input_tokens ?? null });
+  } catch (e) {
+    warmedAt = 0;
+    return json(200, { ok: false, ms: Date.now() - t0, error: String(e?.message || e).slice(0, 200) });
+  }
 }
 
 /** Handles POST /api/turn. env carries ANTHROPIC_API_KEY (and the optional model names). */

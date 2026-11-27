@@ -5,32 +5,61 @@ import gs, { loadParts } from '../engine/src/gamescroll.js';
 import { speed, fpsFor, tick as tickHz, screenHz } from '../engine/src/kit/speed.js';
 import { audio } from '../engine/src/sfx.js';
 import { makeWorld } from './world.js';
+import { makeLook } from './look.js';
 import { makeBrain } from './brain.js';
 import { makeBody } from './body.js';
-import { Listener } from './listen.js';
-import { askPlace, placeAt, weather } from './place.js';
+import { Listener, sameWords } from './listen.js';
+import { askPlace, placeAt, weather, contextLine } from './place.js';
 import { makePad, madeFrom } from './doodle.js';
 import { makeMood, toneOf } from './mood.js';
-import { setTone } from './looks.js';
+import { setTone, echoNow } from './looks.js';
 import { makeShow } from './show.js';
 import { makeMemory } from './memory.js';
 import { surpriseFor, briefingNote, funDay } from './daily.js';
 import { makeDiary } from './diary.js';
+import { makeShaker } from './fun.js';
+import { makeMusic } from './music.js';
+import { makeHelpers, reportOf } from './helpers.js';
+import { makeWisps } from './helper-wisps.js';
+import { makeGoogle } from './google.js';
+import { makeLearning } from './learn.js';
+import { useLearning } from './games/lesson.js';
+import { makeReminders } from './reminders.js';
+import { makeTimers } from './timers.js';
+import { makeRecapper } from './recap.js';
+import { makeShop } from './shop.js';
+import { makeAchievements, ICONS } from './achievements.js';
+import { playCue } from './sounds.js';
+import { makeTrophies } from './trophies.js';
+import { roomColours } from './room.js';
+import { makeGarden } from './garden.js';
+import { makeWatch, makeWatchSheet, videoOf } from './watch.js';
+import { makeKaraoke } from './karaoke.js';
+import { makeLyrics } from './lyrics.js';
 
 const $ = s => document.querySelector(s);
 const stage = $('#stage'), canvas = $('#view'), ctx = canvas.getContext('2d');
 const input = $('#say'), form = $('#bar'), mic = $('#mic'), caption = $('#caption'), status = $('#status'), wake = $('#wake'), timing = $('#timing');
 const gamebar = $('#gamebar'), gameText = $('#gamebar span'), gameButtons = $('#gamebar div');
-const draw = $('#draw'), book = $('#book'), look = $('#look');
+const draw = $('#draw'), book = $('#book'), look = $('#look'), recentre = $('#recentre'), helperList = $('#helpers'), tv = $('#tv');
 const debug = new URLSearchParams(location.search).has('debug');
 
-let W = 0, H = 0, world, brain, body, voice, pad, diary, mood, show, last = 0, awake = false, captionT = 0, nextAt = 0;
+let W = 0, H = 0, world, brain, body, voice, pad, diary, mood, show, shaker, music, helpers, wisps, google, timers, shop, trophies, garden, watch, karaoke, last = 0, awake = false, captionT = 0, nextAt = 0;
 // its diary, kept in this browser (memory.js), and today's surprise (daily.js): { surprise, holding, funDay }
 const memory = makeMemory();
+// what you are learning together (learn.js), kept beside the diary; the lessons write their days in the diary too
+const learning = makeLearning();
+useLearning(learning, { onDay: line => memory.note('day', { line }) });
+// reminders and timers, kept in this browser too (reminders.js), with their chips, chime and notifications (timers.js)
+const reminders = makeReminders();
+// (now and then the chat is boiled down into the diary: recap.js)
+const recapper = makeRecapper({ memory });
+// its badges, kept in this browser too (achievements.js), and their trophies on the shelf (trophies.js)
+const achievements = makeAchievements();
 const today = { surprise: null, holding: null, funDay: funDay() };
 let overnight = Promise.resolve();
 // which kind of fun each of Claude's tools is, for its mood (mood.js FUN)
-const FUN_OF = { make: 'make', change: 'change', toss: 'toss', place: 'place', room_colours: 'room', colours: 'colours', roll: 'roll', doodle: 'doodle', play: 'game', game_move: 'move', voice: 'voice', show: 'show' };
+const FUN_OF = { make: 'make', change: 'change', toss: 'toss', place: 'place', room_colours: 'room', colours: 'colours', roll: 'roll', doodle: 'doodle', play: 'game', game_move: 'move', voice: 'voice', show: 'show', smash: 'smash', effect: 'effect', music: 'music', dance: 'dance', teach: 'game', wear: 'wear', watch: 'watch', karaoke: 'game' };
 
 // What the engine's speed kit is told is being played, so the 3D view paces and tunes itself as it does for a Next Gen
 // game in the app: 60 frames a second on a phone or a laptop's browser (not every refresh of a 120 Hz screen, which is
@@ -87,10 +116,15 @@ function setStatus(s) {
 function say(line) { memory.said('me', line); caption.textContent = line; caption.hidden = false; captionT = 4 + line.length * .06; }
 function showTiming(t) {
   const ms = x => x == null ? '–' : Math.round(x - t.start) + ' ms';
-  const line = `first words ${ms(t.text)} · first tool ${ms(t.tool)} · whole turn ${ms(t.end)}`;
+  // (from about when their last word was heard: the recogniser's wait, the reply's first words, then its voice)
+  const line = `taken ${ms(t.heard)} · first words ${ms(t.text)} · voice ${ms(t.voice)} · first tool ${ms(t.tool)} · whole turn ${ms(t.end)}`;
   console.info('[reverie] ' + line);
   if (debug) timing.textContent = line;
 }
+
+// How long the words being heard must stand still before they are answered, without waiting for the recogniser to be
+// sure the phrase is over (it often takes a second or more after the last word). If they go on, the rest joins on.
+const SETTLE_MS = 650;
 
 /** Words heard that are clearly someone talking, not its voice coming back: 3 or more new words, most of what was heard. */
 const deliberate = h => !!h && h.yours.length >= 3 && h.yours.length / Math.max(1, h.words.length) >= .5;
@@ -107,12 +141,21 @@ function frame(now) {
   try {
     if (voice?.listening || voice?.want) {
       // the mic hears its voice too: only words it has not just said (or is about to say) count as yours
-      const heard = voice.text.trim(), h = heard ? brain.yours(heard) : null, mine = h ? h.yours.length : 0;
+      // (and while a video plays, it hears the video: that is neither you nor its voice: watch.js)
+      const heard = voice.text.trim(), film = !!heard && watch.isVideo(heard), h = heard && !film ? brain.yours(heard) : null, mine = h ? h.yours.length : 0;
       world.creature.state.listening = mine > 0;
       if (mine) input.placeholder = heard;
+      // still going after a pause it took as the end: it stops and waits for the rest (asked again whole, not cut short)
+      const early = voice.early, rest = early && heard.startsWith(early + ' ') ? brain.yours(heard.slice(early.length)) : null;
+      if (rest && rest.yours.length && (brain.speaking || brain.busy)) brain.interrupt(`they went on: "${heard}"`, { rest: true });
       // talking over it: three or more words of yours, most of what was heard, stop it (less is its own voice misheard)
-      if (brain.speaking && deliberate(h)) brain.interrupt(`talked over by "${heard}"`);
-      const said = voice.next();
+      // (not the words it took at a pause and is answering now: the recogniser shows them until it gives its final)
+      else if (brain.speaking && !(early && sameWords(heard, early)) && deliberate(h)) brain.interrupt(`talked over by "${heard}"`);
+      // words that have stood still are answered now (not while it talks: that is talking over it, above); not in a game
+      // that counts what is said (Twenty Questions), where a phrase taken twice would count twice
+      if (mine && !brain.speaking && !world.game?.heard) voice.settle(SETTLE_MS);
+      const next = voice.next(); let said = next?.text;
+      if (said && watch.isVideo(said)) { watch.overheard(said); said = null; }
       if (said) {
         input.placeholder = 'Say something, or type…';
         const f = brain.yours(said);
@@ -123,17 +166,27 @@ function frame(now) {
         const ok = brain.speaking ? deliberate(f) || (all && f.words.length >= 2)
           : brain.busy ? deliberate(f) || all
           : !f.words.length || f.yours.length / f.words.length > .3;
-        if (ok) brain.hear(said);
+        if (ok && karaoke && !karaoke.heardOk(said)) console.info(`[reverie] a song is on: took "${said}" for singing (say Reverie's name, or stop)`);
+        else if (ok && music && !music.heardOk(said)) console.info(`[reverie] music is on: took "${said}" for a lyric (say Reverie's name, or a music command)`);
+        else if (ok) brain.hear(said, { more: next.more, at: next.at });
         else { console.info(`[reverie] ignored its own voice: "${said}" (yours: ${f.yours.join(' ') || 'none'})`); if (debug) timing.textContent = 'ignored echo: ' + said; }
       }
     }
     captionT -= dt; if (captionT < 0 && !brain?.speaking) caption.hidden = true;
-    if (awake) body.update(dt);
+    if (awake) { body.update(dt); shaker?.update(dt); }
+    music.update(dt);
+    karaoke.update(dt);
     mood.update(dt);
+    trophies?.update(dt);
     const c = world.creature; c.cheer += (mood.cheer - c.cheer) * (1 - Math.exp(-dt * 1.5));   // (its body follows its mood, gently)
     brain.update();
     showGame();
+    if (recentre.hidden === looking.moved) recentre.hidden = !looking.moved;
+    canvas.classList.toggle('looking', looking.dragging);
     world.update(dt);
+    wisps?.update(dt); helpers?.tell();
+    garden?.update(dt);
+    watch.update(dt);
     world.draw(ctx);
   } catch (e) {
     if (!e?.kitLoading) { console.error(e); setStatus('error: ' + e.message); }
@@ -148,6 +201,11 @@ async function boot() {
   world = makeWorld();
   await whenLoaded(() => world.reset());
   world.resize(W, H);
+  world.look = looking;
+  warmUp();
+  trophies = makeTrophies({ gs, scene: world.view.scene, creature: world.creature, sparks: world.sparks, wood: roomColours().wood });
+  trophies.show(achievements.earned());
+  world.achievements = achievements;   // (for features that track their own: world.achievements.track('garden:plant'))
   // a new day (and not the first ever): something it made overnight is waiting in its hands, made now while it wakes
   const visit = memory.peek();
   overnight = surpriseFor().then(async s => {
@@ -158,43 +216,124 @@ async function boot() {
   }).catch(e => console.warn('[reverie] surprise', e));
   // the drawing pad: what they draw is named on the device and made real; Reverie hears what it was
   pad = makePad({ el: $('#pad'), onOpen: () => { world.creature.mood('curious'); world.creature.gesture('point'); },
-    onDrawn: async guesses => { const news = await madeFrom(guesses, world); console.info('[reverie] ' + news); if (world.held) memory.note('doodle', { what: world.held.short }); brain.notice(news, true); } });
+    onDrawn: async guesses => { const news = await madeFrom(guesses, world); console.info('[reverie] ' + news); if (world.held) { memory.note('doodle', { what: world.held.short }); achievements.track('doodle'); achievements.track('make'); } brain.notice(news, true); } });
   // show and tell: a camera window; what it spots, signs and barcodes stay on the device, a press of Show sends a photo
   show = makeShow({ el: $('#show'), world, onOpen: () => { world.creature.mood('curious'); world.creature.gesture('wave'); },
     onNews: (text, loud, image, now) => {
       console.info('[reverie] ' + text.slice(0, 160));
       // (a press of Show is them talking: it answers now, even mid-sentence)
-      if (now) { brain.interrupt('shown something'); brain.hear(text, { at: performance.now(), news: true, image }); } else brain.notice(text, loud, image);
+      if (now) { achievements.track('show'); brain.interrupt('shown something'); brain.hear(text, { at: performance.now(), news: true, image }); } else brain.notice(text, loud, image);
     } });
-  diary = makeDiary({ el: $('#diary'), memory, today: () => today, onForget: () => brain.refreshMemo() });
+  // shopping: a helper looks across UK shops, the offers come back as cards; buying is always their own tap through
+  // (its results are said as soon as Reverie is free, however long that takes: a helper can come back mid-chat)
+  shop = makeShop({ el: $('#shop'), world, onNews: async (text, loud) => {
+    console.info('[reverie] ' + text.slice(0, 160));
+    if (!loud) return brain.notice(text, false);
+    for (let t = 0; t < 120 && (brain.busy || brain.speaking || world.creature.state.listening); t++) await new Promise(r => setTimeout(r, 500));
+    brain.hear(text, { at: performance.now(), news: true });
+  } });
+  // Gmail and the calendar: read when asked; sending an email or adding an event only on a tap of Yes on its card
+  google = makeGoogle({ el: $('#ask'), onNews: (text, loud) => { console.info('[reverie] ' + text); brain.notice(text, loud); } });
+  google.check();
+  diary = makeDiary({ el: $('#diary'), memory, achievements, today: () => today, google, extra: () => lessonsHtml(learning),
+    onForget: what => { if (what === 'everything') { learning.wipe(); achievements.wipe(); trophies.show([]); } else if (what.startsWith('lesson:')) learning.forget(what.slice(7)); brain.refreshMemo(); } });
+  learning.onChange(() => { if (diary.open) diary.show(); });
   // its mood: lifted by play, shown in its body, glow and voice, and told to Claude; a level up is a little burst of hearts
   mood = makeMood({ onLevel: (level, up) => {
     console.info(`[reverie] mood: ${level}`);
+    if (up && level === 'overjoyed') achievements.track('overjoyed');
     if (!up) return;
     const c = world.creature, at = c.coreAt(new gs.hd.THREE.Vector3());
     world.floaties.burst({ x: at.x, y: at.y + .3, z: at.z }, { n: 6 }); gs.sound.sounds.heart?.(); if (!c.busy) c.gesture('bounce');
   } });
   world.mood = mood; world.addLine(() => mood.line());
+  // music and dancing (music.js): Spotify plays, the mic hears the beat, and it dances
+  music = makeMusic({ world, el: $('#music'), onNews: (text, loud) => brain?.notice(text, loud) });
+  world.addLine(() => music.line());
+  // its helpers (helpers.js): little agents it sends off to look into things, shown as wisps over its head and pills on
+  // the stage; one that comes back is passed to Claude as news when Reverie is free, to tell you in its own words
+  wisps = makeWisps({ scene: world.view.scene, creature: world.creature, floaties: world.floaties });
+  helpers = makeHelpers({
+    ready: () => awake && !!brain && !brain.busy && !brain.speaking && !world.creature.state.listening,
+    onReport: h => { brain.hear(reportOf(h), { at: performance.now(), news: true }); if (h.status !== 'failed') mood.fun('chat'); return true; },
+    context: () => contextLine().replace(/^\[From the device, not said aloud: |\]$/g, ''),
+    onChange: list => { wisps.show(list); showHelpers(list); },
+  });
+  wisps.show(helpers.list); showHelpers(helpers.list);
+  world.addLine(() => helpers.line());
+  // karaoke (karaoke.js): it sings with the band, the words light up on screen, a mirror ball comes down; and the words
+  // of their own Spotify songs, from LRC files they add with the mic button on the music bar (lyrics.js)
+  karaoke = makeKaraoke({ world, el: $('#karaoke'), music, lyrics: makeLyrics(), memory, echo: echoNow, onNews: (text, loud) => brain?.notice(text, loud) });
+  world.addLine(() => karaoke.line());
+  $('#karaoke [data-id="stop"]')?.addEventListener('click', () => { const was = karaoke.tools.karaoke({ action: 'stop' }); was.then(t => brain?.notice(`[karaoke] They pressed stop. ${t}`, false)); });
+  const lrc = $('#lrc');
+  $('#music')?.addEventListener('click', e => { if (e.target.closest('button')?.dataset.id === 'lyrics') lrc?.click(); });
+  lrc?.addEventListener('change', async () => { const f = lrc.files?.[0]; lrc.value = ''; if (f) brain?.notice(await karaoke.lyricsFor(f), true); });
   world.creature.cheer = mood.cheer;
   setTone(() => toneOf(mood.cheer));
   brain = makeBrain({ world, onCaption: say, onStatus: setStatus, onTiming: showTiming,
-    memo: () => memory.summary(), onHeard: text => { memory.said('you', text); mood.fun('chat'); },
-    onTool: (name, input, r) => { noted(name, input, r); if (!r?.error && FUN_OF[name]) mood.fun(FUN_OF[name]); },
+    memo: () => [memory.summary(), learning.summary(), achievements.summary()].filter(Boolean).join('\n'), context: () => watch?.context() || '', onHeard: (text, again) => { memory.said('you', text, again); recapper.poke(); if (!again) mood.fun('chat'); timers?.heard(); },
+    onTool: (name, input, r) => { noted(name, input, r); earned(name, input, r); if (!r?.error && FUN_OF[name]) mood.fun(FUN_OF[name]); },
     tools: {
       window: input => world.daylight.set(input),
-      doodle: async () => { pad.show(); return 'The drawing pad is open on their screen. When they press Make it!, you will hear what they drew and it appears in your hands.'; },
+      doodle: async () => { if (world.game?.id === 'draw_and_guess') return { text: 'Not opened: the drawing pad is already in use for Draw and Guess.', error: true }; pad.show(); return 'The drawing pad is open on their screen. When they press Make it!, you will hear what they drew and it appears in your hands.'; },
       remember: async input => memory.remember(input),
-      forget: async input => { const r = memory.forget(input); brain.refreshMemo(); return r; },
-      briefing: async () => { today.surprise ||= await surpriseFor(); return briefingNote(memory, { weather: await weatherHere(), surprise: today.surprise }); },
+      recall: async input => memory.recall(input),
+      forget: async input => {
+        // (lessons are kept in their own book: "forget my Spanish lessons", or everything)
+        const lessons = /\b(lessons?|learning|learned|learnt|studies|words)\b/i.test(input.what || '') ? learning.forget(input.what) : '';
+        if (/^\s*(everything|all|it all|all of it|everything about me|the whole diary|your whole diary)\s*$/i.test(input.what || '')) learning.wipe();
+        const r = lessons ? `Forgot ${lessons}. They are gone from the diary.` : memory.forget(input);
+        brain.refreshMemo(); return r;
+      },
+      teach: async input => {
+        if (input.action === 'start') return world.play('lesson', { topic: input.topic, language: input.language, level: input.level });
+        return world.game?.id === 'lesson' ? world.game.teach(input) : { text: 'No lesson is on: start one with action start and a topic first.', error: true };
+      },
+      briefing: async () => { today.surprise ||= await surpriseFor(); const [wx, day] = await Promise.all([weatherHere(), googleDay()]); return briefingNote(memory, { weather: wx, surprise: today.surprise, google: day }); },
+      calendar: input => google.calendar(input),
+      email: input => google.email(input),
       show: input => show.open({ find: typeof input?.find === 'string' ? input.find : '' }),
+      effect: input => world.show(input.kind),
+      smash: input => world.smash(input.how),
+      ...music.tools,
+      send_helper: input => helpers.send(input),
+      helpers: input => helpers.manage(input),
+      shop: input => shop.tool(input || {}),
+      badges: async () => achievements.report(),
+      ...karaoke.tools,
       diary: async () => { diary.show(); return 'Your diary is open on their screen: everything you remember about them, and a way to forget any of it.'; },
+      reminder: input => timers.tool(input),
+      garden: input => garden.command(input),
+      watch: input => watch.command(input),
     } });
+  // reminders and timers: chips on the stage, a chime and Reverie saying so when one goes off (once it is free to talk)
+  world.addLine(() => reminders.line());
+  timers = makeTimers({ el: $('#timers'), reminders,
+    canTalk: () => awake && !brain.busy && !brain.speaking && !world.creature.state.listening,
+    announce: text => brain.hear(text, { at: performance.now(), news: true }),
+    onRing: () => { const c = world.creature; if (!c.busy) c.gesture('wave'); c.mood('excited'); const at = c.coreAt(new gs.hd.THREE.Vector3()); world.floaties.burst({ x: at.x, y: at.y + .3, z: at.z }, { n: 4 }); } });
   body = makeBody({ creature: world.creature, world, mood });
-  world.onNews = (text, loud) => { gameNews(text); if (/^\[(chess|quiz|noughts|twenty|draw and guess|quest)/.test(text)) mood.fun(/checkmate|you win|you won|they won|last question|well played|right!|guessed it|treasure/i.test(text) ? 'win' : 'move'); brain.notice(text, loud); };
+  // the phone in their hands (fun.js): shaken, it gets dizzy and Claude hears of it; tilted, things on the floor roll
+  shaker = makeShaker({ world: world.physics, creature: world.creature, floaties: world.floaties, floor: world.floorBodies, pet: () => world.keeper,
+    onShaken: strength => { mood.fun('shake'); if (!world.game) brain.notice(`[phone] They just shook the phone ${strength > 220 ? 'really hard' : 'about'}: you are dizzy, and everything on the floor bounced.`, true); } });
+  // its windowsill garden (garden.js): plants that grow over real days, watered by asking or by a tap on the pot
+  garden = makeGarden({ world, onNews: (text, loud) => brain.notice(text, loud) });
+  world.addLine(() => garden.line());
+  // watching a video together: a screen in the room; only words about it (title, captions) ever reach Claude
+  const sheet = makeWatchSheet({ el: $('#watching'), onPick: v => { wakeUp(); startWatching(v); } });
+  watch = makeWatch({ host: $('#screen'), sheet, world, memory, state: () => ({ speaking: brain.speaking, busy: brain.busy, listening: world.creature.state.listening }),
+    onOpen: () => { pad?.hide(); if (show?.isOpen) show.close(); diary?.hide(); },
+    onNews: (text, loud) => brain.notice(text, loud) });
+  world.onNews = (text, loud) => { gameNews(text); gameBadges(text); if (/^\[(chess|quiz|noughts|twenty|draw and guess|quest|lesson|escape)/.test(text)) mood.fun(/checkmate|you win|you won|they won|last question|well played|right!|guessed it|treasure|you escaped/i.test(text) ? 'win' : 'move'); brain.notice(text, loud); };
   world.onSay = line => { if (brain.busy || brain.speaking) return false; brain.speak(line); return true; };
   world.pad = pad;
   voice = new Listener({ onProblem: () => listeningOff(), onNote: debug ? line => { timing.textContent = 'mic: ' + line; } : null });
-  window.__reverie = { world, brain, body, gs, voice, pad, memory, diary, today, mood, show };
+  // (which games they play most, for the diary's habits)
+  const play0 = world.play.bind(world);
+  world.play = (game, o) => { memory.note('play', { game }); return play0(game, o); };
+  window.__reverie = { world, brain, body, gs, voice, pad, memory, learning, diary, today, mood, show, shaker, music, helpers, google, reminders, timers, recapper, shop, achievements, trophies, garden, watch, karaoke };
+  achievements.onUnlock(celebrateBadge);
   // its voice (about 48 MB the first time, then from the cache) loaded and its hello written while the light gets
   // ready, so the tap is answered at once: the web version of the engine otherwise loads it with the first line, and
   // a first visit's hello waited for the whole download (and went unsaid past 9 seconds)
@@ -227,6 +366,7 @@ function wakeUp() {
   if (awake) return; awake = true; wake.hidden = true;
   audio();   // (the page's sound started in the tap itself: a phone keeps it silent if it's only asked for later)
   const c = world.creature, visit = memory.visit();
+  visited();
   c.gesture('wave'); c.mood('happy');
   // back after a long while: it missed them (Claude hears it with the first thing they say), and the pet runs to say hello
   if (mood.missed) {
@@ -236,6 +376,7 @@ function wakeUp() {
   }
   mood.fun('chat');
   world.keeper?.greet();
+  garden.greet();   // (what grew, or wants a drink, while they were away)
   world.daylight.sound(true);   // (the rain's patter, now the page may make sound)
   // (through its speaker, so the mic knows this is its voice): the tour the first time, after that a hello by name
   brain.speak(helloFor(visit));
@@ -244,6 +385,15 @@ function wakeUp() {
   const asked = startListening().finally(() => askPlace());
   if (visit.newDay && !visit.first) dailyBriefing(visit, asked).catch(e => console.warn('[reverie] briefing', e));
 }
+
+/**
+ * While it wakes, Claude's prompt is read into the API's cache, so the first answer doesn't wait (the first turn then
+ * reads it instead). Its voice and the hello are got ready in boot, once the brain is made.
+ */
+function warmUp() {
+  fetch(API_WARM, { method: 'POST' }).then(r => r.json()).then(r => console.info(`[reverie] warmed the prompt cache: ${r.ms ?? '?'} ms${r.error ? ', ' + r.error : ''}`)).catch(() => {});
+}
+const API_WARM = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '') + '/api/warm';
 
 /** Its hello on a later visit: by name if it knows it, for the time of day, and a hint of the surprise on a new day. */
 function welcome(visit) {
@@ -255,17 +405,31 @@ function welcome(visit) {
 }
 
 const weatherHere = async () => placeAt() ? weather('').catch(() => null) : null;
+/** Today's calendar and new email, for the briefing ('' when Google isn't connected, or after 4 seconds). */
+const googleDay = () => Promise.race([google.briefing().catch(() => ''), wait(4000).then(() => '')]);
 const wait = ms => new Promise(r => setTimeout(r, ms));
 
 /** The first visit of a day: the briefing, said by Claude after its hello (with the weather once the place is known). */
 async function dailyBriefing(visit, asked) {
   await Promise.race([Promise.all([overnight, asked]), wait(7000)]);
-  const wx = await Promise.race([weatherHere(), wait(4000).then(() => null)]);
+  const [wx, day] = await Promise.all([Promise.race([weatherHere(), wait(4000).then(() => null)]), googleDay()]);
   if (!today.surprise) return;
   for (let i = 0; i < 40 && brain.busy; i++) await wait(500);   // (they got talking first: after that turn)
   memory.once('surprise');
   memory.note('day', { line: today.holding ? `found ${today.holding} waiting, and ${today.surprise.show}` : `the day's surprise was ${today.surprise.show}` });
-  brain.hear(briefingNote(memory, { weather: wx, surprise: today.surprise, firstToday: true, holding: today.holding, visit }), { at: performance.now(), news: true, keep: true });
+  brain.hear(briefingNote(memory, { weather: wx, surprise: today.surprise, firstToday: true, holding: today.holding, visit, google: day }), { at: performance.now(), news: true, keep: true });
+}
+
+/** The diary sheet's section on what you are learning together (learn.js): each subject, its words, and a ✕ for it. */
+function lessonsHtml(book) {
+  const subs = book.list(); if (!subs.length) return '';
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  return `<section><h3>Learning together</h3><ul class="facts">${subs.map(s => {
+    const due = s.kind === 'language' ? book.due(s.name, 99).length : 0;
+    const bits = [`${s.lessons} lesson${s.lessons === 1 ? '' : 's'}`, s.quiz.asked ? `quiz ${s.quiz.right}/${s.quiz.asked}` : '', s.words.length ? `${s.words.length} words${due ? `, ${due} to review` : ''}` : ''].filter(Boolean).join(' · ');
+    const more = s.kind === 'language' && s.words.length ? s.words.slice(-10).map(w => `${w.word} (${w.meaning})`).join(', ') : s.points.slice(-4).join(' · ');
+    return `<li><span><b>${esc(s.name)}</b> · ${esc(bits)}${more ? `<br><small>${esc(more)}</small>` : ''}${s.next ? `<br><small>Next time: ${esc(s.next)}</small>` : ''}</span><button type="button" data-unlearn="${esc(s.name)}" aria-label="Forget these lessons">✕</button></li>`;
+  }).join('')}</ul></section>`;
 }
 
 /** A tool Claude used, for the records: things it made, and dice. */
@@ -275,12 +439,101 @@ function noted(name, input, r) {
   else if (name === 'roll') memory.note('roll');
 }
 
+// ---- badges: what earns them, and the fuss when one is
+
+/** A tool Claude used, for the badges. */
+function earned(name, input = {}, r) {
+  if (r?.error) return;
+  const text = typeof r === 'string' ? r : r?.text || '';
+  const A = achievements;
+  if ((name === 'make' || name === 'change') && /^(Made|Changed)/.test(text)) A.track('make');
+  else if (name === 'place' && /^Carried/.test(text)) A.track('place');
+  else if (name === 'room_colours') A.track('paint');
+  else if (name === 'colours') A.track('colours');
+  else if (name === 'roll') A.track('roll');
+  else if (name === 'window' && !/\blive\b/i.test(JSON.stringify(input))) A.track('sky');
+  else if (name === 'pet' && input.action === 'make' && /^Made/.test(text)) A.track('pet');
+  else if (name === 'remember' && input.name) A.track('name');
+  else if (name === 'voice') A.track('voices', { add: [input.name, input.effect, input.accent].filter(x => x && x !== 'none').join(' ') || 'own' });
+  else if (name === 'play' && input.game && !/could not start|no game called/i.test(text)) { A.track('game'); A.track('games', { add: input.game }); }
+  if (/They got it!|They guessed it/.test(text)) A.track('win:twenty');
+}
+
+/** A game's news, for the badges: who won, and quiz scores. */
+let badgeKey = '';
+function gameBadges(text) {
+  let ev = null;
+  if (/^\[chess\].*checkmate: they beat you/i.test(text)) ev = ['win:chess'];
+  else if (/^\[noughts\].*They won this round/.test(text)) ev = ['win:noughts'];
+  else if (/^\[quest\].*they won the quest/i.test(text)) ev = ['win:quest'];
+  else if (/^\[draw and guess\].*you guessed it in/.test(text)) ev = ['guessed'];
+  else if (/^\[quiz\] That was the last question/.test(text)) { const m = /scored (\d+) out of (\d+)/.exec(text); if (m) ev = ['quiz', { best: Math.round(+m[1] * 10 / +m[2]), count: true }]; }
+  if (!ev) return;
+  // (the same news told twice in a moment is one win)
+  const key = text.slice(0, 120) + Math.floor(performance.now() / 10000);
+  if (key === badgeKey) return; badgeKey = key;
+  achievements.track(...ev);
+}
+
+/** This visit, for the badges: days in a row, days together, and the time of day. */
+function visited() {
+  const v = memory.visits, h = new Date().getHours();
+  achievements.track('streak', { at: v.streak }); achievements.track('days', { at: v.days });
+  if (h < 4) achievements.track('night'); else if (h >= 5 && h < 7) achievements.track('dawn');
+}
+
+/** A new badge: a trophy pops up and flies to the shelf, confetti, a fanfare, a card on screen, and Reverie cheers. */
+const badgeQueue = [];
+function celebrateBadge(a) {
+  badgeQueue.push(a); if (badgeQueue.length > 1) return;
+  (async () => {
+    while (badgeQueue.length) {
+      const b = badgeQueue[0];
+      console.info(`[reverie] badge: ${b.title}`);
+      trophies.award(b, achievements.earned());
+      world.celebrate?.(); playCue(b.tier === 'gold' ? 'fanfare' : 'level_up');
+      toast(b);
+      memory.note('day', { line: `earned the ${b.title} badge` });
+      brain.notice(achievements.line(b), true);
+      await wait(3400);
+      badgeQueue.shift();
+    }
+  })();
+}
+
+/** The badge card that slides down from the top for a few seconds. */
+let toastEl = null;
+function toast(a) {
+  toastEl ||= Object.assign(document.createElement('div'), { id: 'badge-toast', role: 'status' });
+  if (!toastEl.isConnected) stage.append(toastEl);
+  toastEl.className = 'tier-' + a.tier;
+  toastEl.innerHTML = `<span class="medal" aria-hidden="true">${ICONS[a.family] || '🏆'}</span><span><b></b><small></small></span>`;
+  toastEl.querySelector('b').textContent = a.title; toastEl.querySelector('small').textContent = `You ${a.about}!`;
+  toastEl.classList.remove('show'); void toastEl.offsetWidth; toastEl.classList.add('show');
+  clearTimeout(toast.t); toast.t = setTimeout(() => toastEl.classList.remove('show'), 4200);
+}
+
+/** A tap on a trophy on the shelf: what it was for, as a caption. */
+let trophyRay = null;
+function tapTrophy(x, y) {
+  if (!trophies) return false;
+  trophyRay ||= new gs.hd.THREE.Raycaster();
+  const ndc = new gs.hd.THREE.Vector2(x / W * 2 - 1, -(y / H) * 2 + 1);
+  trophyRay.setFromCamera(ndc, world.view.cam);
+  const b = trophies.hit(trophyRay); if (!b) return false;
+  const got = achievements.earned().find(x => x.id === b.id);
+  caption.textContent = `${b.title}: you ${b.about}${got?.day ? ` (${new Date(got.day + 'T12:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })})` : ''}.`;
+  caption.hidden = false; captionT = 4;
+  gs.sound.sounds.bell?.();
+  return true;
+}
+
 /** How a game ended, from its news (games/index.js), for the records: once a game. */
 let lastEnd = '';
 function gameNews(text) {
   const g = world.game, key = (g?.id || '') + ':' + (g?.round ?? '');
   let end = null;
-  if (/^\[chess\]/.test(text)) end = /checkmate: they beat you/i.test(text) ? ['chess', { result: 'won' }] : /checkmate: you won/i.test(text) ? ['chess', { result: 'lost' }] : /stalemate|game is a draw/i.test(text) ? ['chess', { result: 'drawn' }] : null;
+  if (/^\[chess\]/.test(text)) { const level = g?.level; end = /checkmate: they beat you/i.test(text) ? ['chess', { result: 'won', level }] : /checkmate: you won/i.test(text) ? ['chess', { result: 'lost', level }] : /stalemate|game is a draw/i.test(text) ? ['chess', { result: 'drawn', level }] : null; }
   else if (/^\[quiz\] That was the last question/.test(text)) { const m = /scored (\d+) out of (\d+)/.exec(text); if (m) end = ['quiz', { score: +m[1], of: +m[2] }]; }
   if (!end) return;
   // (the same ending can be told twice; a new round is a new game object start)
@@ -310,11 +563,26 @@ function listeningOff() {
   input.focus({ preventScroll: true });
 }
 
-form.addEventListener('submit', e => {
+form.addEventListener('submit', async e => {
   e.preventDefault();
-  const text = input.value.trim(); if (!text || !brain) return;
-  input.value = ''; wakeUp(); brain.hear(text, { at: performance.now() });
+  let text = input.value.trim(); if (!text || !brain) return;
+  const at = performance.now();
+  input.value = ''; wakeUp();
+  // a YouTube link: it goes up on the screen at once, and Claude hears it is on
+  const v = videoOf(text);
+  if (v) {
+    const r = await watch.open(v);
+    text += `\n(The video was put on the screen straight away when they pasted it: ${typeof r === 'string' ? r : r.text} Don't call watch open; just react.)`;
+    return brain.hear(text, { at });
+  }
+  brain.hear(text, { at });
 });
+
+/** A video picked on the sheet (a link or a file): on the screen now, and Reverie told it's on. */
+async function startWatching(v) {
+  const r = await watch.open(v);
+  brain.hear(`[watch] They picked ${v.kind === 'file' ? 'a video file from their device' : 'a video'} to watch together. ${typeof r === 'string' ? r : r.text}`, { at: performance.now(), news: true });
+}
 input.addEventListener('input', () => { speed.inputAt = performance.now(); if (input.value.length === 1) body?.notice(); if (input.value && brain?.speaking && input.value.length > 3) brain.interrupt(); });
 mic.addEventListener('click', async () => {
   if (!awake) return wakeUp();   // (waking asks for the microphone itself)
@@ -325,35 +593,70 @@ mic.addEventListener('click', async () => {
   if (await startListening()) setStatus('');
 });
 wake.addEventListener('click', wakeUp);
-look.addEventListener('click', () => { if (!show) return; wakeUp(); if (show.open) show.close(); else show.open(); });
+look.addEventListener('click', () => { if (!show) return; wakeUp(); if (show.isOpen) show.close(); else show.open(); });
 draw.addEventListener('click', () => { if (!pad) return; wakeUp(); if (pad.open) pad.hide(); else pad.show(); });
 book.addEventListener('click', () => { if (!diary) return; if (diary.open) diary.hide(); else diary.show(); });
-canvas.addEventListener('pointerdown', e => {
-  speed.inputAt = performance.now();
-  if (!world) return;
-  if (!awake) return wakeUp();
-  const r = canvas.getBoundingClientRect(), hit = world.tap(e.clientX - r.left, e.clientY - r.top);
-  if (hit === 'game') return;
-  if (hit === 'creature') { body.poke(); mood.fun('poke'); gs.sound.sounds.boing?.(); }
-  else if (hit === 'prop') world.toss();
+tv.addEventListener('click', () => { if (!watch) return; wakeUp(); if (watch.on) watch.close(); else watch.open(null); });
+// (any tap lets Spotify's player make sound, on browsers that want one first)
+addEventListener('pointerdown', () => music?.tapped(), { capture: true });
+// a press on the room: a tap pokes Reverie, tosses what it holds or plays a game; a drag, pinch or scroll looks around
+// (look.js), and the button in the corner looks back at Reverie
+const looking = makeLook({
+  el: canvas,
+  onTap(x, y) {
+    if (!world) return;
+    if (!awake) return wakeUp();
+    const hit = world.tap(x, y);
+    if (hit === 'game') return;
+    if (!hit && tapTrophy(x, y)) return;
+    if (!hit && garden.tap(x, y, W, H)) return;
+    if (hit === 'pet') achievements.track('pat');
+    if (hit === 'creature') { body.poke(); mood.fun('poke'); gs.sound.sounds.boing?.(); achievements.track('poke'); }
+    else if (hit === 'prop') world.toss();
+  },
+  onMove() { speed.inputAt = performance.now(); },
+});
+canvas.addEventListener('pointerdown', () => { speed.inputAt = performance.now(); });
+recentre.addEventListener('click', () => looking.recentre());
+
+/** The helpers' pills on the stage: who is out and what each is doing; one with news can be tapped to hear it. */
+function showHelpers(list) {
+  const now = list.filter(h => h.status === 'working' || (!h.told && h.status !== 'stopped')).slice(-4);
+  helperList.hidden = !now.length;
+  helperList.replaceChildren(...now.map(h => {
+    const li = document.createElement('li'), dot = document.createElement('i'), name = document.createElement('b'), what = document.createElement('span');
+    li.className = h.status === 'working' ? 'working' : h.status === 'failed' ? 'failed news' : 'news';
+    li.style.setProperty('--c', h.colour || '#7fd8ff'); li.dataset.name = h.name;
+    name.textContent = h.name;
+    what.textContent = h.status === 'working' ? h.doing : h.status === 'failed' ? 'came back empty-handed' : 'is back: tap to hear';
+    li.title = h.task; li.append(dot, name, what); return li;
+  }));
+}
+helperList.addEventListener('click', e => {
+  const li = e.target.closest('li.news'); if (!li || !brain) return;
+  wakeUp(); helpers.tell();
 });
 
 // The line above the chat bar while a game is on: how it stands, and its buttons (Undo, New game, Done).
 let barKey = '';
 function showGame() {
-  const g = world.game, b = g?.bar();
-  const key = b ? b.text + '|' + b.buttons.map(x => x.id).join() : '';
+  const g = world.game, b = g ? g.bar() : watch?.bar();
+  gamebar.hidden = !b; if (!b) { barKey = ''; return; }
+  if (gameText.textContent !== b.text) gameText.textContent = b.text;
+  // (the buttons are made again only when they change: a video's clock changes the text every second)
+  const key = b.buttons.map(x => x.id + ':' + x.label).join();
   if (key === barKey) return; barKey = key;
-  gamebar.hidden = !b; if (!b) return;
-  gameText.textContent = b.text;
   gameButtons.replaceChildren(...b.buttons.map(x => { const el = document.createElement('button'); el.type = 'button'; el.textContent = x.label; el.dataset.id = x.id; return el; }));
 }
 gamebar.addEventListener('click', e => {
-  const id = e.target.closest('button')?.dataset.id, g = world?.game; if (!id || !g) return;
-  if (id === 'leave') world.stopGame();
-  else if (id === 'again') g.start();
+  const id = e.target.closest('button')?.dataset.id, g = world?.game; if (!id) return;
+  if (!g && watch?.on) { watch.button(id); barKey = ''; return; }
+  if (!g) return;
+  // (Claude hears about both: a new round out loud, as when it calls play; a game put away with the next thing said)
+  if (id === 'leave') { const t = g.title; world.stopGame(); brain.notice(`[game] They pressed Done: ${t} is put away.`); }
+  else if (id === 'again') world.again();
   else g[id]?.();
-  barKey = '';
+  barKey = null;   // (shown afresh next frame, hidden too when that was Done)
 });
 
 boot().catch(e => { console.error(e); setStatus('error: ' + (e?.message || e)); });

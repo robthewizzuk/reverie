@@ -24,7 +24,7 @@ await page.evaluate(() => window.__reverie.world.view.prepare());   // (the page
 await page.waitForFunction(() => { const v = window.__reverie.world.view; return v.ready && v.shadersLeft === 0; }, null, { timeout: 300000, polling: 500 });
 await page.evaluate(async t => { (await import('/engine/src/kit/hd3d.js')).HD.force = t; document.querySelector('#caption').style.display = 'none'; }, tier);
 if (exp) await page.evaluate(exp);
-const SEATS = { front: null, wide: [[.2, 1.6, 3.6], [-.2, .6, -.6]], top: [[0, 4.2, 1.2], [0, 0, -.3]], left: [[1.6, 1.2, 2.2], [-.8, .7, -.6]], window: [[1.6, 1.3, 2.6], [-2.1, 1.1, .2]], side: [[2.0, .9, .4], [0, .4, -.2]] };
+const SEATS = { front: null, wide: [[.3, 1.45, 2.25], [-.2, .7, -.6]], top: [[0, 4.2, 1.2], [0, 0, -.3]], left: [[1.3, 1.2, 1.95], [-.8, .7, -.6]], window: [[1.2, 1.3, 1.9], [-2.2, 1.1, .3]], side: [[2.0, .9, .4], [0, .4, -.2]] };
 for (const name of (seats || 'wide,top,front').split(',')) {
   await page.evaluate(seat => {
     const w = window.__reverie.world, v = w.view; w.__draw ||= w.draw;

@@ -6,6 +6,7 @@
 // livelier the happier Reverie is. What it is and its name are kept on this device (it comes back next visit).
 import gs from '../engine/src/gamescroll.js';
 import { colourOf } from './looks.js';
+import { inside, SHELL } from './shell.js';
 
 const KEY = 'reverie.pet.v1';
 // pet sizes, in metres (nose to rump; a bird beak to tail)
@@ -18,7 +19,7 @@ const SAY = { quad: 'squeak', bird: 'chirp', insect: 'buzz', monster: 'growl' };
 export const TRICKS = ['sit', 'jump', 'spin', 'come', 'sleep', 'play_dead', 'zoomies', 'dance'];
 // where it may go: the floor of the room, and what is in the way there (x, z, radius)
 const BOUNDS = { x0: -1.75, x1: 1.9, z0: -1.35, z1: 1.2 };
-const STILL = [{ x: -1.45, z: -1.15, r: .3 }, { x: 1.85, z: -.6, r: .2 }];
+const STILL = [{ x: -1.15, z: -.85, r: .3 }, { x: 1.85, z: -.6, r: .2 }];   // (the pouf and the plant)
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
 
@@ -117,6 +118,9 @@ export function makePet({ scene, camera, creature: reverie, world, sparks, float
     // slide round what is in the way
     for (const o of obstacles()) { const ox = nx - o.x, oz = nz - o.z, od = Math.hypot(ox, oz), r = o.r + .08; if (flying < .5 && od < r && od > 1e-4) { nx = o.x + ox / od * r; nz = o.z + oz / od * r; } }
     p.x = clamp(nx, BOUNDS.x0, BOUNDS.x1); p.z = clamp(nz, BOUNDS.z0, BOUNDS.z1);
+    // (and off the curve where the floor rises into the round wall: back towards the middle)
+    const gap = inside(p.x, .03, p.z) - .25;
+    if (gap < 0) { const mx = SHELL.cx - p.x, mz = SHELL.cz - p.z, md = Math.hypot(mx, mz) || 1; p.x -= mx / md * gap; p.z -= mz / md * gap; }
     pet.rotation.y = heading;
     pose = '';
     pet.move(dt, sp, { fly: flying > .5, turn: clamp(turn, -1, 1) });

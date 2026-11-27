@@ -3,23 +3,28 @@
 // game is (make, reset, update, draw), so the engine's kits load and run as they do in the app.
 import gs from '../engine/src/gamescroll.js';
 import { makeCreature } from './creature.js';
+import { makeOutfits } from './outfits.js';
 import { colours, tidyColours, keepColours } from './looks.js';
 import { describe } from './describe.js';
 import { GAMES } from './games/index.js';
-import { lightRoom, WINDOW } from './light.js';
+import { lightRoom, WINDOW, LAMP } from './light.js';
+import { SHELL, shellR, backZ, wallNormal, buildShell, roundRect, circle } from './shell.js';
 import { makeDaylight } from './daylight.js';
+import { makeParty } from './party.js';
 import { makeSleepy } from './sleepy.js';
 import { makeDice } from './dice.js';
 import { makePet } from './pet.js';
 import { makeFloaties } from './floaties.js';
-import { SPOTS, SPOT_NAMES, spotOf, roomColours, roomItems, tidyRoomColours, keepRoomColours, keepItem, forgetItem, forgetAll, freePlace, findItem, roomLine, inRoom, MAX_ITEMS } from './room.js';
+import { breakApart, makeShows } from './fun.js';
+import { makeMotion, flexFor } from './motion.js';
+import { DESK, SHELF, SILL, LEDGE, onBoard, SPOTS, SPOT_NAMES, spotOf, roomColours, roomItems, tidyRoomColours, keepRoomColours, keepItem, forgetItem, forgetAll, freePlace, findItem, roomLine, inRoom, MAX_ITEMS } from './room.js';
 
 const HOLD_SIZE = .4;            // metres: the longest side of a prop in its hands
 const SIZE_WORDS = [[/\b(giant|huge|enormous)\b/, 1.8], [/\b(bigger|big|large)\b/, 1.4], [/\b(smaller|small|little)\b/, .7], [/\b(tiny|teeny)\b/, .5]];
 const article = w => w.replace(/^(a|an|the|some)\s+/i, '');
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 
-let v, light, creature, fx, world, room, embers, motes, body, daylight, sleepy, floaties;
+let v, light, creature, outfits, fx, world, room, embers, motes, body, daylight, sleepy, floaties, party;
 // the room's recolourable parts: the meshes made of each, and the recipe they are made from
 const ROOM_LOOK = { walls: null, floor: ['wood', [8, 8]], rug: null, wood: ['wood', [1, 1]] };
 const roomParts = { walls: [], floor: [], rug: [], wood: [] }, relight = [];
@@ -49,51 +54,71 @@ function setup() {
   // the rug: thick and soft, its edge rounded over (a lathe), not a flat disc
   const rugShape = [[0, 0], [1.02, 0], [1.05, .006], [1.06, .014], [1.05, .021], [1.02, .024], [0, .024]].map(([x, y]) => new THREE.Vector2(x, y));
   const rug = part('rug', new THREE.Mesh(new THREE.LatheGeometry(rugShape, 96), roomMat('rug', rc.rug))); add(rug, false);
-  const wallMat = roomMat('walls', rc.walls);
-  const back = part('walls', new THREE.Mesh(rbox(6, 3, .2, .02), wallMat)); back.position.set(0, 1.5, -1.7); add(back);
-  // the left wall, round a big window the daylight comes in by (the wall in four pieces round the opening)
+  const wallMat = roomMat('walls', rc.walls), wood = roomMat('wood', rc.wood);
+  // The room is a round capsule, like the inside of a ball: one smooth shell, the floor curving up into the walls,
+  // the walls curving over into a dome above a soft seam round the middle, and no corners anywhere (shell.js). Its
+  // two windows are cut cleanly into the curve: a long rounded one in the left wall (the daylight) and a round one in
+  // the back wall, each with a deep reveal out to the glass, as in a thick moulded wall.
   const W0 = WINDOW, wz = (W0.z0 + W0.z1) / 2, wy = (W0.y0 + W0.y1) / 2;
-  const wall = (y0, y1, z0, z1) => { const m = part('walls', new THREE.Mesh(rbox(.2, y1 - y0, z1 - z0, .02), wallMat)); m.position.set(W0.x, (y0 + y1) / 2, (z0 + z1) / 2); add(m); };
-  wall(0, W0.y0, -1.9, 4.2); wall(W0.y1, 3, -1.9, 4.2); wall(W0.y0, W0.y1, -1.9, W0.z0); wall(W0.y0, W0.y1, W0.z1, 4.2);
-  // its slim frame, one bar across, and a deep sill to sit things on
-  const wood = roomMat('wood', rc.wood);
-  const frame = (h, d, y, z) => add(part('wood', new THREE.Mesh(rbox(.2, h, d, .012), wood))).position.set(W0.x + .02, y, z);
-  frame(.035, W0.z1 - W0.z0 + .07, W0.y0, wz); frame(.035, W0.z1 - W0.z0 + .07, W0.y1, wz);
-  frame(W0.y1 - W0.y0, .035, wy, W0.z0); frame(W0.y1 - W0.y0, .035, wy, W0.z1); frame(W0.y1 - W0.y0, .03, wy, wz);
-  const ledge = part('wood', new THREE.Mesh(rbox(.3, .035, W0.z1 - W0.z0 + .14, .012), wood)); ledge.position.set(W0.x + .1, W0.y0 - .02, wz); add(ledge);
-  // (the day outside: a soft bright sky the room's reflections and bounce light pick up; it throws no shadow)
-  // (daylight.js paints it with the real sky outside: day, dusk, night with stars, cloud, fog)
+  const PORT = { x: -.3, y: 1.55, r: .3 }, portOut = backZ(PORT.x, PORT.y) - .05;
+  const cut = buildShell(THREE, [
+    { wall: 'side', sdf: roundRect(wz, wy, (W0.z1 - W0.z0) / 2, (W0.y1 - W0.y0) / 2, W0.r), at: [wz, wy], out: W0.x },
+    { wall: 'back', sdf: circle(PORT.x, PORT.y, PORT.r), at: [PORT.x, PORT.y], out: portOut },
+  ]);
+  add(part('walls', new THREE.Mesh(cut.shell, wallMat)));
+  for (const g of cut.reveals) add(part('walls', new THREE.Mesh(g, wallMat)));
+  // a slim rounded frame where each window meets the wall, and one at the side window's glass
+  const rimTube = (pts, r, push = .006) => {
+    const at = pts.map(p => { const n = wallNormal(...p); return new THREE.Vector3(p[0] + n[0] * push, p[1] + n[1] * push, p[2] + n[2] * push); });
+    return add(part('wood', new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(at, true), at.length * 2, r, 10, true), wood)));
+  };
+  cut.outlines.forEach(rim => rimTube(rim, .02));
+  const glassRim = (pts, toOut) => add(part('wood', new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(...toOut(p))), true), pts.length * 2, .016, 8, true), wood)));
+  glassRim(cut.outlines[0], p => [W0.x + .02, p[1], p[2]]);
+  // the seam round the middle, where the dome meets the wall: a soft bead in the same paint (broken by the window)
+  {
+    const pts = [], N = 240, y = SHELL.seam;
+    // (round from the window and back to it, so the window is the one break)
+    for (let i = 0; i <= N; i++) {
+      const phi = Math.PI + i / N * Math.PI * 2, r = shellR(phi, y) - .004, x = SHELL.cx + Math.cos(phi) * r, z = SHELL.cz + Math.sin(phi) * r;
+      if (!(x < SHELL.cx - .5 && z > W0.z0 - .06 && z < W0.z1 + .06)) pts.push(new THREE.Vector3(x, y, z));
+    }
+    add(part('walls', new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), pts.length * 2, .011, 8, false), wallMat)));
+  }
+  // (the day outside the side window: a soft bright sky the room's reflections and bounce light pick up; it throws
+  // no shadow. daylight.js paints it with the real sky outside: day, dusk, night with stars, cloud, fog)
   const sky = new THREE.Mesh(new THREE.PlaneGeometry(5, 3.4), pbr('#eef0ec', { glow: 1.05, glowCol: '#f4f2ea', rough: 1 }));
   sky.position.set(W0.x - .8, 1.6, wz); sky.rotation.y = Math.PI / 2; room.add(sky);
-  // a white ceiling (out of view): it closes the room, so daylight comes in only by the windows and bounces about
-  const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(6.4, 6.4), pbr('#f1ece5', { rough: .95 }));
-  ceiling.rotation.x = Math.PI / 2; ceiling.position.set(.9, 3, 1.1); add(ceiling);
-  // skirting along both walls: a small thing that makes a room read as real
-  const skirt = (w, d, x, z) => { const m = part('wood', new THREE.Mesh(rbox(w, .07, d, .01), wood)); m.position.set(x, .035, z); add(m); };
-  skirt(6, .02, 0, -1.59); skirt(.02, 6, -1.99, 1.2);
-  // a round window in the back wall, the day outside it, a deep reveal and a sill
-  // (just off the wall's face, not in it: in it, the two flickered in wedges. Matte, so the sky painted in it by
-  // daylight.js reads: the stars and moon at night, not the room mirrored over them)
-  const glass = new THREE.Mesh(new THREE.CircleGeometry(.31, 64), pbr('#eef0ec', { rough: 1, glow: .9, glowCol: '#f2f0e8' }));
-  glass.position.set(-.3, 1.5, -1.597); room.add(glass);
-  const GLASS = { x: -.3, y: 1.5, z: -1.597, r: .31 };
-  const reveal = part('wood', new THREE.Mesh(new THREE.TorusGeometry(.33, .025, 16, 72), wood)); reveal.position.set(-.3, 1.5, -1.585); add(reveal);
-  const sill = part('wood', new THREE.Mesh(rbox(.86, .04, .14, .012), wood)); sill.position.set(-.3, 1.125, -1.53); add(sill);
-  // the desk (where it makes things): a pale oak top on slim rounded legs, and a globe lamp
-  const pale = pbr('#ece6dd', { rough: .55 });   // (powder-coated legs and lamp, a soft warm white)
-  const top = part('wood', new THREE.Mesh(rbox(1.3, .04, .55, .015), wood)); top.position.set(1.15, .795, -1.25); add(top);
-  for (const [x, z] of [[.58, -1.05], [1.72, -1.05], [.58, -1.45], [1.72, -1.45]]) { const leg = new THREE.Mesh(new THREE.CylinderGeometry(.016, .012, .775, 16), pale); leg.position.set(x, .388, z); add(leg); }
-  const lampBase = new THREE.Mesh(new THREE.CylinderGeometry(.06, .068, .018, 40), pale); lampBase.position.set(1.55, .824, -1.32); add(lampBase);
-  const stem = new THREE.Mesh(new THREE.CylinderGeometry(.006, .006, .2, 12), pale); stem.position.set(1.55, .93, -1.32); add(stem);
+  // the round window's glass at the end of its reveal (matte, so the sky painted in it by daylight.js reads: the stars
+  // and moon at night, not the room mirrored over them), and a sill under it
+  const glass = new THREE.Mesh(new THREE.CircleGeometry(PORT.r + .02, 64), pbr('#eef0ec', { rough: 1, glow: .9, glowCol: '#f2f0e8' }));
+  glass.position.set(PORT.x, PORT.y, portOut + .002); room.add(glass);
+  const GLASS = { x: PORT.x, y: PORT.y, z: portOut + .002, r: PORT.r };
+  // boards that follow the curve of the back wall: the sill under the round window, the desk (where it makes things)
+  // and a floating shelf, all pale oak, softly rounded
+  const board = (B, thick) => {
+    const sh = new THREE.Shape(), xs = [], N = 28, y = B.y - thick / 2;
+    for (let i = 0; i <= N; i++) xs.push(B.x0 + (B.x1 - B.x0) * i / N);
+    xs.forEach((x, i) => { const z = backZ(x, y) + .012; i ? sh.lineTo(x, -z) : sh.moveTo(x, -z); });
+    for (let i = N; i >= 0; i--) sh.lineTo(xs[i], -(backZ(xs[i], y) + .012 + B.d));
+    const g = new THREE.ExtrudeGeometry(sh, { depth: thick - .012, bevelEnabled: true, bevelThickness: .006, bevelSize: .008, bevelSegments: 3, curveSegments: 4 });
+    g.rotateX(-Math.PI / 2);
+    const m = part('wood', new THREE.Mesh(g, wood)); m.position.y = B.y - thick + .006; return add(m);
+  };
+  board(SILL, .04); board(DESK, .045); board(SHELF, .04);
+  // a ledge along the bottom of the big window, out over the curve, to sit things on
+  { const m = part('wood', new THREE.Mesh(rbox(LEDGE.x1 - LEDGE.x0, .035, LEDGE.z1 - LEDGE.z0, .012), wood)); m.position.set((LEDGE.x0 + LEDGE.x1) / 2, LEDGE.y - .0175, (LEDGE.z0 + LEDGE.z1) / 2); add(m); }
+  // the desk lamp: a globe on a slim stem, powder-coated a soft warm white
+  const pale = pbr('#ece6dd', { rough: .55 });
+  const L = LAMP, lampBase = new THREE.Mesh(new THREE.CylinderGeometry(.06, .068, .018, 40), pale); lampBase.position.set(L.x, DESK.y + .009, L.z); add(lampBase);
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(.006, .006, L.y - DESK.y - .07, 12), pale); stem.position.set(L.x, (DESK.y + L.y - .07) / 2, L.z); add(stem);
   const globeMat = pbr('#fff6e8', { rough: .35, glow: 1.6, glowCol: '#ffe2b8' });
-  const globe = new THREE.Mesh(new THREE.SphereGeometry(.075, 40, 24), globeMat); globe.position.set(1.55, 1.1, -1.32); room.add(globe);
-  // a floating shelf, with a small vase
-  const shelf = part('wood', new THREE.Mesh(rbox(1.1, .04, .26, .012), wood)); shelf.position.set(-1.35, 1.45, -1.5); add(shelf);
+  const globe = new THREE.Mesh(new THREE.SphereGeometry(.075, 40, 24), globeMat); globe.position.set(L.x, L.y, L.z); room.add(globe);
   const vaseShape = [[0, 0], [.045, 0], [.055, .03], [.05, .09], [.03, .13], [.026, .16], [.032, .17], [0, .17]].map(([x, y]) => new THREE.Vector2(x, y));
-  const vase = new THREE.Mesh(new THREE.LatheGeometry(vaseShape, 40), pbr('#d9b8a4', { rough: .45, clear: .4 })); vase.position.set(-1.7, 1.47, -1.52); add(vase);
+  const vase = new THREE.Mesh(new THREE.LatheGeometry(vaseShape, 40), pbr('#d9b8a4', { rough: .45, clear: .4 })); vase.position.set(...onBoard(SHELF, -1.5)); add(vase);
   // a round pouf in the back left corner, soft like Reverie
   const pouf = new THREE.Mesh(new THREE.SphereGeometry(.26, 48, 24), felt('#b4bfa8'));
-  pouf.scale.set(1, .62, 1); pouf.position.set(-1.45, .16, -1.15); add(pouf);
+  pouf.scale.set(1, .62, 1); pouf.position.set(-1.15, .16, -.85); add(pouf);
   // a plant on the right, in a tall matte pot
   const potShape = [[0, 0], [.13, 0], [.16, .04], [.17, .38], [.165, .4], [0, .4]].map(([x, y]) => new THREE.Vector2(x, y));
   const pot = new THREE.Mesh(new THREE.LatheGeometry(potShape, 48), pbr('#efeae3', { rough: .8 })); pot.position.set(1.85, 0, -.6); add(pot);
@@ -104,12 +129,14 @@ function setup() {
   const dust = motes.make({ x: -.9, y: 1.1, z: .2 }, { loop: true, rate: 3, life: [6, 10], speed: [.01, .04], size: [.004, .008], colors: ['#ffe6c0', '#ffd09a'], radius: 1.2, gravity: -.004, glow: false, shrink: false });
   creature = makeCreature(); v.scene.add(creature.root);
   creature.setColours(colours());   // (the colours it was asked for last time, kept on this device)
+  outfits = makeOutfits({ rig: creature.rig });   // (what it wore last time, and the season's hat)
   // the light: the sun through the window, the bench lamp, its core, bounce light and the room's own reflections
   // (made once the creature is in the room, so the reflections reach its eyes and glass dome)
-  light = lightRoom(v, creature, { min: [-2.0, 0, -1.6], max: [2.2, 3, 2.2] });
+  light = lightRoom(v, creature, { min: [SHELL.cx - SHELL.a, 0, SHELL.cz - SHELL.b], max: [SHELL.cx + SHELL.a, SHELL.top, SHELL.cz + SHELL.b] });
   relight.push(light.bounce, light.room);   // (both baked again when the room is repainted)
   // the real day outside: the sun, the sky in the windows, the lamp, rain on the glass (daylight.js)
   daylight = makeDaylight({ v, light, outside: { side: sky.material, round: glass.material }, glass: GLASS, side: W0, globe: globeMat, motes: dust });
+  party = makeParty(v);   // (karaoke's mirror ball and coloured lights, put away until a song starts)
   sleepy = makeSleepy({ scene: v.scene, creature });   // (Z's over its head when it dozes off late at night)
   fx = new gs.fx3d.Particles3D(v.scene);
   floaties = makeFloaties(v.scene);   // (hearts, and a sleepy pet's "z")
@@ -117,11 +144,14 @@ function setup() {
   embers = makeEmbers();
   world = w3;
   world.floor(0, { friction: .8 });
-  world.box(null, 6, 3, .2, { fixed: true, at: { x: 0, y: 1.5, z: -1.7 } });
-  world.box(null, .2, 3, 5, { fixed: true, at: { x: -2.1, y: 1.5, z: .6 } });
+  // (the walls, as four flat sides just behind the curve: things thrown roll up the cove and back)
+  world.box(null, 6, 3, .2, { fixed: true, at: { x: 0, y: 1.5, z: SHELL.cz - SHELL.b - .1 } });
+  world.box(null, 6, 3, .2, { fixed: true, at: { x: 0, y: 1.5, z: SHELL.cz + SHELL.b + .1 } });
+  world.box(null, .2, 3, 6, { fixed: true, at: { x: SHELL.cx - SHELL.a - .1, y: 1.5, z: .6 } });
+  world.box(null, .2, 3, 6, { fixed: true, at: { x: SHELL.cx + SHELL.a + .1, y: 1.5, z: .6 } });
   body = world.box(null, .48, .66, .42, { moving: true, at: { x: 0, y: .33, z: 0 } });   // (the creature: props bounce off it, not through, and it goes where it walks)
-  world.box(null, 1.3, .04, .55, { fixed: true, at: { x: 1.15, y: .795, z: -1.25 } });   // (the desk top and the shelf: things thrown land on them)
-  world.box(null, 1.1, .04, .26, { fixed: true, at: { x: -1.35, y: 1.45, z: -1.5 } });
+  // (the desk and the shelf, near enough as boxes: things thrown land on them)
+  for (const B of [DESK, SHELF]) { const [x, , z] = onBoard(B, (B.x0 + B.x1) / 2); world.box(null, B.x1 - B.x0, .04, B.d, { fixed: true, at: { x, y: B.y - .02, z } }); }
   // the camera: just above eye level with it, close enough to see its face
   v.cam.position.set(0, .78, 1.95); v.cam.lookAt(0, .4, 0);
   gs.models.generate.load().catch(() => {});   // (the generator's workers warmed up while it wakes)
@@ -139,7 +169,8 @@ function standAt(o, x, y, z) { const { THREE } = gs.hd; o.position.set(x, y, z);
  */
 export function makeWorld() {
   const { THREE } = gs.hd;
-  let W = 360, H = 640, held = null, loose = [], seed = 1, t = 0, pops = [];
+  let W = 360, H = 640, held = null, loose = [], seed = 1, t = 0, motion = null;
+  const every = [];   // (held, loose and placed, gathered each frame for their own small movements)
   // things kept in the room (room.js has what is saved), what it is doing with its legs now, and carrying jobs in a queue
   let placed = [], acts = [], carrying = Promise.resolve(), restored = false;
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), at = new THREE.Vector3();
@@ -147,7 +178,13 @@ export function makeWorld() {
   let game = null, onNews = () => {}, onSay = () => false, pad = null, dice = null;
   // its pet (pet.js), made once the room is; its mood (mood.js, set by the page); more lines for Claude's scene line
   let keeper = null, mood = null;
-  const lines = [];
+  // looking around (look.js, set by the page): drags and pinches swing the camera off its seat
+  let look = null;
+  // broken bits on the floor (gs.destruction's Rubble: they fade away after a while) and little shows (fun.js)
+  let rubble = null, shows = null;
+  const lines = [() => outfits?.line() || ''];
+  // a camera seat set from outside (watching a video together: watch.js), used when no game has one
+  let seat = null;
   const games = {}, HOME = { pos: [0, .78, 1.95], look: [0, .4, 0] }, camAt = { pos: [...HOME.pos], look: [...HOME.look] };
   const stage = {
     THREE, get scene() { return v.scene; }, get creature() { return creature; }, get physics() { return world; },
@@ -163,22 +200,42 @@ export function makeWorld() {
     throwDice: n => dice.throw(n),
     /** Takes the dice away. */
     clearDice: () => dice?.clear(),
-    /** A game putting itself away (its own Stop button). */
-    stopGame() { if (game) { game.stop(); game = null; creature.mood('calm'); } },
+    /** A game putting itself away (its own Stop button): Claude hears it with the next thing said. */
+    stopGame() { if (game) { const t = game.title; endGame(); onNews(`[game] They stopped ${t}: it is put away.`, false); } },
+    /** A fresh round of the game on (a tap on a finished board): Claude hears it at once. */
+    again: () => api.again(),
   };
+  // the game on is put away: its things off the table (each game's stop), and Reverie's hands and mood back to normal
+  function endGame() {
+    if (!game) return;
+    const g = game; game = null;
+    try { g.stop(); } catch (e) { console.warn('[reverie] a game would not stop:', e); }
+    creature.reach(null); creature.mood('calm');
+  }
+  // a game's table goes up in front of it: props lying where it stands are cleared away first (a fixed table body
+  // appearing round one would fling it across the room), and what it holds is put down to one side
+  function clearTheTable() {
+    for (const e of loose) {
+      const p = e.pivot.position;
+      if (Math.abs(p.x) < .55 && p.z > .2 && p.z < 1.05) { poof(e.pivot, '#ffffff'); remove(e); e.gone = true; }
+    }
+    loose = loose.filter(e => !e.gone);
+    if (held) release(held, 'aside');
+  }
 
   // a prop sits in a pivot whose middle is the prop's middle, so it can be held, spun and given a box body
   function pivotFor(thing, size) {
     const p = new THREE.Group();
     fitTo(thing, size); const b = boxOf(thing), c = b.getCenter(new THREE.Vector3());
-    thing.position.sub(c); p.add(thing);
+    thing.position.sub(c);
     thing.traverse(m => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
     p.userData.size = b.getSize(new THREE.Vector3());
+    flexFor(p, thing, p.userData.size);   // (in a group at its base, so it squashes and rocks on what it stands on: motion.js)
     return p;
   }
   function hold(entry) {
     held = entry; creature.hold.add(entry.pivot); entry.pivot.position.set(0, entry.pivot.userData.size.y * .3, 0); entry.pivot.rotation.set(0, 0, 0);
-    creature.holding = true; pops.push({ o: entry.pivot, t: 0 });
+    creature.holding = true; motion.life(entry);
   }
   function poof(o, color = '#ffd27a') {
     o.getWorldPosition(at);
@@ -188,14 +245,24 @@ export function makeWorld() {
     const p = entry.pivot, s = p.userData.size;
     p.getWorldPosition(at); const q = p.getWorldQuaternion(new THREE.Quaternion());
     v.scene.add(p); p.position.copy(at); p.quaternion.copy(q);
+    // ('aside': set down on the rug at its left or right with a puff, clear of a game's table in front of it)
+    const aside = throwIt === 'aside', dir = Math.random() < .5 ? -1 : 1;
+    if (aside) { poof(p, '#ffffff'); p.position.set(dir * .62, s.y / 2 + .04, .05); p.quaternion.identity(); poof(p, '#ffffff'); }
     // thrown off to one side and a little back, so it lands on the rug in view (not at the camera)
-    const dir = Math.random() < .5 ? -1 : 1, side = throwIt ? dir * (.45 + Math.random() * .15) : (Math.random() - .5) * .6;
-    const up = throwIt ? 2.6 : .8, back = throwIt ? -.1 - Math.random() * .2 : .4;
+    const side = aside ? dir * .05 : throwIt ? dir * (.45 + Math.random() * .15) : (Math.random() - .5) * .6;
+    const up = aside ? 0 : throwIt ? 2.6 : .8, back = aside ? 0 : throwIt ? -.1 - Math.random() * .2 : .4;
     entry.body = world.box(p, Math.max(.04, s.x), Math.max(.04, s.y), Math.max(.04, s.z), { density: entry.density, friction: .7, bounce: .25, vel: { x: side, y: up, z: back } });
-    entry.body.twist((Math.random() - .5) * 6, (Math.random() - .5) * 6, (Math.random() - .5) * 4);
+    if (!aside) entry.body.twist((Math.random() - .5) * 6, (Math.random() - .5) * 6, (Math.random() - .5) * 4);
     loose.push(entry); creature.holding = false; held = null;
   }
-  function remove(entry) { if (entry.body) entry.body.remove(); entry.pivot.removeFromParent(); }
+  function remove(entry) { motion?.stop(entry); if (entry.body) entry.body.remove(); entry.body = null; entry.pivot.removeFromParent(); }
+  // it shrinks away (motion.js), then goes in a puff of sparkles; its body goes at once, so nothing lands on what is leaving
+  function vanish(entry, color = '#ffffff', delay = 0) {
+    entry.body?.remove?.(); entry.body = null;
+    if (!entry.pivot.parent) return;
+    if (entry.pivot.parent !== v.scene) toWorld(entry.pivot);
+    motion.vanish(entry, () => { poof(entry.pivot, color); gs.sound.sounds.pop(); remove(entry); }, delay);
+  }
 
   // its real weight per cubic metre of its box, so an anvil thuds and a balloon floats down
   function densityOf(thing) {
@@ -223,7 +290,7 @@ export function makeWorld() {
     let read = null; try { read = gs.models.generate.understood(words); } catch { /* still loading: none */ }
     const d = describe(thing, words, { size: HOLD_SIZE * k, read, asked: o.asked ?? words });
     const entry = { words, seed: s, sizeK: k, density, short: d.short, pivot: pivotFor(thing, HOLD_SIZE * k), body: null };
-    hold(entry); poof(entry.pivot); gs.sound.sounds.pop();
+    hold(entry); motion.appear(entry); poof(entry.pivot); gs.sound.sounds.pop();
     return o.said ?? `Made ${d.text}`;
   }
 
@@ -240,6 +307,7 @@ export function makeWorld() {
     e.body.place(e.x, e.pivot.position.y, e.z, e.pivot.quaternion);
   }
   async function restoreRoom() {
+    let n = 0;
     for (const i of roomItems()) {
       let thing = null;
       try { thing = await gs.models.generate.make(i.words, { seed: i.seed }); } catch { /* the generator could not: leave it out this time */ }
@@ -247,6 +315,7 @@ export function makeWorld() {
       const pivot = pivotFor(thing, i.size), e = { ...i, pivot, body: null };
       pivot.position.set(i.x, i.y + pivot.userData.size.y / 2, i.z); pivot.rotation.set(0, i.ry || 0, 0);
       v.scene.add(pivot); settle(e); placed.push(e);
+      motion.life(e, { still: true }); motion.appear(e, Math.min(n++, 8) * .09);   // (each pops in where it was left, one after another)
       seed = Math.max(seed, i.seed || 0);
     }
   }
@@ -275,7 +344,7 @@ export function makeWorld() {
     if (d < back + .15) return [0, 0];
     let sx = x - x / d * back, sz = z - z / d * back;
     sx = clamp(sx, -1.7, 1.9); sz = clamp(sz, -.95, 1.1);
-    if (sx > .3 && sz < -.85) sz = -.85;   // (not under the bench)
+    if (sx > DESK.x0 - .1 && sz < -.85) sz = -.85;   // (not under the desk)
     return [sx, sz];
   }
   function toWorld(o) { o.getWorldPosition(at); const q = o.getWorldQuaternion(new THREE.Quaternion()); v.scene.add(o); o.position.copy(at); o.quaternion.copy(q); }
@@ -303,12 +372,12 @@ export function makeWorld() {
 
     // a thing in the room: walk over, pick it up
     if (from === 'room') {
-      if (away) { poof(entry.pivot, '#ffffff'); remove(entry); placed = placed.filter(e => e !== entry); forgetItem(entry.id); gs.sound.sounds.pop(); return `Took ${name} out of the room.`; }
+      if (away) { vanish(entry); placed = placed.filter(e => e !== entry); forgetItem(entry.id); return `Took ${name} out of the room.`; }
       if (held) release(held, false);
       const [sx, sz] = standFor(entry.x, entry.z, entry.r || .15);
       await walkTo(sx, sz); await pause(.15, Math.atan2(entry.x - sx, entry.z - sz));
       creature.reach(entry.pivot.position);
-      entry.body?.remove?.(); entry.body = null;
+      entry.body?.remove?.(); entry.body = null; motion.stop(entry); motion.lift(entry);
       placed = placed.filter(e => e !== entry); forgetItem(entry.id);
       creature.hold.updateMatrixWorld(true);
       const hp = creature.hold.localToWorld(new THREE.Vector3(0, entry.pivot.userData.size.y * .3, 0));
@@ -317,7 +386,7 @@ export function makeWorld() {
       const e2 = { words: entry.words, seed: entry.seed, sizeK: entry.sizeK, density: entry.density ?? 300, short: entry.short, pivot: entry.pivot, body: null };
       e2.pivot.scale.setScalar(1); hold(e2); entry = e2;
       if (toHands) { await goHome(); return `Fetched ${name} back into your hands.`; }
-    } else if (away) { poof(entry.pivot, '#ffffff'); remove(entry); held = null; creature.holding = false; return `Made ${name} vanish.`; }
+    } else if (away) { held = null; creature.holding = false; vanish(entry); return `Made ${name} vanish.`; }
     else if (toHands) return `${name} is already in your hands.`;
 
     // carry it to the spot and put it down
@@ -332,7 +401,7 @@ export function makeWorld() {
     await walkTo(sx, sz); await pause(.2, face);
     const ry = face + Math.PI;   // (its front, as it held it, turned to face the room)
     creature.reach(new THREE.Vector3(p.x, p.y + .1, p.z));
-    const pivot = entry.pivot; held = null; creature.holding = false;
+    const pivot = entry.pivot; held = null; creature.holding = false; motion.stop(entry);
     toWorld(pivot);
     const goal = new THREE.Vector3(p.x, p.y + entry.pivot.userData.size.y * k / 2, p.z);
     const q0 = pivot.quaternion.clone(), q1 = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, ry, 0));
@@ -341,6 +410,7 @@ export function makeWorld() {
     creature.reach(null); gs.sound.sounds.pop(); fx.sparks({ x: p.x, y: p.y + .02, z: p.z }, { color: '#ffe2b0', count: 14, power: .4, light: false });
     const item = { id: entry.id || newId(), words: entry.words, seed: entry.seed, sizeK: entry.sizeK, density: entry.density, size, spot, x: +p.x.toFixed(3), y: +p.y.toFixed(3), z: +p.z.toFixed(3), ry: +ry.toFixed(3), r: +r.toFixed(3), short: entry.short };
     const e = { ...item, pivot, body: null }; settle(e); placed.push(e); keepItem(item);
+    motion.land(e); motion.life(e, { still: true }); if (near) motion.wobble(near, motion.FEEL.bump);   // (it squashes down onto the spot, and its neighbour rocks)
     await pause(.25, face); await goHome(); creature.gesture('nod');
     return `Carried ${name} over and put it ${S.about}${near ? `, next to ${near.short || near.words}` : ''}, at ${Math.round(size * 100)} cm. It stays in the room, and is remembered next time.`;
   }
@@ -349,48 +419,69 @@ export function makeWorld() {
     get view() { return v; },
     /** The room's light (light.js). */
     get light() { return light; },
+    /** Karaoke's party lights (party.js): on, beat(phase). */
+    get party() { return party; },
     /** The day outside and its weather (daylight.js). */
     get daylight() { return daylight; },
     get creature() { return creature; },
     get held() { return held; },
+    /** The physics world (the engine's World3D): props, tables and dice are bodies in it. */
+    get physics() { return world; },
+    /** Loose props on the floor: [{ short, at: { x, y, z } }] (for tests). */
+    get floor() { return loose.map(e => ({ short: e.short, at: { x: e.pivot.position.x, y: e.pivot.position.y, z: e.pivot.position.z } })); },
     /** How many props there are, held or on the floor. */
     get props() { return loose.length + (held ? 1 : 0); },
     /** What is in its hands and on the floor, in a line for Claude. */
     scene() {
       const floor = loose.map(e => e.short).slice(-6);
       if (dice?.onFloor) floor.push(dice.onFloor);
+      if (rubble?.count) floor.push('some broken bits');
       const out = daylight?.line();
       return `In your hands: ${held ? held.short : 'nothing'}.${floor.length ? ` On the floor: ${floor.join(', ')}.` : ''}${roomLine(placed)}${out ? ` Outside: ${out}.` : ''}${keeper?.line() || ''}${lines.map(f => { try { return f() || ''; } catch { return ''; } }).join('')}`;
     },
     reset() {
       if (!v) setup();
+      motion ||= makeMotion({ view: v, fx });
       keeper ||= makePet({ scene: v.scene, camera: v.cam, creature, world: api, floaties, sparks: stage.sparks, mood: { fun: (k, n) => mood?.fun(k, n) }, news: text => onNews(text, false) });
       if (!restored) { restored = true; restoreRoom(); keeper.restore(); }
       for (const e of loose) remove(e); loose = []; if (held) remove(held); held = null; creature.holding = false;
-      fx.clear(); embers = makeEmbers(); creature.mood('calm');
+      fx.clear(); for (const e of placed) motion.life(e, { still: true }); embers = makeEmbers(); creature.mood('calm');
+      rubble ||= new gs.destruction.Rubble(v.scene, { max: 60, life: 9, shrink: .8 }); rubble.clear();
+      shows ||= makeShows({ fx, creature, floaties }); shows.clear();
       dice ||= makeDice({ THREE, scene: v.scene, physics: world, creature, sparks: stage.sparks }); dice.clear();
-      if (game) { game.stop(); game = null; }
+      endGame();
     },
-    resize(w, h) { W = w; H = h; },
+    resize(w, h) { W = w; H = h; look?.size(w, h); },
+    /** Looking around the room (look.js): the page's drags, pinches and scrolls. */
+    get look() { return look; },
+    set look(l) { look = l; l?.size(W, H); },
     update(dt) {
       t += dt;
       // a tall screen sees as wide as a square one would, so the creature never crops at the sides
       const a = W / H; v.cam.fov = a < 1 ? 2 * Math.atan(Math.tan(21 * Math.PI / 180) / a) * 180 / Math.PI : 36;
       v.cam.aspect = a; v.cam.updateProjectionMatrix();
       // the camera eases to the game's seat and back
-      const goal = game?.camera || HOME, ck = 1 - Math.exp(-dt * 3);
+      const goal = game?.camera || seat || HOME, ck = 1 - Math.exp(-dt * 3);
       for (const k of ['pos', 'look']) for (let i = 0; i < 3; i++) camAt[k][i] += (goal[k][i] - camAt[k][i]) * ck;
-      v.cam.position.set(...camAt.pos); v.cam.lookAt(...camAt.look);
+      const seen = look ? look.view(camAt, dt, goal) : camAt;
+      v.cam.position.set(...seen.pos); v.cam.lookAt(...seen.look);
       game?.update(dt);
       if (acts.length) { if (acts[0](dt)) acts.shift(); body.place(creature.root.position.x, .33, creature.root.position.z); }
-      creature.update(dt, v.cam);
+      creature.update(dt, v.cam); outfits.update(dt);
       daylight.update(dt); sleepy.update(dt);
       light.update(dt, t);
+      party.update(dt); v.exposure *= party.dim;   // (the room a little darker while the party lights are up)
       creature.coreAt(at);
       const st = creature.state; embers.at({ x: at.x, y: at.y, z: at.z + .03 }); embers.rate = st.thinking ? 14 : st.listening ? 6 : st.speaking ? 4 : 2; embers.on = true;
-      // a new prop pops into its hands
-      for (const p of pops) { p.t += dt; const k = Math.min(1, p.t / .28), e = 1 + 2.7 * Math.pow(k - 1, 3) + 1.7 * Math.pow(k - 1, 2); p.o.scale.setScalar(Math.max(.01, e)); }
-      pops = pops.filter(p => p.t < .28);
+      // props springing (popping in, landing, wobbling, vanishing) and their own small movements; a thing it brushes past rocks
+      every.length = 0; if (held) every.push(held); for (const e of loose) every.push(e);
+      const cr = creature.root.position;
+      for (const e of placed) {
+        every.push(e);
+        const d = Math.hypot(cr.x - e.x, cr.z - e.z), r = (e.r || .15) + .3;
+        if (!e.brushed && d < r && acts.length) { e.brushed = true; motion.wobble(e, motion.FEEL.bump); } else if (d > r + .15) e.brushed = false;
+      }
+      motion.update(dt, every);
       if (held) { held.pivot.rotation.y += dt * .5; held.pivot.position.y = held.pivot.userData.size.y * .3 + Math.sin(t * 2.4) * .01; }
       world.step(dt);
       dice?.update(dt);
@@ -398,6 +489,7 @@ export function makeWorld() {
       loose = loose.filter(e => e.pivot.position.y >= -4);
       while (loose.length > 14) remove(loose.shift());
       keeper?.update(dt);
+      rubble?.update(dt); shows?.update(dt);
       fx.update(dt); motes.update(dt); floaties.update(dt);
     },
     draw(c) { v.render(c, W, H); },
@@ -407,6 +499,13 @@ export function makeWorld() {
       if (game?.tap(ray)) return 'game';
       if (held && ray.intersectObject(held.pivot, true).length) return 'prop';
       if (keeper?.tap(ray)) return 'pet';
+      // a thing in the room rocks when tapped (and a box, a chest or a laptop opens or shuts)
+      const hit = placed.find(e => !motion.going(e) && ray.intersectObject(e.pivot, true).length);
+      if (hit) {
+        motion.wobble(hit); gs.sound.sounds.boing?.();
+        if (hit.life?.parts?.some(m => /lid|hatch|door/.test(m.userData.part))) { hit.open = !hit.open; hit.life.open('lid', +hit.open); hit.life.open('hatch', +hit.open); hit.life.open('doors', +hit.open); }
+        return 'thing';
+      }
       if (ray.intersectObject(creature.root, true).length) return 'creature';
       return null;
     },
@@ -424,16 +523,31 @@ export function makeWorld() {
     async play(name, o = {}) {
       const def = GAMES[name];
       if (!def) return `There is no game called "${name}". Games here: ${Object.keys(GAMES).join(', ')}.`;
-      if (game && game.id !== name) { game.stop(); game = null; }
-      if (held) release(held, false);   // (hands free to play)
-      game = games[name] ||= def.make(stage);
+      if (game && game.id !== name) endGame();
+      clearTheTable();   // (hands free to play, and room on the floor for its table)
+      const g = game = games[name] ||= def.make(stage);
       creature.gesture('tada'); creature.mood('excited');
-      try { return await game.start(o); } catch (e) { game.stop(); game = null; return `The game could not start (${String(e?.message || e).slice(0, 80)}).`; }
+      let r;
+      try { r = await g.start(o); } catch (e) {
+        if (game === g) endGame(); else try { g.stop(); } catch { /* already away */ }
+        return `The game could not start (${String(e?.message || e).slice(0, 80)}).`;
+      }
+      // (put away, or swapped for another game, while it was still setting up, which can take a while the first time
+      // its rules or questions load: what it set up after that goes away too, so nothing is left on the floor)
+      if (game !== g) { try { g.stop(); } catch { /* already away */ } return `The ${g.title.toLowerCase()} was put away before it finished setting up.`; }
+      return r;
+    },
+    /** A fresh round of the game on, as its Again button does; Claude hears what the new round is, out loud. */
+    async again() {
+      const g = game; if (!g) return '';
+      const r = await api.play(g.id);
+      if (game === g) onNews(`[${GAMES[g.id].tag}] They asked for another round. ${r}`, true);
+      return r;
     },
     /** Puts the game away. */
     async stopGame() {
       if (!game) return 'No game was being played.';
-      const t = game.title; game.stop(); game = null; creature.mood('calm');
+      const t = game.title; endGame();
       return `Put the ${t.toLowerCase()} away.`;
     },
 
@@ -447,7 +561,7 @@ export function makeWorld() {
       let k = held.sizeK;
       if (/\b(bigger|larger)\b/i.test(ch)) k *= 1.35; else if (/\b(smaller)\b/i.test(ch)) k *= .7;
       else for (const [re, f] of SIZE_WORDS) if (re.test(ch.toLowerCase())) { k = f; break; }
-      const old = held; held = null; poof(old.pivot, '#9fd8ff'); remove(old);
+      const old = held; held = null; creature.holding = false; vanish(old, '#9fd8ff');
       const r = await makeProp(prompt, { seed: old.seed, sizeK: clamp(k, .3, 2.2), asked: ch });
       return r.startsWith('Made') ? r.replace(/^Made/, 'Changed it into') : r;
     },
@@ -458,8 +572,10 @@ export function makeWorld() {
     },
     async clear(o = {}) {
       const n = loose.length + (held ? 1 : 0) + (dice?.clear() || 0), m = o.room ? placed.length : 0;
-      for (const e of [...loose, ...(held ? [held] : []), ...(o.room ? placed : [])]) { poof(e.pivot, '#ffffff'); remove(e); }
-      loose = []; held = null; creature.holding = false; gs.sound.sounds.pop();
+      [...(held ? [held] : []), ...loose, ...(o.room ? placed : [])].forEach((e, i) => vanish(e, '#ffffff', Math.min(i, 12) * .06));
+      const bits = rubble?.count || 0; rubble?.clear();
+      loose = []; held = null; creature.holding = false;
+      if (!n && bits && !o.room) { gs.sound.sounds.pop(); return 'Swept up the broken bits.'; }
       if (o.room) { placed = []; forgetAll(); }
       const kept = placed.length ? ` The ${placed.length} thing${placed.length > 1 ? 's' : ''} kept in the room stayed.` : '';
       return n + m ? `Cleared ${n + m} prop${n + m > 1 ? 's' : ''}.${kept}` : `There was nothing to clear.${kept}`;
@@ -474,12 +590,36 @@ export function makeWorld() {
       creature.gesture('tada'); poof(creature.core, creature.glowed('#ffd27a')); gs.sound.sounds.pop();
       return { text: `Your body is now ${r.colours.body} and your glow ${r.colours.glow}. It is remembered next time.` };
     },
+    /** What it wears (outfits.js). */
+    get outfits() { return outfits; },
+    /** The wear tool ({ put_on, take_off, colour }): puts clothes on or takes them off, kept for next time. */
+    async wear(input) {
+      const r = outfits.wear(input);
+      if (r.changed) { creature.gesture('tada'); creature.mood('happy'); poof(creature.face3d, '#fff0c8'); gs.sound.sounds.pop(); v.precompile?.(); }
+      return r;
+    },
+    /** Dresses it for the voice it has now (a character voice puts on its outfit): a sentence for Claude, or ''. */
+    dressFor(name) {
+      const text = outfits.forVoice(name);
+      if (text) { poof(creature.face3d, '#fff0c8'); v.precompile?.(); }
+      return text;
+    },
     /** Rolls dice ("2d6", "d20"): real ones thrown onto the rug where it can. Resolves a sentence for Claude. */
     roll: text => dice.roll(text),
     /** The things kept in the room, as saved: [{ id, words, spot, x, y, z, ... }]. */
     get room() { return placed.map(({ pivot, body, ...i }) => i); },
+    /** The props' springs and small movements (motion.js). */
+    get motion() { return motion; },
+    /** The things kept in the room, with their pivots: [{ pivot, words, spot, life, ... }]. */
+    get kept() { return placed; },
     /** True while it is walking about the room with something. */
     get walking() { return acts.length > 0; },
+    /** Walks it to (x, z) on the floor, after anything it is already doing. Resolves when it is there. */
+    walkTo: (x, z) => walkTo(clamp(x, -1.7, 1.9), clamp(z, -.95, 1.1)),
+    /** Walks it back to its place in the middle, facing you. */
+    goHome: () => goHome(),
+    /** Where the camera sits when no game has a seat: { pos, look }, or null for its usual place. */
+    get seat() { return seat; }, set seat(s) { seat = s || null; },
     /** Puts something in the room ({ item, spot, near, size }), carrying it there itself. Resolves a sentence. */
     place(input) { const job = carrying.then(() => placeIt(input)); carrying = job.catch(() => {}); return job; },
     /** The colours of the room's walls, floor, rug and woodwork ({ walls, floor, rug, wood, reset }), kept for next time. */
@@ -497,6 +637,30 @@ export function makeWorld() {
       creature.gesture('tada'); gs.sound.sounds.pop();
       return { text: `The room's ${r.changed.join(', ')} ${r.changed.length > 1 ? 'are' : 'is'} now ${r.changed.map(k => r.colours[k]).join(', ')}. It is remembered next time.` };
     },
+    /** Breaks the prop it holds (or the last one thrown on the floor): how 'smash' into real pieces that tumble, or
+     *  'slice' in two. Resolves a sentence. */
+    async smash(how = 'smash') {
+      const e = held || loose[loose.length - 1];
+      if (!e) return { text: 'Not done: there is nothing in your hands or on the floor to break. Make something first.', error: true };
+      how = how === 'slice' ? 'slice' : 'smash';
+      if (e === held) { held = null; creature.holding = false; } else loose = loose.filter(x => x !== e);
+      if (e.body) { e.body.remove(); e.body = null; }
+      creature.gesture(how === 'slice' ? 'point' : 'bounce'); creature.mood('excited');
+      let r = null;
+      try { r = breakApart(e.pivot, { how, world, rubble, scene: v.scene, density: e.density }); } catch (err) { console.warn('[reverie] smash', err); }
+      if (!r) { poof(e.pivot, '#ffffff'); remove(e); gs.sound.sounds.pop(); return `${e.short || e.words} went up in a puff instead: it would not break.`; }
+      fx.sparks(r.at, { color: how === 'slice' ? '#e8f4ff' : '#f2e6d8', count: how === 'slice' ? 20 : 30, power: .9, light: false });
+      if (how === 'slice') gs.sound.sounds.slash?.(); else { gs.sound.sounds.shatter?.(); setTimeout(() => gs.sound.sounds.crumble?.(), 180); }
+      return how === 'slice' ? `Sliced ${e.short || e.words} clean in two: both halves fell on the rug.` : `Smashed ${e.short || e.words} into ${r.pieces} pieces that went tumbling across the rug. They fade away in a little while.`;
+    },
+    /** A little show (fun.js): fireworks, confetti, magic, bubbles, snow or hearts. Resolves a sentence. */
+    async show(kind) { return shows ? shows.play(kind) : 'Not done: the room is not ready yet.'; },
+    /** The stage's physics (a gs.physics3d World3D), for the phone's tilt and shakes. */
+    get physics() { return world; },
+    /** The bodies of everything loose on the floor: props thrown down and broken bits. */
+    floorBodies: () => [...loose.map(e => e.body), ...(rubble?.list || []).map(m => m.body)].filter(b => b && !b.dead),
+    /** A little shower of sparks at a point in the room (trophies.js). */
+    sparks: (p, colour, n) => stage.sparks(p, colour, n),
     /** A burst of confetti round it, and a little hop (a birthday, a streak). */
     celebrate() {
       creature.gesture('tada'); creature.mood('excited');

@@ -25,7 +25,7 @@ const settled = () => page.waitForFunction(() => { const v = window.__reverie.wo
 await page.evaluate(() => window.__reverie.world.view.prepare());
 await settled();
 await page.evaluate(async t => { (await import('/engine/src/kit/hd3d.js')).HD.force = t; document.querySelector('#caption').style.display = 'none'; document.querySelector('#wake').style.display = 'none'; }, tier);
-if (side) await page.evaluate(() => { const w = window.__reverie.world, v = w.view; w.__draw ||= w.draw; w.draw = c => { v.cam.position.set(1.6, 1.3, 2.6); v.cam.lookAt(-2.1, 1.1, .2); w.__draw(c); }; });
+if (side) await page.evaluate(() => { const w = window.__reverie.world, v = w.view; w.__draw ||= w.draw; w.draw = c => { v.cam.position.set(1.2, 1.3, 1.9); v.cam.lookAt(-2.2, 1.1, .3); w.__draw(c); }; });
 for (const sky of skies) {
   const [a, b] = sky.split('-'), weather = ['clear', 'cloudy', 'overcast', 'fog', 'drizzle', 'rain', 'storm', 'snow'].includes(a) ? a : b || 'clear', time = weather === a ? b || 'noon' : a;
   console.log(await page.evaluate(async ([time, weather]) => { const d = window.__reverie.world.daylight, r = await d.set({ time, weather }); d.settle(); return r; }, [time, weather]));

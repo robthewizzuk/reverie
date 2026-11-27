@@ -15,9 +15,18 @@
 <main id="app">
   <div id="stage" class="screen">
     <canvas id="view" aria-label="A little creature in a cosy workshop corner"></canvas>
+    <div id="screen" hidden></div>
     <p id="caption" aria-live="polite" hidden></p>
     <button id="wake" type="button" hidden>Waking up…</button>
+    <div id="timers" hidden aria-live="polite"></div>
     <div id="gamebar" hidden><span></span><div></div></div>
+    <button id="recentre" type="button" aria-label="Look back at Reverie" title="Look back at Reverie" hidden>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm9 3h-2.07A7 7 0 0 0 13 5.07V3h-2v2.07A7 7 0 0 0 5.07 11H3v2h2.07A7 7 0 0 0 11 18.93V21h2v-2.07A7 7 0 0 0 18.93 13H21v-2Zm-9 6a5 5 0 1 1 0-10 5 5 0 0 1 0 10Z"/></svg>
+    </button>
+    <div id="music" hidden><i aria-hidden="true">♪</i><span></span><button type="button" data-id="connect">Connect Spotify</button><button type="button" data-id="toggle" aria-label="Pause">❚❚</button><button type="button" data-id="next" aria-label="Next song">⏭</button><button type="button" data-id="lyrics" aria-label="Add the words of this song (an LRC file)" title="Add the words of this song (an LRC file)">🎤</button></div>
+    <input id="lrc" type="file" accept=".lrc,.txt,text/plain" hidden>
+    <div id="karaoke" hidden><header><span class="title"></span><span class="who"></span><button type="button" data-id="stop" aria-label="Stop the song">✕</button></header><p class="now" aria-live="polite"></p><p class="next"></p></div>
+    <ul id="helpers" aria-label="Reverie's helpers" aria-live="polite" hidden></ul>
     <div id="pad" hidden>
       <p>Draw something, and Reverie will make it real</p>
       <canvas aria-label="Drawing pad"></canvas>
@@ -33,10 +42,28 @@
         <button type="button" data-id="show">Show</button>
       </div>
     </div>
+    <div id="shop" hidden>
+      <div class="head"><span>Shopping</span><button type="button" data-id="stop" class="small">Stop looking</button><button type="button" data-id="close" aria-label="Close the shopping cards">✕</button></div>
+      <div class="cards" aria-live="polite"></div>
+      <div class="confirm" hidden><p></p><div><button type="button" data-id="notnow">Not now</button><a href="#" target="_blank" rel="noopener noreferrer">Go</a></div></div>
+    </div>
+    <div id="watching" hidden>
+      <header><h2>Watch something together</h2><button type="button" data-id="close" aria-label="Close">✕</button></header>
+      <p>Paste a YouTube link, and Reverie sits down to watch it with you. It follows along with the video's captions, chips in now and then at quiet moments, and you can ask it anything about it.</p>
+      <div class="row"><input type="url" placeholder="https://youtu.be/…" aria-label="YouTube link" enterkeyhint="go"><button type="button" data-id="go">Watch</button></div>
+      <p class="note" aria-live="polite"></p>
+      <button type="button" data-id="file" class="file">Or play a video from this device</button>
+      <input type="file" accept="video/*" hidden>
+    </div>
     <div id="diary" hidden>
       <header><h2>Reverie's diary</h2><button type="button" data-id="close" aria-label="Close the diary">✕</button></header>
       <div class="pages"></div>
-      <footer><p>Kept only in this browser. Nothing here leaves your device.</p><button type="button" data-id="wipe">Forget everything</button></footer>
+      <footer><p>Kept only in this browser, never stored on a server.</p><button type="button" data-id="wipe">Forget everything</button></footer>
+    </div>
+    <div id="ask" role="dialog" aria-modal="false" aria-labelledby="ask-title" hidden>
+      <h2 id="ask-title"></h2>
+      <div class="what"></div>
+      <footer><button type="button" data-id="yes"></button><button type="button" data-id="no"></button></footer>
     </div>
   </div>
   <p id="status" role="status"></p>
@@ -53,6 +80,9 @@
     </button>
     <button id="book" type="button" aria-label="Reverie's diary: what it remembers about you">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h12a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H6a3 3 0 0 1-3-3V5a3 3 0 0 1 3-3Zm0 16a1 1 0 0 0 0 2h12v-2H6Zm6.5-11.2c-.9-1.5-3.5-1.2-3.5.9 0 1.6 2 2.9 3.5 4.3 1.5-1.4 3.5-2.7 3.5-4.3 0-2.1-2.6-2.4-3.5-.9Z"/></svg>
+    </button>
+    <button id="tv" type="button" aria-label="Watch a video together">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-6l1.5 2h-7L10 19H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Zm6 4v6l5-3-5-3Z"/></svg>
     </button>
     <input id="say" type="text" placeholder="Say something, or type…" enterkeyhint="send" aria-label="Say something">
     <button id="send" type="submit" aria-label="Send">

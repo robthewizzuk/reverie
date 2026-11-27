@@ -10,12 +10,25 @@
 //   "roll ..."        -> roll;  "quiz me" -> play quiz;  "[quiz] ..." -> a quip;  "answer b" -> game_move;  "draw" -> doodle;  "[doodle] ..." -> a quip
 //   "square <x>"      -> game_move (noughts);  "[noughts|twenty|draw and guess] ..." -> a quip;  a counted question -> "Nope!"
 //   "make me a pet fox called pip" -> pet make;  "pet sit" -> pet trick;  "[pet] ..." / "[mood] ..." -> a quip
+//   "sing <song>" -> karaoke;  "write a song" -> karaoke with new words;  "stop the song" -> karaoke stop
+//   "dance" -> dance;  "stop dancing" -> dance stop;  "play music <x>" -> music play;  "pause the music" -> music pause
+//   "send a helper to <x>" / "look into <x>" -> send_helper;  "how are my helpers" -> helpers;  "[helper] ..." -> retells it
+//   "teach me about <x>" / "teach me <language>" -> teach start;  "board" -> teach board (with a picture prop);
+//   "new word" -> teach word;  "test me" -> teach quiz;  "[lesson] ..." -> a quip;  "end the lesson" -> teach end
+//   "set a timer for <n> seconds|minutes [for <x>]" / "remind me at <time> to <x>" / "cancel the <x>" / "snooze it" /
+//   "what reminders" -> reminder;  "[reminder|timer] ..." -> a line saying so
+//   "find me <x>[ under £n]" -> shop find;  "[shop] ..." -> a quip;  "buy number <n>" / "buy it" -> shop buy;  "show my shopping" -> shop show
+//   "my badges" -> badges;  "[achievement] ..." -> a cheer with a fanfare
+//   "plant a sunflower called sunny" -> garden plant;  "water the plants" -> garden water;  "pick the flower" -> garden pick;  "[garden] ..." -> a quip
+//   "tell me a joke" -> a line with sound cues;  "a ghost in a cave" / "helium" -> voice with an effect, echo, pitch and speed
+//   "what's on today" -> calendar list;  "add <x> tomorrow at <h>" -> calendar add;  "check my email" -> email inbox
+//   "reply to sam ..." -> email draft;  "send it" -> email send;  "[calendar|email|google] ..." -> a quip
 //   anything else     -> a friendly line with a wave
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const lastUser = messages => [...messages].reverse().find(m => m.role === 'user');
 const textOf = m => typeof m.content === 'string' ? m.content : (m.content.find(b => b.type === 'text')?.text ?? '');
 // (without the device's line at the top: where and when they are)
-const saidOf = m => textOf(m).replace(/^\[(Your diary|From the device)[^\]]*\]\n/gm, '').replace(/ \(You were interrupted[^)]*\)$/, '');
+const saidOf = m => textOf(m).replace(/^\[(Your diary|Learning together|Badges they have|From the device)[^\]]*\]\n/gm, '').replace(/ \(You were interrupted[^)]*\)$/, '');
 
 function plan(body) {
   const u = lastUser(body.messages);
@@ -23,6 +36,7 @@ function plan(body) {
   if (results.length) {
     const r = String(results[0].content ?? '');
     if (/^weather in|location is not shared|did not answer/i.test(r)) return { text: 'Looks like a cosy day for staying in with me.', tools: [] };
+    if (/^You (are now wearing|took off)/.test(r)) return { text: 'How do I look?', tools: [] };
     if (/^your voice is now/i.test(r)) return { text: 'How do I sound now?', tools: [] };
     if (/^your body is now/i.test(r)) return { text: 'Do you like it?', tools: [] };
     if (/^(Carried|Fetched|Took)/.test(r)) return { text: 'There we go.', tools: [] };
@@ -32,16 +46,45 @@ function plan(body) {
     if (/^Threw |^Rolled /.test(r)) return { text: 'There we go!', tools: [] };
     if (/camera window is open/i.test(r)) return { text: 'Go on, show me something!', tools: [] };
     if (/drawing pad is open/i.test(r)) return { text: 'Go on, draw me something!', tools: [] };
+    if (/shopping helper has gone off/.test(r)) return { text: 'Off it goes, shopping!', tools: [] };
     if (/^Made .*as your pet|does |is now called|gone off/.test(r)) return { text: 'Aww, look at it!', tools: [] };
+    if (/^Sent \w+ (off|back out)/.test(r)) return { text: 'Off it goes!', tools: [] };
+    if (/^Not sent/.test(r)) return { text: 'Hmm, my helpers are busy.', tools: [] };
+    if (/ is (searching|reading|getting started|thinking|writing)| finished| was called back|full report/.test(r)) return { text: 'Let me see, my helpers are busy bees.', tools: [] };
+    if (/^A confirm button/.test(r)) return { text: 'Tap the button to finish on their site. I can never pay for you.', tools: [] };
+    if (/^The cards are back/.test(r)) return { text: 'There they are again.', tools: [] };
+    if (/^(Planted|Watered|Picked|Dug up)/.test(r)) return { text: /^Planted/.test(r) ? 'Grow, little seed!' : /^Watered/.test(r) ? 'Drink up, little ones.' : 'For you!', tools: [] };
     if (/^Written in your diary/.test(r)) return { text: 'Got it, I will remember that.', tools: [] };
     if (/^Forgot /.test(r)) return { text: 'Poof, forgotten.', tools: [] };
     if (/^\[Their daily briefing/.test(r)) return { text: 'Here is your briefing: it is a lovely day for making things.', tools: [] };
+    if (/^(No badges yet|They have \d+ of \d+ badges)/.test(r)) return { text: 'Look at all those trophies!', tools: [] };
     if (/diary is open/i.test(r)) return { text: 'There it is, my diary.', tools: [] };
+    if (/^(Smashed|Sliced) /.test(r)) return { text: 'Oops! Well, that was fun.', tools: [] };
+    if (/^(Six little fireworks|Confetti|Magic|Bubbles|It snowed|Hearts)/.test(r)) return { text: 'Pretty!', tools: [] };
+    if (/^Their calendar:|^Nothing on their calendar/.test(r)) return { text: /Dentist/.test(r) ? 'You have the dentist at ten, then football at five.' : 'A free day!', tools: [] };
+    if (/A card (showing the email )?is on their screen/.test(r)) return { text: 'Tap yes if that looks right.', tools: [] };
+    if (/newest first:/.test(r)) return { text: /Sam/.test(r) ? 'Sam wants to know if you are still up for Saturday.' : 'A few new emails.', tools: [] };
+    if (/^Drafted, and saved/.test(r)) return { text: 'I wrote it in your drafts. Shall I send it?', tools: [] };
+    if (/connected their Google account yet/.test(r)) return { text: 'Tap Connect on your screen first.', tools: [] };
+    if (/chalkboard is up/.test(r)) return { text: "Class is in session! Let's start with the big picture.", tools: [] };
+    if (/^Written on the board|is on the board|^The question is on the board/.test(r)) return { text: 'Have a look at that.', tools: [] };
+    if (/^The lesson is over/.test(r)) return { text: 'Gold star for you!', tools: [] };
+    if (/^Set (a|an) /.test(r)) return { text: "Done, I'll give you a shout!", tools: [] };
+    if (/^Cancelled /.test(r)) return { text: 'Cancelled.', tools: [] };
+    if (/^Snoozed /.test(r)) return { text: 'Five more minutes, then.', tools: [] };
+    if (/timer \(|reminders or timers are set|a reminder to /.test(r) && results[0] && !/^Not /.test(r)) return { text: "Here's what's set.", tools: [] };
     if (/^Answered /.test(r)) return { text: 'Ooh.', tools: [] };
+    if (/^You (are|stopped|were not) danc/.test(r) || /^(Playing|Paused|Skipped)|Spotify/.test(r)) return { text: 'Wheee!', tools: [] };
+    if (/^(Searched YouTube.*)?The screen rolled down/.test(r)) return { text: 'Ooh, popcorn time!', tools: [] };
+    if (/^(Paused|Playing|Jumped)/.test(r)) return { text: 'There we go.', tools: [] };
+    if (/^Where ".*" comes up/.test(r)) { const t = /at (\d+:\d+)/.exec(r)?.[1]; return { text: `Found it, at ${t}.`, tools: [] }; }
+    if (/^Rolled the screen back up/.test(r)) return { text: 'That was fun!', tools: [] };
+    if (/what shall we watch/i.test(r)) return { text: 'What shall we watch?', tools: [] };
     if (/noughts and crosses board is set up/i.test(r)) return { text: 'Crosses, your move.', tools: [] };
     if (/Twenty Questions is set up/.test(r)) return { text: "I'm thinking of something. Twenty questions, go!", tools: [] };
     if (/Draw and Guess is on/.test(r)) return { text: 'Draw, draw, draw!', tools: [] };
     if (/Dice Quest is set up/.test(r)) return { text: 'Once upon a time, a brave little hero set off. Roll!', tools: [] };
+    if (/Escape room ".*" is set up/.test(r)) return { text: "Oh no, we are locked in! Tap things to search.", tools: [] };
     if (/^Put their cross/.test(r)) return { text: 'Hmm.', tools: [] };
     if (/^(They got it|You showed them)/.test(r)) return { text: 'Ta-da!', tools: [] };
     if (/^Played /.test(r)) return { text: 'Bold.', tools: [] };
@@ -49,34 +92,89 @@ function plan(body) {
     return { text: /fail|could not|nothing/i.test(r) ? 'Hmm, that one fizzled.' : 'Ta-da!', tools: [] };
   }
   let m0;
-  const said = saidOf(u).replace(/^\[[a-z ]+[,:][^\]]*\]\s*/, '').toLowerCase().replace(/^(\[(pet|mood)\][^\n]*\n+)+(?=\S)/, '');
+  // (a video on: the line about it rides at the top of what they said)
+  const watching = /^\[watching[^\n]*\n/.exec(saidOf(u).replace(/^\[[a-z ]+[,:][^\]]*\]\s*/, ''))?.[0] || '';
+  const said = saidOf(u).replace(/^(\[[a-z ]+[,:][^\]]*\]\s*)?\[watching[^\n]*\n/, '$1').replace(/^\[[a-z ]+[,:][^\]]*\]\s*/, '').toLowerCase().replace(/^(\[(pet|mood|game|garden|achievement)\][^\n]*\n+)+(?=\S)/, '');
+  if (/^\[(reminder|timer)\]/.test(said)) return { text: /\[timer\]/.test(said) ? "Ding ding, time's up!" : 'Psst, it is time!', tools: [] };
+  if ((m0 = /set a timer for (\d+(?:\.\d+)?) (seconds?|minutes?)(?: for (?:the )?(.+))?/.exec(said))) return { text: 'Timer coming up.', tools: [['reminder', { action: 'set', kind: 'timer', minutes: +m0[1] / (m0[2][0] === 's' ? 60 : 1), what: m0[3] || '' }]] };
+  if ((m0 = /remind me at (\S+) to (.+)/.exec(said))) return { text: 'I will.', tools: [['reminder', { action: 'set', at: m0[1], what: m0[2] }]] };
+  if ((m0 = /^cancel (?:the )?(.+)/.exec(said))) return { text: 'Okay.', tools: [['reminder', { action: 'cancel', what: m0[1] }]] };
+  if (/^snooze/.test(said)) return { text: 'Fine.', tools: [['reminder', { action: 'snooze', minutes: 5 }]] };
+  if (/what reminders|what timers/.test(said)) return { text: 'Let me look.', tools: [['reminder', { action: 'list' }]] };
+  if (/^\[escape\]/.test(said)) return { text: /pressed Hint/.test(said) ? 'Psst, here is a clue.' : /escaped in/.test(said) ? 'We are free!' : 'Ooh, a clue!', tools: [] };
   if (/^\[(noughts|twenty|draw and guess|quest)\]/.test(said)) return { text: /they won/.test(said) ? 'No fair!' : /you won/.test(said) ? 'Three in a row!' : /round is over/.test(said) ? 'What a round of drawings!' : /treasure chest with/.test(said) ? 'And they lived happily ever after!' : /last heart/.test(said) ? 'And the owl flew them home.' : 'Hmm, interesting.', tools: [] };
+  if (/^\[achievement\]/.test(said)) return { text: '[fanfare] Woohoo, a new badge for you!', tools: [] };
+  if (/\b(badges?|trophies|achievements?)\b/.test(said)) return { text: 'Let me look at my shelf.', tools: [['badges', {}]] };
   if (/\(they guessed it|\(they gave up/.test(said)) return { text: 'Ta-da, there it is!', tools: [] };
   if (/\(question \d+ of 20/.test(said)) return { text: 'Nope!', tools: [] };
   if (/\(the die is being thrown/.test(said)) return { text: 'Here it goes...', tools: [] };
   if (/^\[chess\]/.test(said)) return { text: /taking your/.test(said) ? 'Hey! I needed that.' : /checkmate/.test(said) ? 'Good game!' : 'Hmm, interesting.', tools: [] };
   if (/^\[quiz\]/.test(said)) return { text: /: right!/.test(said) ? 'Correct, you clever thing!' : /last question/.test(said) ? 'What a round!' : 'Ooh, so close.', tools: [] };
+  if (/^\[lesson\]/.test(said)) return { text: /answered the quiz question right/.test(said) ? 'Yes! Spot on.' : 'Not quite, but close!', tools: [] };
+  if ((m0 = /^teach me (?:about )?(spanish|french|german|italian|japanese)(?: (?:food|words))?/.exec(said))) return { text: '¡Hola! Let us learn some words.', tools: [['teach', { action: 'start', language: m0[1][0].toUpperCase() + m0[1].slice(1), topic: 'food', level: 'beginner' }]] };
+  if ((m0 = /^teach me (?:about )?(.+)/.exec(said))) return { text: 'Ooh, I love this one.', tools: [['teach', { action: 'start', topic: m0[1] }]] };
+  if (/^board/.test(said)) return { text: 'Right, here is how it works.', tools: [['teach', { action: 'board', title: 'How a volcano erupts', lines: ['Hot rock melts deep down', 'It rises because it is light', 'Pressure builds up', 'Boom: lava comes out!'], emoji: '🌋', picture: 'a volcano' }]] };
+  if (/^new word/.test(said)) return { text: 'Here is a tasty one.', tools: [['teach', { action: 'word', word: 'la manzana', meaning: 'the apple', sounds_like: 'lah man-THAH-nah', example: 'Me gusta la manzana: I like the apple' }]] };
+  if (/^test me on the word/.test(said)) return { text: 'Quick one!', tools: [['teach', { action: 'quiz', question: 'What does la manzana mean?', choices: ['the bread', 'the apple', 'the cheese'], answer: 1, word: 'la manzana' }]] };
+  if (/^test me/.test(said)) return { text: 'Pop quiz!', tools: [['teach', { action: 'quiz', question: 'What comes out of a volcano?', choices: ['Lava', 'Water', 'Ice cream', 'Sand'], answer: 0 }]] };
+  if (/^end the lesson/.test(said)) return { text: 'What a lesson!', tools: [['teach', { action: 'end', learned: ['magma rises because it is light', 'pressure makes it erupt'], next: 'kinds of volcano' }]] };
   if (/^\[show\]/.test(said)) return /want a 3d copy/.test(said) ? { text: 'Ooh, one for the shelf!', tools: [['place', { item: 'a yellow rubber duck', spot: 'on the shelf' }]] }
     : { text: /surprise hatched/.test(said) ? 'A surprise, from a barcode!' : /photo is attached/.test(said) ? 'Ooh, what a lovely thing.' : 'Ha!', tools: [] };
   const sm = /^(?:show|look)(?: at)?(?: me)?(?: something)?(?: find (?:me )?(.+))?$/.exec(said);
   if (sm) return { text: 'Show me!', tools: [['show', sm[1] ? { find: sm[1] } : {}]] };
+  if (/^\[helper\]/.test(said)) return { text: /without an answer/.test(said) ? 'Aw, my helper came back empty-handed.' : 'My helper is back! The short answer is yes.', tools: [] };
+  if ((m0 = /^(?:send a helper to|look into|find out) (.+)/.exec(said))) return { text: "I'll send Pip off to find out!", tools: [['send_helper', { name: 'Pip', task: m0[1] }]] };
+  if (/how are my helpers|what are my helpers/.test(said)) return { text: 'Let me check.', tools: [['helpers', { action: 'status' }]] };
+  if (/^\[shop\]/.test(said)) return { text: /is back with/.test(said) ? 'Number one is the cheapest, and number two is my pick!' : 'Okay!', tools: [] };
+  if ((m0 = /^find me (.+?)(?: under £?(\d+))?$/.exec(said))) return { text: 'Ooh, shopping! Let me send a helper.', tools: [['shop', { action: 'find', query: m0[1], ...(m0[2] ? { budget: +m0[2] } : {}) }]] };
+  if ((m0 = /^buy (?:number (\d)|it)/.exec(said))) return { text: 'Good choice.', tools: [['shop', { action: 'buy', ...(m0[1] ? { pick: +m0[1] } : {}) }]] };
+  if (/^show my shopping/.test(said)) return { text: 'Here you go.', tools: [['shop', { action: 'show' }]] };
   if (/^\[doodle\]/.test(said)) return { text: 'What a lovely drawing!', tools: [] };
+  if (/^\[watch\]/.test(said)) return /they picked/.test(said) ? { text: 'Ooh, popcorn time!', tools: [] } : /just finished/.test(said) ? { text: 'What a great video!', tools: [] } : /paused/.test(said) ? { text: '', tools: [] } : { text: /lava/.test(said) ? 'Lava! So hot.' : 'Ha, I love this bit!', tools: [] };
+  if (/video was put on the screen straight away/.test(said)) return { text: 'Ooh, popcorn time!', tools: [] };
+  if ((m0 = /^watch (https?:\/\/\S+|something|a video about (.+))$/.exec(said))) return { text: 'Ooh, let me pull the screen down.', tools: [['watch', m0[1] === 'something' ? { action: 'open' } : { action: 'open', video: m0[2] || m0[1] }]] };
+  if (/^pause (it|the video)/.test(said)) return { text: 'Pausing.', tools: [['watch', { action: 'pause' }]] };
+  if ((m0 = /^find the bit about (.+)/.exec(said))) return { text: 'Let me look.', tools: [['watch', { action: 'find', words: m0[1] }]] };
+  if ((m0 = /^go to (\d+) seconds/.exec(said))) return { text: 'Off we go.', tools: [['watch', { action: 'seek', seconds: +m0[1] }]] };
+  if (/^stop watching/.test(said)) return { text: 'Rolling it up.', tools: [['watch', { action: 'close' }]] };
+  if (/^what (did they|are they) (say|talking about)/.test(said)) return { text: watching ? `They said: ${/"([^"]{0,60})/.exec(watching.split(': ').slice(1).join(': '))?.[1] || 'nothing yet'}` : 'Nothing is on.', tools: [] };
   if (/^\[a new day/.test(said)) return { text: /in your hands now/.test(said) ? 'Good morning! I made you something overnight. Here is your briefing, and a puzzle.' : 'Good morning! Here is your briefing.', tools: [] };
   if ((m0 = /my name is (\w+)/.exec(said))) return { text: `Lovely to meet you, ${m0[1]}!`, tools: [['remember', { name: m0[1][0].toUpperCase() + m0[1].slice(1) }]] };
   if ((m0 = /^remember (?:that )?i (.+)/.exec(said))) return { text: 'Ooh, noted.', tools: [['remember', { fact: m0[1] }]] };
   if ((m0 = /^forget (?:about )?(.+)/.exec(said))) return { text: 'Okay.', tools: [['forget', { what: m0[1].replace(/^(that|my|the) /, s => s === 'my ' ? 'my ' : '') }]] };
+  if (/^\[phone\]/.test(said)) return { text: 'Whoa, whoa! Everything is spinning!', tools: [] };
+  if ((m0 = /^(smash|slice) it/.exec(said))) return { text: m0[1] === 'slice' ? 'Hi-yah!' : 'Stand back!', tools: [['smash', { how: m0[1] }]] };
+  if ((m0 = /^(fireworks|confetti|bubbles|magic|hearts|indoor snow)\b/.exec(said))) return { text: 'Ooh, watch this!', tools: [['effect', { kind: m0[1].replace('indoor ', '') }]] };
   if (/briefing/.test(said)) return { text: 'Ooh, briefing time.', tools: [['briefing', {}]] };
   if (/diary/.test(said)) return { text: 'Here you go.', tools: [['diary', {}]] };
+  if (/^\[(calendar|email|google)\]/.test(said)) return { text: /they tapped yes: .* sent/.test(said) ? 'Sent!' : /they tapped yes/.test(said) ? 'Done, it is on your calendar.' : /they connected/.test(said) ? 'Connected! Ask me what is on today.' : 'Okay, I left it.', tools: [] };
+  if (/what'?s on (today|my calendar)|my calendar/.test(said)) return { text: 'Let me look at your calendar.', tools: [['calendar', { action: 'list', day: 'today' }]] };
+  if ((m0 = /^add (.+) tomorrow at (\d+)/.exec(said))) { const d = new Date(); d.setDate(d.getDate() + 1); const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; return { text: 'Ooh, let me pop that in.', tools: [['calendar', { action: 'add', title: m0[1][0].toUpperCase() + m0[1].slice(1), start: `${ymd}T${String(+m0[2] + 12).padStart(2, '0')}:00`, minutes: 30 }]] }; }
+  if (/check my email|my inbox|any email/.test(said)) return { text: 'Peeking at your inbox.', tools: [['email', { action: 'inbox' }]] };
+  if (/^reply to sam/.test(said)) return { text: 'Writing it now.', tools: [['email', { action: 'draft', reply_to: 'm1', body: 'Yes! The park at 2 sounds great.\n\nRob' }]] };
+  if (/^send it/.test(said)) return { text: 'Here it is.', tools: [['email', { action: 'send', draft: 'd1' }]] };
   if (/was set up straight away/.test(said)) return { text: 'Oh, you are on!', tools: [] };
   if (/play chess|game of chess/.test(said)) return { text: 'Oh, you are on!', tools: [['play', { game: 'chess', level: 1 }]] };
   if (/stop playing|put it away/.test(said)) return { text: 'Fine, fine.', tools: [['stop_game', {}]] };
   let m;
   if ((m = /^answer (.+)/.exec(said))) return { text: 'Locking it in.', tools: [['game_move', { move: m[1] }]] };
+  if ((m = /^(code|escape hint) ?(.*)/.exec(said))) return { text: 'Let us try it.', tools: [['game_move', { move: m[1] === 'code' ? m[2] : 'hint' }]] };
   if ((m = /^square (.+)/.exec(said))) return { text: 'Brave.', tools: [['game_move', { move: m[1] }]] };
   if (/^i give up/.test(said)) return { text: 'Ha!', tools: [['game_move', { move: 'give up' }]] };
+  if (/^stop the song/.test(said)) return { text: 'Aww.', tools: [['karaoke', { action: 'stop' }]] };
+  if (/^write a song/.test(said)) return { text: 'Ooh, a new one!', tools: [['karaoke', { action: 'sing', title: 'Biscuit Blues', verse: ['My dog is called Biscuit', 'He sleeps on the stairs', 'He chases the postman', 'And no one is scared'], chorus: ['Biscuit, Biscuit', 'Wag your tail for me', 'Biscuit, Biscuit', 'Best dog there could be'], mood: 'silly' }]] };
+  if ((m = /^(duet|sing) (.+)/.exec(said))) return { text: 'Let\'s sing!', tools: [['karaoke', { action: 'sing', song: m[2], mode: m[1] === 'duet' ? 'duet' : 'sing' }]] };
+  if (/^stop dancing/.test(said)) return { text: 'Phew!', tools: [['dance', { stop: true }]] };
+  if (/^dance/.test(said)) return { text: 'Ooh, I love this one!', tools: [['dance', {}]] };
+  if ((m = /^play music (.+)/.exec(said))) return { text: 'Coming right up!', tools: [['music', { action: 'play', query: m[1] }]] };
+  if (/^pause the music/.test(said)) return { text: 'Shh.', tools: [['music', { action: 'pause' }]] };
   if ((m = /^roll (.+)/.exec(said))) return { text: 'Rolling!', tools: [['roll', { dice: m[1].replace(/^(a|the) /, '') }]] };
   if (/^draw/.test(said)) return { text: 'Ooh, a drawing!', tools: [['doodle', {}]] };
   if ((m = /^move (?!the )(\S+)/.exec(said))) return { text: 'Ooh.', tools: [['game_move', { move: m[1] }]] };
+  if ((m = /^(?:let'?s )?plant (?:an? |some )?([a-z ]+?)(?: called (\w+))?(?: in the (left|middle|right) pot)?$/.exec(said))) return { text: 'Ooh, a seed!', tools: [['garden', { action: 'plant', plant: m[1], ...(m[2] ? { name: m[2] } : {}), ...(m[3] ? { pot: m[3] } : {}) }]] };
+  if (/^water (the )?(plants|garden|flowers)/.test(said)) return { text: 'Here comes the rain.', tools: [['garden', { action: 'water' }]] };
+  if (/^pick (the|a) (flower|strawberry)/.test(said)) return { text: 'Snip!', tools: [['garden', { action: 'pick' }]] };
+  if (/^\[garden\]/.test(said)) return { text: 'Look at them grow!', tools: [] };
   if ((m = /(?:get|make) (?:me )?an? (?:pet )?(\w+)(?: called (\w+))?/.exec(said)) && /pet|called/.test(said)) return { text: 'A pet! Hold on.', tools: [['pet', { action: 'make', animal: m[1], ...(m[2] ? { name: m[2] } : {}) }]] };
   if ((m = /^pet (sit|jump|spin|come|sleep|play_dead|zoomies|dance)/.exec(said))) return { text: 'Watch this.', tools: [['pet', { action: 'trick', trick: m[1] }]] };
   const SPOT = /(by the window|on the windowsill|on the workbench|on the shelf|on the rug|left of you|right of you|in front of you|back left corner|by the barrel|front left|front right|your hands|away)/;
@@ -89,6 +187,11 @@ function plan(body) {
   if (/real sky/.test(said)) return { text: 'Back to the real sky.', tools: [['window', { time: 'live', weather: 'live' }]] };
   if ((m = /make it (.+)/.exec(said))) return { text: 'Watch this.', tools: [['change', { words: m[1] }]] };
   if ((m = /make (?:me )?(an? .+|some .+)/.exec(said))) return { text: 'Ooh, one coming right up!', tools: [['act', { gesture: 'tada', mood: 'excited' }], ['make', { words: m[1] }]] };
+  if ((m = /^(?:wear|put on|dress up as) (?:a |an |the |your )?(.+?)(?: in (#?\w+))?$/.exec(said))) return { text: 'Ooh, dressing up!', tools: [['wear', { put_on: [m[1]], ...(m[2] ? { colour: m[2] } : {}) }]] };
+  if ((m = /^take (?:off )?(?:your |the )?(.+?)(?: off)?$/.exec(said)) && !/^(it|a|the) /.test(m[1])) return { text: 'Okay, off it comes.', tools: [['wear', { take_off: [m[1]] }]] };
+  if (/joke/.test(said)) return { text: 'Why did the cookie go to the doctor? It felt crumby. [rimshot] And the winner of worst joke is [drumroll] me! [Tada]', tools: [] };
+  if (/ghost in a cave/.test(said)) return { text: 'Ooooh, spooky.', tools: [['voice', { effect: 'ghost', echo: 'cave' }]] };
+  if (/helium/.test(said)) return { text: 'Breathe in!', tools: [['voice', { pitch: 1.5, speed: 1.1, effect: 'walkie talkie' }]] };
   if (/pirate/.test(said)) return { text: 'Arr, give me a moment.', tools: [['voice', { name: 'captain_silas_blackwater' }]] };
   if (/normal voice/.test(said)) return { text: 'Back to me.', tools: [['voice', { reset: true }]] };
   if (/purple|colou?r/.test(said)) return { text: 'Ooh, a new look.', tools: [['colours', { body: '#c8b4ee', glow: '#30a0ff' }]] };
@@ -96,7 +199,7 @@ function plan(body) {
   if (/weather|rain|sunny/.test(said)) return { text: 'Let me peek outside.', tools: [['weather', {}]] };
   if (/clear|tidy/.test(said)) return { text: 'Poof, all gone.', tools: [['clear', {}]] };
   if (/think|why|how does/.test(said)) return { text: 'Ooh, let me think about that one.', tools: [['think_harder', {}]] };
-  if (/^\[(pet|mood)\]/.test(said)) return { text: 'Aww.', tools: [] };
+  if (/^\[(pet|mood|game|achievement)\]/.test(said)) return { text: 'Aww.', tools: [] };
   return { text: 'Hello! I am a little test version of me. Ask me to make you something.', tools: [['act', { gesture: 'wave', mood: 'happy' }]] };
 }
 
@@ -127,4 +230,53 @@ export async function fakeTurn(request) {
     },
   });
   return new Response(stream, { headers: { 'content-type': 'text/event-stream' } });
+}
+
+/** A scripted recap (POST /api/recap): "i love X" / "my sister is called X" / "i have a test on friday" become facts. */
+export async function fakeRecap(request) {
+  const b = await request.json(), add = [];
+  for (const l of b.lines) {
+    if (l.who !== 'you') continue;
+    const t = l.text.toLowerCase(); let m;
+    if ((m = /\bi (?:really )?love (.+?)[.!]?$/.exec(t))) add.push({ kind: 'likes', text: `loves ${m[1]}`, when: '' });
+    if ((m = /\bmy (sister|brother|mum|dad|dog|cat) is called (\w+)/.exec(t))) add.push({ kind: 'people', text: `has a ${m[1]} called ${m[2][0].toUpperCase() + m[2].slice(1)}`, when: '' });
+    if ((m = /\bi have an? (.+?) (on \w+|tomorrow)/.exec(t))) add.push({ kind: 'plan', text: `has a ${m[1]}`, when: m[2].replace(/^on /, '') });
+  }
+  const theirs = b.lines.filter(l => l.who === 'you').map(l => l.text);
+  return new Response(JSON.stringify({ recap: theirs.length ? `We chatted about ${theirs.slice(0, 2).join(' and ').slice(0, 80)}.` : '', add, update: [], drop: [], name: '' }), { headers: { 'content-type': 'application/json' } });
+}
+
+/** A scripted shopping helper (POST /api/shop): a little progress, then three offers on made-up shop pages. */
+export async function fakeShop(request) {
+  const body = await request.json(), enc = new TextEncoder();
+  const q = String(body.query || 'a thing');
+  const stream = new ReadableStream({
+    async start(ctl) {
+      const send = o => ctl.enqueue(enc.encode(`data: ${JSON.stringify(o)}\n\n`));
+      send({ type: 'progress', text: `Searching: ${q} UK price` }); await wait(400);
+      send({ type: 'progress', text: 'Looking at shop-one.example' }); await wait(400);
+      send({ type: 'done', result: { query: q, summary: 'Three shops have it; the second is the best value with free delivery.', kind: 'headphones', best: 2, dropped: 0, ms: 800, offers: [
+        { name: `${q} (black)`, retailer: 'Shop One', price: 44.99, was: 59.99, url: 'https://shop-one.example/p/123', site: 'shop-one.example', exact: true, stock: 'in stock', delivery: '£3.95', note: '4.5 stars' },
+        { name: `${q} (black)`, retailer: 'Shop Two', price: 47.5, url: 'https://shop-two.example/item/9', site: 'shop-two.example', exact: true, stock: 'in stock', delivery: 'free', note: '' },
+        { name: `${q} (white)`, retailer: 'Shop Three', price: 52, url: 'https://shop-three.example/x', site: 'shop-three.example', exact: true, stock: 'low stock', delivery: 'click and collect', note: '' },
+      ] } });
+      ctl.close();
+    },
+  });
+  return new Response(stream, { headers: { 'content-type': 'text/event-stream' } });
+}
+
+// A pretend /api/video (REVERIE_FAKE=1): captions for the test video TESTVIDEO01, none for any other, and a search
+// that always finds it.
+export function fakeVideo(request) {
+  const q = new URL(request.url).searchParams;
+  const json = o => new Response(JSON.stringify(o), { headers: { 'content-type': 'application/json' } });
+  if (q.get('q')) return json({ results: [{ id: 'TESTVIDEO01', title: 'Volcanoes for beginners', channel: 'Rocky Earth' }] });
+  if (q.get('v') !== 'TESTVIDEO01') return json({ id: q.get('v'), title: '', channel: '', seconds: 0, about: '', lines: [], why: 'no captions' });
+  const said = ['Hello and welcome to volcanoes for beginners.', 'Today we are going to find out what makes a mountain explode.', 'Deep under our feet the rock is so hot it melts.',
+    'That melted rock is called magma.', 'When it comes out of the ground we call it lava.', 'Lava can be hotter than a thousand degrees.', '[Laughter]',
+    'Do not try to toast marshmallows on it.', 'Some volcanoes ooze gently, like honey.', 'Others blow their tops with a huge bang.'];
+  const lines = []; let t = 1;
+  for (let round = 0; round < 6; round++) for (const text of said) { lines.push({ t, d: 2.6, text }); t += text === '[Laughter]' ? 5 : 3; }
+  return json({ id: 'TESTVIDEO01', title: 'Volcanoes for beginners', channel: 'Rocky Earth', seconds: 180, about: 'A friendly look at how volcanoes work.', lang: 'en', lines });
 }

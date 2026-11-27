@@ -4,6 +4,14 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 #app { position: fixed; inset: 0; display: flex; flex-direction: column; padding-bottom: env(safe-area-inset-bottom); }
 #stage { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 #stage canvas { display: block; width: 100%; height: 100%; touch-action: manipulation; }
+/* drags and pinches on the room look around it (look.js), so the browser mustn't scroll or zoom the page for them */
+#stage #view { touch-action: none; cursor: grab; }
+#stage #view.looking { cursor: grabbing; }
+#recentre { position: absolute; right: 12px; bottom: 12px; width: 44px; height: 44px; border: 0; border-radius: 50%; display: grid; place-items: center;
+  background: #1b120dcc; backdrop-filter: blur(8px); color: var(--ink); cursor: pointer; box-shadow: 0 4px 16px #0006; transition: opacity .2s, bottom .2s; }
+#recentre svg { width: 22px; height: 22px; fill: currentColor; }
+#recentre[hidden] { display: none; }
+#gamebar:not([hidden]) ~ #recentre { bottom: 64px; }
 /* the engine puts its 3D canvas right under ours (hd-layer) */
 .screen .hd-layer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .screen canvas.hd-host { position: relative; }
@@ -80,13 +88,183 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 #diary .day b { flex: none; width: 82px; }
 #diary button { border: 0; cursor: pointer; font: 600 14px system-ui, sans-serif; color: #3b2a1e; }
 #diary header button, #diary .facts button { width: 32px; height: 32px; border-radius: 50%; background: #3b2a1e14; flex: none; }
+#diary h4 { margin: 10px 0 2px; font: 600 12px/1.2 system-ui, sans-serif; color: #8a7560; }
+#diary h4:first-child { margin-top: 0; }
+#diary .when { font-size: 12px; color: #a0582c; white-space: nowrap; }
+#diary .talks li::before { content: none; }
+#diary .talks b { font-size: 12px; color: #8a7560; margin-right: 4px; }
+#diary .facts li.editing input { flex: 1; min-width: 0; height: 32px; padding: 0 10px; border: 1px solid #d9c6a8; border-radius: 10px; background: #fff; font: 15px system-ui, sans-serif; color: #3b2a1e; }
+#diary .add { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+#diary .add input { flex: 1 1 160px; min-width: 0; height: 34px; padding: 0 10px; border: 1px solid #d9c6a8; border-radius: 10px; background: #fff; font: 14px system-ui, sans-serif; color: #3b2a1e; }
+#diary .add select { height: 34px; border: 1px solid #d9c6a8; border-radius: 10px; background: #fff; font: 13px system-ui, sans-serif; color: #3b2a1e; max-width: 150px; }
+#diary .add button { height: 34px; padding: 0 14px; border-radius: 17px; background: #e07a3a; color: #fff; }
+#diary .learn { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; }
+#diary .learn input { width: 18px; height: 18px; accent-color: #e07a3a; }
 #diary .small { margin-top: 6px; height: 30px; padding: 0 12px; border-radius: 15px; background: #3b2a1e14; font-size: 13px; }
 #diary footer { display: flex; align-items: center; gap: 10px; padding: 10px 14px 14px 20px; border-top: 1px solid #e6d6bc; font-size: 12px; color: #8a7560; }
 #diary footer p { flex: 1; margin: 0; }
 #diary footer button { height: 36px; padding: 0 14px; border-radius: 18px; background: #3b2a1e14; }
 #diary footer button.armed { background: #c8402f; color: #fff; }
+#diary .google p { font-size: 14px; }
+/* the card that asks before an email is sent or an event added: only a tap on Yes does it */
+#ask { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); width: min(calc(100% - 24px), 420px); max-height: calc(100% - 28px);
+  display: flex; flex-direction: column; gap: 8px; padding: 16px 16px 14px; border-radius: 20px; background: #fbf3e2; color: #3b2a1e; box-shadow: 0 8px 30px #0009; }
+#ask[hidden] { display: none; }
+#ask h2 { margin: 0; font: 700 18px/1.2 Georgia, "Times New Roman", serif; }
+#ask .what { min-height: 0; overflow-y: auto; font-size: 14px; overscroll-behavior: contain; }
+#ask .what div { display: flex; gap: 10px; padding: 2px 0; }
+#ask .what b { flex: none; width: 62px; color: #a0582c; }
+#ask .what span { overflow-wrap: anywhere; }
+#ask .what p { margin: 8px 0 0; padding: 10px 12px; border-radius: 12px; background: #3b2a1e0d; white-space: pre-wrap; max-height: 9.5em; overflow-y: auto; }
+#ask footer { display: flex; gap: 8px; justify-content: flex-end; }
+#ask button { height: 40px; padding: 0 18px; border: 0; border-radius: 20px; background: #3b2a1e14; color: #3b2a1e; font: 600 15px system-ui, sans-serif; cursor: pointer; }
+#ask button[data-id="yes"] { background: var(--accent); color: #241509; }
+#ask button:disabled { opacity: .5; cursor: wait; }
 @media (max-width: 400px) { #bar { gap: 6px; padding-left: 12px; padding-right: 12px; } #bar button { width: 40px; height: 40px; } #bar input { height: 40px; } }
 /* the pad while a game has it (Draw and Guess): the lower part of the screen, so Reverie shows above it */
 #pad.game { top: 36%; }
 #pad.game p { color: var(--ink); font-size: 18px; }
 #pad.game button[data-id="skip"] { background: var(--accent); color: #241509; }
+/* the music pill (music.js): the song playing, pause and skip, or the Connect Spotify button; above the game bar */
+#music { position: absolute; left: 12px; bottom: 12px; max-width: min(78%, 420px); display: flex; align-items: center; gap: 6px; padding: 5px 5px 5px 12px;
+  border-radius: 999px; background: #1b120dcc; backdrop-filter: blur(8px); color: var(--ink); font: 500 13px system-ui, sans-serif; box-shadow: 0 4px 16px #0006; }
+#music[hidden], #music button[hidden] { display: none; }
+#gamebar:not([hidden]) ~ #music { bottom: 60px; }
+#music i { font-style: normal; color: #1ed760; }
+#music span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#music button { flex: none; min-width: 30px; height: 30px; padding: 0 9px; border: 0; border-radius: 15px; background: #ffffff1f; color: var(--ink); font: 600 12px system-ui, sans-serif; cursor: pointer; }
+#music button[data-id="connect"] { padding: 0 14px; background: #1ed760; color: #0b1f12; }
+
+/* Reverie's helpers out on jobs (helpers.js): a small pill each, bottom left of the stage (above the game bar) */
+#helpers { position: absolute; bottom: 12px; left: 12px; max-width: min(320px, calc(100% - 24px)); margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+#helpers[hidden] { display: none; }
+#gamebar:not([hidden]) ~ #helpers { bottom: 60px; }
+#music:not([hidden]) ~ #helpers { bottom: 56px; }
+#gamebar:not([hidden]) ~ #music:not([hidden]) ~ #helpers { bottom: 104px; }
+#helpers li { display: flex; align-items: center; gap: 8px; padding: 5px 12px 5px 8px; border-radius: 999px; background: #1b120dbb; color: var(--ink); font: 500 13px/1.25 system-ui, sans-serif; box-shadow: 0 2px 10px #0005; pointer-events: auto; }
+#helpers li i { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--c, #7fd8ff); box-shadow: 0 0 8px var(--c, #7fd8ff); }
+#helpers li.working i { animation: helper-pulse 1.4s ease-in-out infinite; }
+#helpers li.news { cursor: pointer; outline: 1px solid var(--c, #7fd8ff); }
+#helpers li.failed i { background: #8a7f78; box-shadow: none; }
+#helpers li b { font-weight: 650; }
+#helpers li span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--soft); }
+@keyframes helper-pulse { 50% { transform: scale(.6); opacity: .6; } }
+@media (prefers-reduced-motion: reduce) { #helpers li.working i { animation: none; } }
+
+/* Reminders and timers (timers.js): chips at the bottom of the stage, above the game bar when one is up */
+#timers { position: absolute; left: 12px; right: 12px; bottom: 12px; display: flex; flex-wrap: wrap-reverse; justify-content: center; gap: 6px; pointer-events: none; }
+#timers[hidden] { display: none; }
+#stage:has(#gamebar:not([hidden])) #timers { bottom: 60px; }
+#stage:has(#wake:not([hidden])) #timers { bottom: 78px; }
+#timers .chip { pointer-events: auto; display: flex; align-items: center; gap: 6px; max-width: 100%; height: 34px; padding: 0 4px 0 12px; border: 0; border-radius: 17px;
+  background: #1b120dcc; color: var(--ink); font: 500 13.5px system-ui, sans-serif; box-shadow: 0 4px 14px #0005; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+#timers .chip .ico { font-size: 14px; line-height: 1; }
+#timers .chip .what { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 46vw; }
+#timers .chip .what i { font-style: normal; color: var(--soft); }
+#timers .chip .when { font-variant-numeric: tabular-nums; font-weight: 700; color: #ffd2ae; }
+#timers .chip button { flex: none; height: 26px; min-width: 26px; padding: 0 8px; border: 0; border-radius: 13px; background: #ffffff1f; color: var(--ink); font: 600 12.5px system-ui, sans-serif; cursor: pointer; }
+#timers .chip.ringing { background: var(--accent); color: #241509; animation: ring 1.1s ease-in-out infinite; }
+#timers .chip.ringing .when { color: #241509; }
+#timers .chip.ringing button { background: #2415091f; color: #241509; }
+#timers .chip.ringing button[data-stop] { background: #241509; color: var(--ink); }
+#timers .chip.missed { outline: 1.5px solid var(--accent); }
+#timers .chip.stopped { opacity: .6; }
+#timers .chip.more { padding-right: 12px; color: var(--soft); }
+#timers .chip.bell { padding: 0 14px; cursor: pointer; color: var(--soft); background: #1b120daa; font-size: 12.5px; }
+@keyframes ring { 0%, 100% { transform: rotate(0); } 10% { transform: rotate(-3deg) scale(1.04); } 20% { transform: rotate(3deg) scale(1.04); } 30% { transform: rotate(-2deg); } 40% { transform: rotate(0); } }
+@media (prefers-reduced-motion: reduce) { #timers .chip.ringing { animation: none; } }
+#stage:has(#music:not([hidden])) #timers, #stage:has(#helpers:not([hidden])) #timers { bottom: 56px; }
+
+/* shopping: the helper's offers as cards along the bottom of the stage, so Reverie stays in view */
+#shop { position: absolute; left: 12px; right: 12px; bottom: 12px; display: flex; flex-direction: column; gap: 8px; padding: 10px;
+  border-radius: 22px; background: #1b120de6; backdrop-filter: blur(6px); box-shadow: 0 8px 30px #0008; }
+#shop[hidden], #shop [hidden] { display: none !important; }
+#shop .head { display: flex; align-items: center; gap: 8px; padding: 0 2px 0 8px; }
+#shop .head span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 700 15px system-ui, sans-serif; }
+#shop .head button { height: 32px; min-width: 32px; padding: 0 10px; border: 0; border-radius: 16px; background: #ffffff1f; color: var(--ink); font: 600 13px system-ui, sans-serif; cursor: pointer; }
+#shop:not(.busy) .head button[data-id="stop"] { display: none; }
+#shop .cards { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 2px 2px 6px; overscroll-behavior: contain; }
+#shop .wait { margin: 6px 8px 10px; color: var(--soft); font: 500 14px system-ui, sans-serif; }
+#shop .card { flex: none; width: min(72%, 230px); scroll-snap-align: start; display: flex; flex-direction: column; gap: 4px; padding: 10px 12px 12px;
+  border-radius: 16px; background: #fbf3e2; color: #3b2a1e; }
+#shop .card.picked { outline: 3px solid var(--accent); }
+#shop .card header { display: flex; align-items: center; gap: 6px; font: 600 12px system-ui, sans-serif; color: #8a6a50; }
+#shop .card .n { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: #3b2a1e; color: #fbf3e2; font-size: 11px; }
+#shop .card .shop { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#shop .tag { padding: 2px 7px; border-radius: 999px; font: 700 10.5px system-ui, sans-serif; }
+#shop .tag.cheap { background: #d8f0dc; color: #1f6b33; } #shop .tag.pick { background: #ffe0c7; color: #a0461a; }
+#shop .card h4 { margin: 2px 0 0; font: 600 14px/1.25 system-ui, sans-serif; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+#shop .price { margin: 0; font: 800 22px/1.1 system-ui, sans-serif; color: #2a1a10; }
+#shop .price s { font-size: 14px; font-weight: 500; color: #9a8270; }
+#shop .meta { margin: 0; min-height: 1.3em; font: 500 12px/1.3 system-ui, sans-serif; color: #7a6250; }
+#shop .go { margin-top: auto; padding: 8px 10px; border-radius: 12px; background: #3b2a1e; color: #fbf3e2; text-align: center; text-decoration: none; font: 600 13px system-ui, sans-serif;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#shop .confirm { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 16px; background: #ffffff14; }
+#shop .confirm p { margin: 0; font: 500 14px/1.35 system-ui, sans-serif; }
+#shop .confirm div { display: flex; gap: 8px; justify-content: flex-end; }
+#shop .confirm button, #shop .confirm a { height: 38px; padding: 0 16px; border: 0; border-radius: 19px; display: inline-flex; align-items: center; font: 600 14px system-ui, sans-serif; cursor: pointer; text-decoration: none; }
+#shop .confirm button { background: #ffffff1f; color: var(--ink); }
+#shop .confirm a { background: var(--accent); color: #241509; }
+
+/* badges: the card that drops in when one is earned, and the badges in the diary */
+#badge-toast { position: absolute; top: 14px; left: 50%; z-index: 6; display: flex; align-items: center; gap: 12px; max-width: min(360px, calc(100% - 32px));
+  padding: 10px 18px 10px 12px; border-radius: 18px; background: #fbf3e2; color: #3b2a1e; box-shadow: 0 10px 30px #0008;
+  transform: translate(-50%, -140%); opacity: 0; transition: transform .45s cubic-bezier(.2, 1.4, .4, 1), opacity .3s; pointer-events: none; }
+#badge-toast.show { transform: translate(-50%, 0); opacity: 1; }
+#badge-toast b { display: block; font: 700 16px/1.2 Georgia, "Times New Roman", serif; }
+#badge-toast small { display: block; font: 500 13px/1.3 system-ui, sans-serif; color: #7a6450; }
+#badge-toast .medal, #diary .badges .medal { flex: none; display: grid; place-items: center; width: 42px; height: 42px; border-radius: 50%; font-size: 22px;
+  background: radial-gradient(circle at 35% 30%, #fff8, transparent 55%), var(--metal, #c98a55); box-shadow: inset 0 -3px 0 #0002, 0 2px 6px #0003; }
+.tier-bronze, #diary .badges .bronze { --metal: #d09a6a; }
+.tier-silver, #diary .badges .silver { --metal: #d6dbe1; }
+.tier-gold, #diary .badges .gold { --metal: #f2c14e; }
+#diary .badges h3 small { margin-left: 6px; font-weight: 600; letter-spacing: 0; text-transform: none; color: #8a7560; }
+#diary .badges h4 { margin: 10px 0 6px; font: 700 12px/1.2 system-ui, sans-serif; color: #8a7560; }
+#diary .badges ul { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
+#diary .badges li { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 6px 12px; border-radius: 14px; background: #fff9ee; text-align: center; overflow: hidden; }
+#diary .badges li b { font: 700 12.5px/1.2 system-ui, sans-serif; }
+#diary .badges li small { font: 500 11px/1.25 system-ui, sans-serif; color: #8a7560; }
+#diary .badges li.locked { background: #f3e9d7; }
+#diary .badges li.locked .medal { --metal: #d8ccb8; filter: grayscale(1); opacity: .55; font-weight: 700; color: #8a7560; }
+#diary .badges li.locked b { color: #8a7560; }
+#diary .badges li i { position: absolute; left: 0; bottom: 0; height: 4px; background: #e0a060; border-radius: 0 2px 2px 0; }
+/* watching together: the video player, fitted onto the screen in the room (watch.js sets its transform each frame) */
+#screen { position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: visible; }
+#screen[hidden] { display: none; }
+#screen > * { position: absolute; left: 0; top: 0; width: 640px; height: 360px; transform-origin: 0 0; background: #000; }
+#screen iframe, #screen video { display: block; width: 640px; height: 360px; border: 0; }
+/* (while watching, its words go at the bottom, off the picture) */
+#stage.watching #caption { top: auto; bottom: 64px; }
+@media (min-aspect-ratio: 11/10) { #stage.watching #caption { left: auto; right: 16px; transform: none; width: min(52%, 460px); } }
+/* the "what shall we watch?" sheet */
+#watching { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(calc(100% - 24px), 440px); display: flex; flex-direction: column;
+  gap: 10px; padding: 14px 16px 16px; border-radius: 22px; background: #1b120de6; backdrop-filter: blur(8px); box-shadow: 0 8px 30px #0008; }
+#watching[hidden] { display: none; }
+#watching header { display: flex; align-items: center; }
+#watching h2 { flex: 1; margin: 0; font: 700 18px/1.2 system-ui, sans-serif; }
+#watching p { margin: 0; font-size: 14px; color: var(--soft); }
+#watching .note:empty { display: none; }
+#watching .note { color: #ffc9a8; }
+#watching .row { display: flex; gap: 8px; }
+#watching input[type=url] { flex: 1; min-width: 0; height: 44px; padding: 0 14px; border-radius: 22px; border: 1px solid var(--line); background: #00000044; color: var(--ink); font-size: 16px; }
+#watching button { height: 44px; padding: 0 18px; border: 0; border-radius: 22px; background: #ffffff1f; color: var(--ink); font: 600 15px system-ui, sans-serif; cursor: pointer; }
+#watching button[data-id="go"] { background: var(--accent); color: #241509; }
+#watching button[data-id="close"] { width: 36px; height: 36px; padding: 0; }
+#watching button.file { align-self: flex-start; height: 36px; font-size: 14px; }
+@media (max-width: 380px) { #bar { gap: 4px; } #bar button { width: 36px; height: 36px; } #bar button svg { width: 20px; height: 20px; } }
+/* karaoke (karaoke.js): the words at the bottom, each syllable lighting up as it is sung */
+#karaoke { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); width: min(calc(100% - 32px), 640px); box-sizing: border-box;
+  padding: 8px 14px 12px; border-radius: 20px; background: #170d1fd9; backdrop-filter: blur(10px); color: #fff; text-align: center;
+  box-shadow: 0 6px 28px #0008, 0 0 0 1px #ffffff14 inset; --lit: #ff7ac0; transition: opacity .4s; }
+#karaoke[hidden] { display: none; }
+#karaoke.yours { --lit: #ffd84a; }
+#karaoke header { display: flex; align-items: center; gap: 8px; font: 600 12px system-ui, sans-serif; color: #ffffffa8; letter-spacing: .02em; }
+#karaoke .title { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#karaoke .who { color: var(--lit); text-transform: uppercase; }
+#karaoke header button { flex: none; width: 26px; height: 26px; border: 0; border-radius: 13px; background: #ffffff1f; color: #fff; cursor: pointer; font-size: 12px; }
+#karaoke .now { margin: 4px 0 2px; font: 700 clamp(20px, 5.2vw, 30px)/1.25 system-ui, -apple-system, sans-serif; text-wrap: balance; }
+#karaoke .now span { background: linear-gradient(90deg, var(--lit) calc(var(--k, 0) * 100%), #ffffffc4 calc(var(--k, 0) * 100%));
+  -webkit-background-clip: text; background-clip: text; color: transparent; }
+#karaoke .next { margin: 0; min-height: 1.3em; font: 500 clamp(14px, 3.6vw, 18px)/1.3 system-ui, sans-serif; color: #ffffff80; }
+#music:not([hidden]) ~ #karaoke { bottom: 64px; }
+#gamebar:not([hidden]) ~ #karaoke { bottom: 112px; }

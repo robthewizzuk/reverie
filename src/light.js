@@ -3,10 +3,14 @@
 // gentle: the sun no brighter than a room's window lets in, wide soft shadows (a big window is a big light), a fill
 // that keeps the shade readable, neutral colour with only a touch of warmth, and no light beams or heavy film look.
 import gs from '../engine/src/gamescroll.js';
+import { backZ, WINDOW } from './shell.js';
 
 // towards the sun: from the window on the left and a little in front, high enough that its patch lands round Reverie
 export const SUN_DIR = [-.8, .62, .3];
-export const WINDOW = { x: -2.1, z0: -.5, z1: 1.5, y0: .6, y1: 2.35 };   // the opening in the left wall (metres)
+// the opening in the left wall, its window (shell.js, with the room's shape)
+export { WINDOW };
+// the desk lamp's globe
+export const LAMP = { x: 1.3, y: 1.12, z: backZ(1.3, .8) + .15 };
 
 const CORE_LAMP = '#ff7020';     // the light its core casts, as made (moved with the glow colour)
 
@@ -35,11 +39,11 @@ export function lightRoom(v, creature, roomBox) {
   s.softShadows(3); v.scene.add(s, s.target); v.onTier(T => s.setTier(T));
 
   // the desk lamp's globe: a small warm glow on the desk and the wall behind it, as a lamp on in daytime
-  const lamp = { x: 1.55, y: 1.1, z: -1.32, col: '#ffd7a6', i: 1.2, reach: 1.8 };
+  const lamp = { ...LAMP, col: '#ffd7a6', i: 1.2, reach: 1.8 };
   v.lampLights(6);
   // its core: a warm light on its hands, on what it holds and on the rug in front of it, brighter as it glows
   const core = v.flash(0, .3, .3, { keep: true, col: creature.glowed(CORE_LAMP), i: .5, reach: 1.1 });
-  const at = new gs.hd.THREE.Vector3();
+  const at = new gs.hd.THREE.Vector3(), swell = {};
 
   // a soft light from beside the camera, as a film crew lights a face: a bright point in each eye, the shade lifted
   v.faceLight(creature.face3d, { strength: .16, side: .35, up: .3, colour: '#fff6ec' });
@@ -56,11 +60,14 @@ export function lightRoom(v, creature, roomBox) {
     lamp,
     /** How much of its core's light reaches the room (daylight.js turns it down at night, so the rug isn't orange). */
     coreK: 1,
+    /** 0..1, set each frame while it dances (music.js): the core's light and the desk lamp swell on the beat. */
+    pulse: 0,
     /** The bounce light and the room's reflections: bake() each again after the room changes. */
     bounce, room: reflections,
     update(dt, t) {
-      creature.coreAt(at); core.at(at.x, at.y - .04, at.z + .2); core.i0 = (.2 + creature.coreGlow * .5) * this.coreK;
-      v.placeLamps([lamp], 0, .4, 0, t);
+      creature.coreAt(at); core.at(at.x, at.y - .04, at.z + .2); core.i0 = (.2 + creature.coreGlow * .5) * this.coreK * (1 + this.pulse * .8);
+      // (a gentle swell, not a disco: the lamp is a little brighter on each beat)
+      v.placeLamps([this.pulse ? Object.assign(swell, lamp, { i: lamp.i * (1 + this.pulse * .35) }) : lamp], 0, .4, 0, t);
       s.follow(0, 0, 0);
     },
     /** The core's light, after its glow colour changed. */

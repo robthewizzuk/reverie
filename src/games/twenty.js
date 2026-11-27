@@ -64,7 +64,7 @@ export function makeTwenty(stage) {
   const clk = clock();
 
   function build() {
-    root = table(THREE, { w: .7, d: .46, h: TABLE_H }); root.position.set(CENTRE.x, 0, CENTRE.z);
+    root = table(THREE, { w: .7, d: .46, h: TABLE_H }); root.position.set(CENTRE.x, 0, CENTRE.z); root.name = 'game:twenty';
     // the mystery box: plum wood with a glowing question mark on its front, and a lid that flies off
     const wood = gs.tabletop.wood('#5a3a5c'), trim = pbr('#e8b54a', { rough: .3, metal: .9 });
     box = new THREE.Group(); box.position.set(0, TABLE_H, -.07); root.add(box);
@@ -123,7 +123,7 @@ export function makeTwenty(stage) {
       if (!root) build();
       if (lv) level = Math.max(1, Math.min(5, Math.round(lv)));
       clk.stop(); secret = pick(); asked = 0; log = []; state = 'asking';
-      lid.position.set(0, .17, 0); lid.rotation.set(0, 0, 0); box.scale.setScalar(1); light();
+      lid.position.set(0, .17, 0); lid.rotation.set(0, 0, 0); box.scale.setScalar(1); box.rotation.set(0, 0, 0); light();
       if (!root.parent) { scene.add(root); body = stage.physics?.box(null, .7, TABLE_H, .46, { fixed: true, at: { x: CENTRE.x, y: TABLE_H / 2, z: CENTRE.z } }); }
       root.scale.setScalar(.01); clk.tween(.45, k => root.scale.setScalar(popIn(k)));
       stage.sparks(new THREE.Vector3(CENTRE.x, TABLE_H + .15, CENTRE.z - .07), '#c79bff', 40); sounds.flip();

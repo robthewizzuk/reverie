@@ -42,7 +42,7 @@ export function makeQuest(stage) {
   const need = c => Math.max(2, Math.min(6, c.need + (level <= 1 ? -1 : level >= 4 ? 1 : 0)));
 
   function build() {
-    root = table(THREE, { w: .82, d: .52, h: TABLE_H }); root.position.set(CENTRE.x, 0, CENTRE.z);
+    root = table(THREE, { w: .82, d: .52, h: TABLE_H }); root.position.set(CENTRE.x, 0, CENTRE.z); root.name = 'game:quest';
     // a mossy green cloth for the land, then the stepping stones with little dots of path between them
     const land = new THREE.Mesh(new THREE.CylinderGeometry(.36, .36, .006, 48), pbr('#7fa86a', { rough: .95 })); land.scale.z = .62; land.position.y = TABLE_H + .003; land.receiveShadow = true; root.add(land);
     stones = PATH.map(([x, z], i) => { const s = disc(i === 0 ? '#c9a27a' : i === STOPS - 1 ? '#e8c25a' : '#bdb6a8', { r: .028, h: .008 }); s.position.set(x, TABLE_H + .006, z); s.receiveShadow = true; root.add(s); return s; });
@@ -89,8 +89,9 @@ export function makeQuest(stage) {
 
   async function hop(to) {
     const from = hero.position.clone(), goal = stopAt(to);
-    await clk.tween(.5, k => { const e = ease(k); hero.position.lerpVectors(from, goal, e); hero.position.y = goal.y + Math.sin(k * Math.PI) * .05; });
-    sounds.clack(.5); at = to;
+    // (false when the quest was put away or begun again on the way: the hero's place is the new quest's then)
+    if (!await clk.tween(.5, k => { const e = ease(k); hero.position.lerpVectors(from, goal, e); hero.position.y = goal.y + Math.sin(k * Math.PI) * .05; })) return false;
+    sounds.clack(.5); at = to; return true;
   }
 
   /** A throw of the die for the challenge they are at. */

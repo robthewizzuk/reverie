@@ -233,6 +233,8 @@ export function makeDaylight({ v, light, outside, glass, side, globe, motes }) {
     light.lamp.i = now.lamp; light.lamp.reach = now.reach;
     // (at night the lamp is a softer warm white and the core's own light is turned down: the room cosy, not orange)
     light.lamp.col = '#' + LAMP_DAY.clone().lerp(LAMP_NIGHT, now.night).getHexString(); light.coreK = 1 - .5 * now.night;
+    // (the round room is closed all round, so at night a little more of the soft light by the camera keeps its face read)
+    if (v.faceLit) v.faceLit.strength = .16 + .24 * now.night;
     globe.emissiveIntensity = now.globe;
     const lit = flashT > .25 || (flashT > .08 && flashT < .16), fl = lit ? 3.5 : 1;   // (lightning: two quick flickers)
     for (const sk of skies) { sk.m.emissiveIntensity = now.glow * fl; sk.m.color.copy(sk.col).multiplyScalar(.35 + .65 * (1 - now.night)); }
