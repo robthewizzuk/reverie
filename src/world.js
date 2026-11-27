@@ -13,6 +13,7 @@ import { makeSleepy } from './sleepy.js';
 import { makeDice } from './dice.js';
 import { makePet } from './pet.js';
 import { makeFloaties } from './floaties.js';
+import { breakApart, makeShows } from './fun.js';
 import { SPOTS, SPOT_NAMES, spotOf, roomColours, roomItems, tidyRoomColours, keepRoomColours, keepItem, forgetItem, forgetAll, freePlace, findItem, roomLine, inRoom, MAX_ITEMS } from './room.js';
 
 const HOLD_SIZE = .4;            // metres: the longest side of a prop in its hands
@@ -145,6 +146,10 @@ export function makeWorld() {
   let game = null, onNews = () => {}, onSay = () => false, pad = null, dice = null;
   // its pet (pet.js), made once the room is; its mood (mood.js, set by the page); more lines for Claude's scene line
   let keeper = null, mood = null;
+  // looking around (look.js, set by the page): drags and pinches swing the camera off its seat
+  let look = null;
+  // broken bits on the floor (gs.destruction's Rubble: they fade away after a while) and little shows (fun.js)
+  let rubble = null, shows = null;
   const lines = [];
   const games = {}, HOME = { pos: [0, .78, 1.95], look: [0, .4, 0] }, camAt = { pos: [...HOME.pos], look: [...HOME.look] };
   const stage = {
@@ -161,9 +166,28 @@ export function makeWorld() {
     throwDice: n => dice.throw(n),
     /** Takes the dice away. */
     clearDice: () => dice?.clear(),
-    /** A game putting itself away (its own Stop button). */
-    stopGame() { if (game) { game.stop(); game = null; creature.mood('calm'); } },
+    /** A game putting itself away (its own Stop button): Claude hears it with the next thing said. */
+    stopGame() { if (game) { const t = game.title; endGame(); onNews(`[game] They stopped ${t}: it is put away.`, false); } },
+    /** A fresh round of the game on (a tap on a finished board): Claude hears it at once. */
+    again: () => api.again(),
   };
+  // the game on is put away: its things off the table (each game's stop), and Reverie's hands and mood back to normal
+  function endGame() {
+    if (!game) return;
+    const g = game; game = null;
+    try { g.stop(); } catch (e) { console.warn('[reverie] a game would not stop:', e); }
+    creature.reach(null); creature.mood('calm');
+  }
+  // a game's table goes up in front of it: props lying where it stands are cleared away first (a fixed table body
+  // appearing round one would fling it across the room), and what it holds is put down to one side
+  function clearTheTable() {
+    for (const e of loose) {
+      const p = e.pivot.position;
+      if (Math.abs(p.x) < .55 && p.z > .2 && p.z < 1.05) { poof(e.pivot, '#ffffff'); remove(e); e.gone = true; }
+    }
+    loose = loose.filter(e => !e.gone);
+    if (held) release(held, 'aside');
+  }
 
   // a prop sits in a pivot whose middle is the prop's middle, so it can be held, spun and given a box body
   function pivotFor(thing, size) {
@@ -186,11 +210,14 @@ export function makeWorld() {
     const p = entry.pivot, s = p.userData.size;
     p.getWorldPosition(at); const q = p.getWorldQuaternion(new THREE.Quaternion());
     v.scene.add(p); p.position.copy(at); p.quaternion.copy(q);
+    // ('aside': set down on the rug at its left or right with a puff, clear of a game's table in front of it)
+    const aside = throwIt === 'aside', dir = Math.random() < .5 ? -1 : 1;
+    if (aside) { poof(p, '#ffffff'); p.position.set(dir * .62, s.y / 2 + .04, .05); p.quaternion.identity(); poof(p, '#ffffff'); }
     // thrown off to one side and a little back, so it lands on the rug in view (not at the camera)
-    const dir = Math.random() < .5 ? -1 : 1, side = throwIt ? dir * (.45 + Math.random() * .15) : (Math.random() - .5) * .6;
-    const up = throwIt ? 2.6 : .8, back = throwIt ? -.1 - Math.random() * .2 : .4;
+    const side = aside ? dir * .05 : throwIt ? dir * (.45 + Math.random() * .15) : (Math.random() - .5) * .6;
+    const up = aside ? 0 : throwIt ? 2.6 : .8, back = aside ? 0 : throwIt ? -.1 - Math.random() * .2 : .4;
     entry.body = world.box(p, Math.max(.04, s.x), Math.max(.04, s.y), Math.max(.04, s.z), { density: entry.density, friction: .7, bounce: .25, vel: { x: side, y: up, z: back } });
-    entry.body.twist((Math.random() - .5) * 6, (Math.random() - .5) * 6, (Math.random() - .5) * 4);
+    if (!aside) entry.body.twist((Math.random() - .5) * 6, (Math.random() - .5) * 6, (Math.random() - .5) * 4);
     loose.push(entry); creature.holding = false; held = null;
   }
   function remove(entry) { if (entry.body) entry.body.remove(); entry.pivot.removeFromParent(); }
@@ -353,12 +380,17 @@ export function makeWorld() {
     get daylight() { return daylight; },
     get creature() { return creature; },
     get held() { return held; },
+    /** The physics world (the engine's World3D): props, tables and dice are bodies in it. */
+    get physics() { return world; },
+    /** Loose props on the floor: [{ short, at: { x, y, z } }] (for tests). */
+    get floor() { return loose.map(e => ({ short: e.short, at: { x: e.pivot.position.x, y: e.pivot.position.y, z: e.pivot.position.z } })); },
     /** How many props there are, held or on the floor. */
     get props() { return loose.length + (held ? 1 : 0); },
     /** What is in its hands and on the floor, in a line for Claude. */
     scene() {
       const floor = loose.map(e => e.short).slice(-6);
       if (dice?.onFloor) floor.push(dice.onFloor);
+      if (rubble?.count) floor.push('some broken bits');
       const out = daylight?.line();
       return `In your hands: ${held ? held.short : 'nothing'}.${floor.length ? ` On the floor: ${floor.join(', ')}.` : ''}${roomLine(placed)}${out ? ` Outside: ${out}.` : ''}${keeper?.line() || ''}${lines.map(f => { try { return f() || ''; } catch { return ''; } }).join('')}`;
     },
@@ -368,10 +400,15 @@ export function makeWorld() {
       if (!restored) { restored = true; restoreRoom(); keeper.restore(); }
       for (const e of loose) remove(e); loose = []; if (held) remove(held); held = null; creature.holding = false;
       fx.clear(); embers = makeEmbers(); creature.mood('calm');
+      rubble ||= new gs.destruction.Rubble(v.scene, { max: 60, life: 9, shrink: .8 }); rubble.clear();
+      shows ||= makeShows({ fx, creature, floaties }); shows.clear();
       dice ||= makeDice({ THREE, scene: v.scene, physics: world, creature, sparks: stage.sparks }); dice.clear();
-      if (game) { game.stop(); game = null; }
+      endGame();
     },
-    resize(w, h) { W = w; H = h; },
+    resize(w, h) { W = w; H = h; look?.size(w, h); },
+    /** Looking around the room (look.js): the page's drags, pinches and scrolls. */
+    get look() { return look; },
+    set look(l) { look = l; l?.size(W, H); },
     update(dt) {
       t += dt;
       // a tall screen sees as wide as a square one would, so the creature never crops at the sides
@@ -380,7 +417,8 @@ export function makeWorld() {
       // the camera eases to the game's seat and back
       const goal = game?.camera || HOME, ck = 1 - Math.exp(-dt * 3);
       for (const k of ['pos', 'look']) for (let i = 0; i < 3; i++) camAt[k][i] += (goal[k][i] - camAt[k][i]) * ck;
-      v.cam.position.set(...camAt.pos); v.cam.lookAt(...camAt.look);
+      const seen = look ? look.view(camAt, dt, goal) : camAt;
+      v.cam.position.set(...seen.pos); v.cam.lookAt(...seen.look);
       game?.update(dt);
       if (acts.length) { if (acts[0](dt)) acts.shift(); body.place(creature.root.position.x, .33, creature.root.position.z); }
       creature.update(dt, v.cam);
@@ -399,6 +437,7 @@ export function makeWorld() {
       loose = loose.filter(e => e.pivot.position.y >= -4);
       while (loose.length > 14) remove(loose.shift());
       keeper?.update(dt);
+      rubble?.update(dt); shows?.update(dt);
       fx.update(dt); motes.update(dt); floaties.update(dt);
     },
     draw(c) { v.render(c, W, H); },
@@ -425,16 +464,31 @@ export function makeWorld() {
     async play(name, o = {}) {
       const def = GAMES[name];
       if (!def) return `There is no game called "${name}". Games here: ${Object.keys(GAMES).join(', ')}.`;
-      if (game && game.id !== name) { game.stop(); game = null; }
-      if (held) release(held, false);   // (hands free to play)
-      game = games[name] ||= def.make(stage);
+      if (game && game.id !== name) endGame();
+      clearTheTable();   // (hands free to play, and room on the floor for its table)
+      const g = game = games[name] ||= def.make(stage);
       creature.gesture('tada'); creature.mood('excited');
-      try { return await game.start(o); } catch (e) { game.stop(); game = null; return `The game could not start (${String(e?.message || e).slice(0, 80)}).`; }
+      let r;
+      try { r = await g.start(o); } catch (e) {
+        if (game === g) endGame(); else try { g.stop(); } catch { /* already away */ }
+        return `The game could not start (${String(e?.message || e).slice(0, 80)}).`;
+      }
+      // (put away, or swapped for another game, while it was still setting up, which can take a while the first time
+      // its rules or questions load: what it set up after that goes away too, so nothing is left on the floor)
+      if (game !== g) { try { g.stop(); } catch { /* already away */ } return `The ${g.title.toLowerCase()} was put away before it finished setting up.`; }
+      return r;
+    },
+    /** A fresh round of the game on, as its Again button does; Claude hears what the new round is, out loud. */
+    async again() {
+      const g = game; if (!g) return '';
+      const r = await api.play(g.id);
+      if (game === g) onNews(`[${GAMES[g.id].tag}] They asked for another round. ${r}`, true);
+      return r;
     },
     /** Puts the game away. */
     async stopGame() {
       if (!game) return 'No game was being played.';
-      const t = game.title; game.stop(); game = null; creature.mood('calm');
+      const t = game.title; endGame();
       return `Put the ${t.toLowerCase()} away.`;
     },
 
@@ -460,7 +514,9 @@ export function makeWorld() {
     async clear(o = {}) {
       const n = loose.length + (held ? 1 : 0) + (dice?.clear() || 0), m = o.room ? placed.length : 0;
       for (const e of [...loose, ...(held ? [held] : []), ...(o.room ? placed : [])]) { poof(e.pivot, '#ffffff'); remove(e); }
+      const bits = rubble?.count || 0; rubble?.clear();
       loose = []; held = null; creature.holding = false; gs.sound.sounds.pop();
+      if (!n && bits && !o.room) return 'Swept up the broken bits.';
       if (o.room) { placed = []; forgetAll(); }
       const kept = placed.length ? ` The ${placed.length} thing${placed.length > 1 ? 's' : ''} kept in the room stayed.` : '';
       return n + m ? `Cleared ${n + m} prop${n + m > 1 ? 's' : ''}.${kept}` : `There was nothing to clear.${kept}`;
@@ -498,6 +554,28 @@ export function makeWorld() {
       creature.gesture('tada'); gs.sound.sounds.pop();
       return { text: `The room's ${r.changed.join(', ')} ${r.changed.length > 1 ? 'are' : 'is'} now ${r.changed.map(k => r.colours[k]).join(', ')}. It is remembered next time.` };
     },
+    /** Breaks the prop it holds (or the last one thrown on the floor): how 'smash' into real pieces that tumble, or
+     *  'slice' in two. Resolves a sentence. */
+    async smash(how = 'smash') {
+      const e = held || loose[loose.length - 1];
+      if (!e) return { text: 'Not done: there is nothing in your hands or on the floor to break. Make something first.', error: true };
+      how = how === 'slice' ? 'slice' : 'smash';
+      if (e === held) { held = null; creature.holding = false; } else loose = loose.filter(x => x !== e);
+      if (e.body) { e.body.remove(); e.body = null; }
+      creature.gesture(how === 'slice' ? 'point' : 'bounce'); creature.mood('excited');
+      let r = null;
+      try { r = breakApart(e.pivot, { how, world, rubble, scene: v.scene, density: e.density }); } catch (err) { console.warn('[reverie] smash', err); }
+      if (!r) { poof(e.pivot, '#ffffff'); remove(e); gs.sound.sounds.pop(); return `${e.short || e.words} went up in a puff instead: it would not break.`; }
+      fx.sparks(r.at, { color: how === 'slice' ? '#e8f4ff' : '#f2e6d8', count: how === 'slice' ? 20 : 30, power: .9, light: false });
+      if (how === 'slice') gs.sound.sounds.slash?.(); else { gs.sound.sounds.shatter?.(); setTimeout(() => gs.sound.sounds.crumble?.(), 180); }
+      return how === 'slice' ? `Sliced ${e.short || e.words} clean in two: both halves fell on the rug.` : `Smashed ${e.short || e.words} into ${r.pieces} pieces that went tumbling across the rug. They fade away in a little while.`;
+    },
+    /** A little show (fun.js): fireworks, confetti, magic, bubbles, snow or hearts. Resolves a sentence. */
+    async show(kind) { return shows ? shows.play(kind) : 'Not done: the room is not ready yet.'; },
+    /** The stage's physics (a gs.physics3d World3D), for the phone's tilt and shakes. */
+    get physics() { return world; },
+    /** The bodies of everything loose on the floor: props thrown down and broken bits. */
+    floorBodies: () => [...loose.map(e => e.body), ...(rubble?.list || []).map(m => m.body)].filter(b => b && !b.dead),
     /** A burst of confetti round it, and a little hop (a birthday, a streak). */
     celebrate() {
       creature.gesture('tada'); creature.mood('excited');

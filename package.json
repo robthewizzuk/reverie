@@ -12,7 +12,11 @@
     "smoke": "node tests/smoke.mjs",
     "test:show": "node tests/show.mjs",
     "test:body": "node tests/body.mjs",
+    "test:look": "node tests/lookaround.mjs",
+    "test:clean": "node tests/clean.mjs",
     "test:sounds": "node tests/sounds.mjs",
+    "test:fluid": "node tests/fluid.mjs",
+    "latency": "node tests/latency.mjs",
     "worker:dev": "npm run build && cd worker && wrangler dev",
     "deploy": "npm run build && cd worker && wrangler deploy"
   },

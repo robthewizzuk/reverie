@@ -12,8 +12,21 @@
 //   3. the recogniser's own microphone, the browser's usual service          (Edge, Safari)
 //   4. the same, one phrase per session (not continuous), started again after each
 // Every event is logged to the console as "[reverie] mic: ...", and kept in .log, to see what a browser does.
+//
+// When they have finished: a recogniser decides a phrase is over well after the words stop (often a second or more),
+// and only then gives it as final. settle(ms) lets the page answer sooner: words that have stood still for ms are taken
+// as said, there and then. If the recogniser's final turns out the same, it is dropped; if they went on, or it heard
+// the words differently, the whole phrase comes again as { more: true }, to be asked instead of the first part.
 
 const R = typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition);
+/** The same words, near enough: a recogniser's final often differs from what it showed by a word ("to" for "two"),
+ * which is not worth asking again for. */
+export function sameWords(a, b) {
+  const x = String(a).split(' ').filter(Boolean), y = String(b).split(' ').filter(Boolean);
+  if (x.length !== y.length) return false;
+  let d = 0; for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) d++;
+  return d <= Math.max(1, Math.floor(x.length / 5));
+}
 const norm = s => String(s).toLowerCase().replace(/[^\p{L}\p{N}' ]+/gu, ' ').replace(/\s+/g, ' ').trim();
 const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
 /** Edge (desktop and phone): its recogniser ignores a track and the device flag, so it starts at the plain way. */
@@ -26,6 +39,8 @@ const BAD = new Set(['network', 'audio-capture', 'language-not-supported', 'bad-
 export class Listener {
   constructor({ language = navigator.language || 'en-GB', onProblem = null, onNote = null } = {}) {
     this.language = language; this.text = ''; this.said = [];
+    this.textAt = 0;              // when .text last changed
+    this.early = '';              // words taken as said by settle() that the recogniser hasn't given as final yet
     this.listening = false; this.want = false; this.rec = null; this.local = false;
     this.onProblem = onProblem; this.onNote = onNote;
     this.firstWay = this.way = EDGE ? 2 : 0;      // index into WAYS (Edge: straight to the plain way)
@@ -121,10 +136,10 @@ export class Listener {
       let now = '';
       for (let i = e.resultIndex; i < e.results.length; i++) {
         const r = e.results[i], t = norm(r[0].transcript);
-        if (r.isFinal) { if (t) { this.said.push(t); if (this.said.length > 8) this.said.shift(); this.note(`heard "${t}"`); } }
+        if (r.isFinal) { if (t) this.finished(t); }
         else now += (now ? ' ' : '') + t;
       }
-      this.text = now;
+      if (now !== this.text) { this.text = now; this.textAt = performance.now(); }
     };
     rec.onerror = e => {
       this.note(`error "${e.error}"${e.message ? ': ' + e.message : ''}, ${ms()} ms`);
@@ -141,6 +156,9 @@ export class Listener {
       clearTimeout(this.watch);
       this.note(`end, ${ms()} ms${heard ? '' : ', nothing heard'}`);
       if (this.rec !== rec) return;
+      // (words it was still hearing when the session ended are never given as final: they are said, not lost)
+      if (this.text && this.text !== this.early) this.finished(this.text);
+      this.early = '';
       this.listening = false; this.rec = null; this.text = '';
       if (!this.want) return;
       // ending at once, again and again, with nothing heard: this way isn't working
@@ -164,11 +182,35 @@ export class Listener {
     return this.listening;
   }
 
-  /** The next thing said, whole, once it is finished (oldest first), or null. */
+  /** A phrase the recogniser gave as final: said, unless it is what settle() already took. */
+  finished(t) {
+    const early = this.early; this.early = '';
+    if (early && sameWords(t, early)) { this.note(`heard "${t}" (already taken)`); return; }
+    this.put({ text: t, more: !!early, at: this.text ? this.textAt : performance.now() });   // (when its words last changed)
+    this.note(`heard "${t}"${early ? ` (the rest of "${early}")` : ''}`);
+  }
+
+  put(x) { this.said.push(x); if (this.said.length > 8) this.said.shift(); }
+
+  /**
+   * Words heard that have not changed for ms are taken as said now, before the recogniser is sure the phrase is over.
+   * True when it took them. Again after they go on: the whole phrase, as { more: true }.
+   */
+  settle(ms) {
+    const t = this.text;
+    if (!t || t === this.early || performance.now() - this.textAt < ms) return false;
+    this.put({ text: t, more: !!this.early, at: this.textAt });
+    this.note(`taken at a pause: "${t}"${this.early ? ' (the rest)' : ''}`);
+    this.early = t;
+    return true;
+  }
+
+  /** The next thing said, once it is finished (oldest first): { text, more, at }, or null. more: all of the phrase whose
+   * first part came before (settle()), to be asked instead of it. at: about when its last word was heard (performance.now()). */
   next() { return this.said.length ? this.said.shift() : null; }
 
   stop() {
-    this.want = false; this.listening = false; this.text = '';
+    this.want = false; this.listening = false; this.text = ''; this.early = '';
     clearTimeout(this.watch); this.release();
     if (this.rec) { try { this.rec.abort(); } catch { /* gone */ } this.rec = null; }
     this.note('stopped');

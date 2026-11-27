@@ -28,7 +28,7 @@ export function makeChess(stage) {
   let game = null, men = new Map(), sel = null, moves = [], state = 'off', level = 2, tweens = [], epoch = 0, taken = { w: 0, b: 0 }, log = [], t = 0;
 
   function build() {
-    root = new THREE.Group(); root.position.set(CENTRE.x, 0, CENTRE.z);
+    root = new THREE.Group(); root.position.set(CENTRE.x, 0, CENTRE.z); root.name = 'game:chess';
     // a low wooden table, wide enough for the pieces each side has taken
     const top = wood('#7a5234', { repeat: [2, 1] }), legs = wood('#5d3d25');
     const tt = new THREE.Mesh(rbox(.82, .04, .62, .015), top); tt.position.y = TABLE_H - .03 - .02; root.add(tt);
@@ -66,6 +66,9 @@ export function makeChess(stage) {
     return new Promise(res => tweens.push({ t: 0, dur, fn, done: () => res(my === epoch) }));
   }
   const wait = s => tween(s, () => {});
+  // (the old round's animations end at once, each resolving false, so nothing awaiting one is left hanging: a spoken
+  // move Claude is waiting on finishes, and the code after each await sees the game has moved on and stops)
+  function drop() { const old = tweens; tweens = []; for (const tw of old) tw.done(); }
   const alive = my => my === epoch && state !== 'off';
 
   function man(type, color) {
@@ -101,7 +104,7 @@ export function makeChess(stage) {
     const to = { x: side * (5.1 + (n % 2) * .8), z: side * (3.2 - Math.floor(n / 2) * .85) };
     const from = mesh.position.clone(); mesh.userData.taken = true;
     stage.sparks(worldOf(mesh), byReverie ? '#ffa24a' : '#9fe0ff');
-    await tween(.45, k => { const e = ease(k); mesh.position.set(from.x + (to.x - from.x) * e, Math.sin(k * Math.PI) * 2, from.z + (to.z - from.z) * e); mesh.scale.setScalar(1 - .25 * e); mesh.rotation.z = Math.sin(k * Math.PI) * .5; });
+    if (!await tween(.45, k => { const e = ease(k); mesh.position.set(from.x + (to.x - from.x) * e, Math.sin(k * Math.PI) * 2, from.z + (to.z - from.z) * e); mesh.scale.setScalar(1 - .25 * e); mesh.rotation.z = Math.sin(k * Math.PI) * .5; })) return;
     mesh.rotation.z = 0; sounds.clack(.5);
   }
 
@@ -130,14 +133,14 @@ export function makeChess(stage) {
     if (m.castle) {
       const rank = m.from[1], [a, b] = m.castle === 'k' ? ['h', 'f'] : ['a', 'd'], rook = men.get(a + rank), rf = rook.position.clone(), rt = at(b + rank);
       men.delete(a + rank); men.set(b + rank, rook);
-      await tween(.3, k => { const e = ease(k); rook.position.set(rf.x + (rt.x - rf.x) * e, Math.sin(k * Math.PI) * .6, rf.z); });
+      if (!await tween(.3, k => { const e = ease(k); rook.position.set(rf.x + (rt.x - rf.x) * e, Math.sin(k * Math.PI) * .6, rf.z); }) || !alive(my)) return;
       sounds.clack(.7);
     }
     let piece = mesh;
     if (m.promotion) {
       mesh.removeFromParent(); piece = man(m.promotion, m.color); piece.position.set(to.x, 0, to.z); board.add(piece);
       stage.sparks(worldOf(piece), '#ffe08a', 30); sounds.chime();
-      await tween(.35, k => piece.scale.setScalar(1 + Math.sin(k * Math.PI) * .4));
+      if (!await tween(.35, k => piece.scale.setScalar(1 + Math.sin(k * Math.PI) * .4)) || !alive(my)) return;
     }
     men.set(m.to, piece); marks(m);
     if (byReverie) creature.reach(null);
@@ -216,7 +219,9 @@ export function makeChess(stage) {
       // the rules load the first time: until they're in, new Chess() throws with a promise to wait on
       for (let i = 0; ; i++) { try { game = new Chess(); break; } catch (e) { if (!e?.kitLoading || i > 20) throw e; await e.kitLoading; } }
       if (!root) build();
-      epoch++; tweens = []; log = [];
+      // (a new game mid-move: its hand comes back and its thinking stops, as the old move is dropped)
+      if (state === 'busy') { creature.reach(null); creature.state.thinking = false; }
+      epoch++; drop(); log = []; sel = null;
       if (lv) level = Math.max(1, Math.min(5, Math.round(lv)));
       if (!root.parent) { scene.add(root); body = stage.physics?.box(null, .82, TABLE_H, .62, { fixed: true, at: { x: CENTRE.x, y: TABLE_H / 2, z: CENTRE.z } }); }
       layout(); choose(null); marks(null); state = 'you';
@@ -227,7 +232,7 @@ export function makeChess(stage) {
     },
     /** Takes the board away. */
     stop() {
-      epoch++; tweens = []; state = 'off'; creature.reach(null); creature.state.thinking = false;
+      epoch++; drop(); state = 'off'; creature.reach(null); creature.state.thinking = false;
       if (root?.parent) { root.removeFromParent(); body?.remove?.(); body = null; }
     },
     update(dt) {
@@ -269,7 +274,7 @@ export function makeChess(stage) {
     /** Takes back the last pair of moves (your move and Claude's reply). */
     undo() {
       if (state !== 'you' || log.length < 2) return false;
-      game.undo(); game.undo(); log.splice(-2); epoch++; tweens = [];
+      game.undo(); game.undo(); log.splice(-2); epoch++; drop();
       choose(null); layout(); marks(null); sounds.flip();
       return true;
     },

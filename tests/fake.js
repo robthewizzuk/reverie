@@ -40,6 +40,8 @@ function plan(body) {
     if (/^Forgot /.test(r)) return { text: 'Poof, forgotten.', tools: [] };
     if (/^\[Their daily briefing/.test(r)) return { text: 'Here is your briefing: it is a lovely day for making things.', tools: [] };
     if (/diary is open/i.test(r)) return { text: 'There it is, my diary.', tools: [] };
+    if (/^(Smashed|Sliced) /.test(r)) return { text: 'Oops! Well, that was fun.', tools: [] };
+    if (/^(Six little fireworks|Confetti|Magic|Bubbles|It snowed|Hearts)/.test(r)) return { text: 'Pretty!', tools: [] };
     if (/^Answered /.test(r)) return { text: 'Ooh.', tools: [] };
     if (/^You (are|stopped|were not) danc/.test(r) || /^(Playing|Paused|Skipped)|Spotify/.test(r)) return { text: 'Wheee!', tools: [] };
     if (/noughts and crosses board is set up/i.test(r)) return { text: 'Crosses, your move.', tools: [] };
@@ -53,7 +55,7 @@ function plan(body) {
     return { text: /fail|could not|nothing/i.test(r) ? 'Hmm, that one fizzled.' : 'Ta-da!', tools: [] };
   }
   let m0;
-  const said = saidOf(u).replace(/^\[[a-z ]+[,:][^\]]*\]\s*/, '').toLowerCase().replace(/^(\[(pet|mood)\][^\n]*\n+)+(?=\S)/, '');
+  const said = saidOf(u).replace(/^\[[a-z ]+[,:][^\]]*\]\s*/, '').toLowerCase().replace(/^(\[(pet|mood|game)\][^\n]*\n+)+(?=\S)/, '');
   if (/^\[(noughts|twenty|draw and guess|quest)\]/.test(said)) return { text: /they won/.test(said) ? 'No fair!' : /you won/.test(said) ? 'Three in a row!' : /round is over/.test(said) ? 'What a round of drawings!' : /treasure chest with/.test(said) ? 'And they lived happily ever after!' : /last heart/.test(said) ? 'And the owl flew them home.' : 'Hmm, interesting.', tools: [] };
   if (/\(they guessed it|\(they gave up/.test(said)) return { text: 'Ta-da, there it is!', tools: [] };
   if (/\(question \d+ of 20/.test(said)) return { text: 'Nope!', tools: [] };
@@ -69,6 +71,9 @@ function plan(body) {
   if ((m0 = /my name is (\w+)/.exec(said))) return { text: `Lovely to meet you, ${m0[1]}!`, tools: [['remember', { name: m0[1][0].toUpperCase() + m0[1].slice(1) }]] };
   if ((m0 = /^remember (?:that )?i (.+)/.exec(said))) return { text: 'Ooh, noted.', tools: [['remember', { fact: m0[1] }]] };
   if ((m0 = /^forget (?:about )?(.+)/.exec(said))) return { text: 'Okay.', tools: [['forget', { what: m0[1].replace(/^(that|my|the) /, s => s === 'my ' ? 'my ' : '') }]] };
+  if (/^\[phone\]/.test(said)) return { text: 'Whoa, whoa! Everything is spinning!', tools: [] };
+  if ((m0 = /^(smash|slice) it/.exec(said))) return { text: m0[1] === 'slice' ? 'Hi-yah!' : 'Stand back!', tools: [['smash', { how: m0[1] }]] };
+  if ((m0 = /^(fireworks|confetti|bubbles|magic|hearts|indoor snow)\b/.exec(said))) return { text: 'Ooh, watch this!', tools: [['effect', { kind: m0[1].replace('indoor ', '') }]] };
   if (/briefing/.test(said)) return { text: 'Ooh, briefing time.', tools: [['briefing', {}]] };
   if (/diary/.test(said)) return { text: 'Here you go.', tools: [['diary', {}]] };
   if (/was set up straight away/.test(said)) return { text: 'Oh, you are on!', tools: [] };
@@ -110,7 +115,7 @@ function plan(body) {
   if (/weather|rain|sunny/.test(said)) return { text: 'Let me peek outside.', tools: [['weather', {}]] };
   if (/clear|tidy/.test(said)) return { text: 'Poof, all gone.', tools: [['clear', {}]] };
   if (/think|why|how does/.test(said)) return { text: 'Ooh, let me think about that one.', tools: [['think_harder', {}]] };
-  if (/^\[(pet|mood)\]/.test(said)) return { text: 'Aww.', tools: [] };
+  if (/^\[(pet|mood|game)\]/.test(said)) return { text: 'Aww.', tools: [] };
   return { text: 'Hello! I am a little test version of me. Ask me to make you something.', tools: [['act', { gesture: 'wave', mood: 'happy' }]] };
 }
 
