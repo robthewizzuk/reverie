@@ -10,6 +10,7 @@
 //   "roll ..."        -> roll;  "quiz me" -> play quiz;  "[quiz] ..." -> a quip;  "answer b" -> game_move;  "draw" -> doodle;  "[doodle] ..." -> a quip
 //   "square <x>"      -> game_move (noughts);  "[noughts|twenty|draw and guess] ..." -> a quip;  a counted question -> "Nope!"
 //   "make me a pet fox called pip" -> pet make;  "pet sit" -> pet trick;  "[pet] ..." / "[mood] ..." -> a quip
+//   "find me <x>[ under £n]" -> shop find;  "[shop] ..." -> a quip;  "buy number <n>" / "buy it" -> shop buy;  "show my shopping" -> shop show
 //   anything else     -> a friendly line with a wave
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const lastUser = messages => [...messages].reverse().find(m => m.role === 'user');
@@ -32,7 +33,10 @@ function plan(body) {
     if (/^Threw |^Rolled /.test(r)) return { text: 'There we go!', tools: [] };
     if (/camera window is open/i.test(r)) return { text: 'Go on, show me something!', tools: [] };
     if (/drawing pad is open/i.test(r)) return { text: 'Go on, draw me something!', tools: [] };
+    if (/shopping helper has gone off/.test(r)) return { text: 'Off it goes, shopping!', tools: [] };
     if (/^Made .*as your pet|does |is now called|gone off/.test(r)) return { text: 'Aww, look at it!', tools: [] };
+    if (/^A confirm button/.test(r)) return { text: 'Tap the button to finish on their site. I can never pay for you.', tools: [] };
+    if (/^The cards are back/.test(r)) return { text: 'There they are again.', tools: [] };
     if (/^Written in your diary/.test(r)) return { text: 'Got it, I will remember that.', tools: [] };
     if (/^Forgot /.test(r)) return { text: 'Poof, forgotten.', tools: [] };
     if (/^\[Their daily briefing/.test(r)) return { text: 'Here is your briefing: it is a lovely day for making things.', tools: [] };
@@ -60,6 +64,10 @@ function plan(body) {
     : { text: /surprise hatched/.test(said) ? 'A surprise, from a barcode!' : /photo is attached/.test(said) ? 'Ooh, what a lovely thing.' : 'Ha!', tools: [] };
   const sm = /^(?:show|look)(?: at)?(?: me)?(?: something)?(?: find (?:me )?(.+))?$/.exec(said);
   if (sm) return { text: 'Show me!', tools: [['show', sm[1] ? { find: sm[1] } : {}]] };
+  if (/^\[shop\]/.test(said)) return { text: /is back with/.test(said) ? 'Number one is the cheapest, and number two is my pick!' : 'Okay!', tools: [] };
+  if ((m0 = /^find me (.+?)(?: under £?(\d+))?$/.exec(said))) return { text: 'Ooh, shopping! Let me send a helper.', tools: [['shop', { action: 'find', query: m0[1], ...(m0[2] ? { budget: +m0[2] } : {}) }]] };
+  if ((m0 = /^buy (?:number (\d)|it)/.exec(said))) return { text: 'Good choice.', tools: [['shop', { action: 'buy', ...(m0[1] ? { pick: +m0[1] } : {}) }]] };
+  if (/^show my shopping/.test(said)) return { text: 'Here you go.', tools: [['shop', { action: 'show' }]] };
   if (/^\[doodle\]/.test(said)) return { text: 'What a lovely drawing!', tools: [] };
   if (/^\[a new day/.test(said)) return { text: /in your hands now/.test(said) ? 'Good morning! I made you something overnight. Here is your briefing, and a puzzle.' : 'Good morning! Here is your briefing.', tools: [] };
   if ((m0 = /my name is (\w+)/.exec(said))) return { text: `Lovely to meet you, ${m0[1]}!`, tools: [['remember', { name: m0[1][0].toUpperCase() + m0[1].slice(1) }]] };
@@ -123,6 +131,26 @@ export async function fakeTurn(request) {
       send({ type: 'message_delta', delta: { stop_reason: stop }, usage: { output_tokens: 20 } });
       send({ type: 'message_stop' });
       send({ type: 'final', message: { id: 'msg_fake', type: 'message', role: 'assistant', content, stop_reason: stop }, ms: 400 });
+      ctl.close();
+    },
+  });
+  return new Response(stream, { headers: { 'content-type': 'text/event-stream' } });
+}
+
+/** A scripted shopping helper (POST /api/shop): a little progress, then three offers on made-up shop pages. */
+export async function fakeShop(request) {
+  const body = await request.json(), enc = new TextEncoder();
+  const q = String(body.query || 'a thing');
+  const stream = new ReadableStream({
+    async start(ctl) {
+      const send = o => ctl.enqueue(enc.encode(`data: ${JSON.stringify(o)}\n\n`));
+      send({ type: 'progress', text: `Searching: ${q} UK price` }); await wait(400);
+      send({ type: 'progress', text: 'Looking at shop-one.example' }); await wait(400);
+      send({ type: 'done', result: { query: q, summary: 'Three shops have it; the second is the best value with free delivery.', kind: 'headphones', best: 2, dropped: 0, ms: 800, offers: [
+        { name: `${q} (black)`, retailer: 'Shop One', price: 44.99, was: 59.99, url: 'https://shop-one.example/p/123', site: 'shop-one.example', exact: true, stock: 'in stock', delivery: '£3.95', note: '4.5 stars' },
+        { name: `${q} (black)`, retailer: 'Shop Two', price: 47.5, url: 'https://shop-two.example/item/9', site: 'shop-two.example', exact: true, stock: 'in stock', delivery: 'free', note: '' },
+        { name: `${q} (white)`, retailer: 'Shop Three', price: 52, url: 'https://shop-three.example/x', site: 'shop-three.example', exact: true, stock: 'low stock', delivery: 'click and collect', note: '' },
+      ] } });
       ctl.close();
     },
   });

@@ -17,7 +17,7 @@ function serverEnv() {
       if (m && !m[1].startsWith('VITE_')) env[m[1]] = m[2].replace(/^(['"])(.*)\1$/, '$2');
     }
   }
-  for (const k of ['ANTHROPIC_API_KEY', 'REVERIE_QUICK_MODEL', 'REVERIE_DEEP_MODEL', 'REVERIE_FAKE']) if (process.env[k]) env[k] = process.env[k];
+  for (const k of ['ANTHROPIC_API_KEY', 'REVERIE_QUICK_MODEL', 'REVERIE_DEEP_MODEL', 'REVERIE_SHOP_MODEL', 'REVERIE_SHOP_EFFORT', 'REVERIE_FAKE']) if (process.env[k]) env[k] = process.env[k];
   return env;
 }
 

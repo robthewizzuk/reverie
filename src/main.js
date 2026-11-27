@@ -15,6 +15,7 @@ import { makeShow } from './show.js';
 import { makeMemory } from './memory.js';
 import { surpriseFor, briefingNote, funDay } from './daily.js';
 import { makeDiary } from './diary.js';
+import { makeShop } from './shop.js';
 
 const $ = s => document.querySelector(s);
 const stage = $('#stage'), canvas = $('#view'), ctx = canvas.getContext('2d');
@@ -23,7 +24,7 @@ const gamebar = $('#gamebar'), gameText = $('#gamebar span'), gameButtons = $('#
 const draw = $('#draw'), book = $('#book'), look = $('#look');
 const debug = new URLSearchParams(location.search).has('debug');
 
-let W = 0, H = 0, world, brain, body, voice, pad, diary, mood, show, last = 0, awake = false, captionT = 0, nextAt = 0;
+let W = 0, H = 0, world, brain, body, voice, pad, diary, mood, show, shop, last = 0, awake = false, captionT = 0, nextAt = 0;
 // its diary, kept in this browser (memory.js), and today's surprise (daily.js): { surprise, holding, funDay }
 const memory = makeMemory();
 const today = { surprise: null, holding: null, funDay: funDay() };
@@ -151,6 +152,14 @@ async function boot() {
       // (a press of Show is them talking: it answers now, even mid-sentence)
       if (now) { brain.interrupt('shown something'); brain.hear(text, { at: performance.now(), news: true, image }); } else brain.notice(text, loud, image);
     } });
+  // shopping: a helper looks across UK shops, the offers come back as cards; buying is always their own tap through
+  // (its results are said as soon as Reverie is free, however long that takes: a helper can come back mid-chat)
+  shop = makeShop({ el: $('#shop'), world, onNews: async (text, loud) => {
+    console.info('[reverie] ' + text.slice(0, 160));
+    if (!loud) return brain.notice(text, false);
+    for (let t = 0; t < 120 && (brain.busy || brain.speaking || world.creature.state.listening); t++) await new Promise(r => setTimeout(r, 500));
+    brain.hear(text, { at: performance.now(), news: true });
+  } });
   diary = makeDiary({ el: $('#diary'), memory, today: () => today, onForget: () => brain.refreshMemo() });
   // its mood: lifted by play, shown in its body, glow and voice, and told to Claude; a level up is a little burst of hearts
   mood = makeMood({ onLevel: (level, up) => {
@@ -172,6 +181,7 @@ async function boot() {
       forget: async input => { const r = memory.forget(input); brain.refreshMemo(); return r; },
       briefing: async () => { today.surprise ||= await surpriseFor(); return briefingNote(memory, { weather: await weatherHere(), surprise: today.surprise }); },
       show: input => show.open({ find: typeof input?.find === 'string' ? input.find : '' }),
+      shop: input => shop.tool(input || {}),
       diary: async () => { diary.show(); return 'Your diary is open on their screen: everything you remember about them, and a way to forget any of it.'; },
     } });
   body = makeBody({ creature: world.creature, world, mood });
@@ -179,7 +189,7 @@ async function boot() {
   world.onSay = line => { if (brain.busy || brain.speaking) return false; brain.speak(line); return true; };
   world.pad = pad;
   voice = new Listener({ onProblem: () => listeningOff(), onNote: debug ? line => { timing.textContent = 'mic: ' + line; } : null });
-  window.__reverie = { world, brain, body, gs, voice, pad, memory, diary, today, mood, show };
+  window.__reverie = { world, brain, body, gs, voice, pad, memory, diary, today, mood, show, shop };
   requestAnimationFrame(frame);
   // every shader the room needs, built in the background before it wakes (the driver's own threads), so none is built
   // in the middle of a chat: a whole room's shaders built in one frame was a stall of a second or more

@@ -90,3 +90,34 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 #pad.game { top: 36%; }
 #pad.game p { color: var(--ink); font-size: 18px; }
 #pad.game button[data-id="skip"] { background: var(--accent); color: #241509; }
+
+/* shopping: the helper's offers as cards along the bottom of the stage, so Reverie stays in view */
+#shop { position: absolute; left: 12px; right: 12px; bottom: 12px; display: flex; flex-direction: column; gap: 8px; padding: 10px;
+  border-radius: 22px; background: #1b120de6; backdrop-filter: blur(6px); box-shadow: 0 8px 30px #0008; }
+#shop[hidden], #shop [hidden] { display: none !important; }
+#shop .head { display: flex; align-items: center; gap: 8px; padding: 0 2px 0 8px; }
+#shop .head span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 700 15px system-ui, sans-serif; }
+#shop .head button { height: 32px; min-width: 32px; padding: 0 10px; border: 0; border-radius: 16px; background: #ffffff1f; color: var(--ink); font: 600 13px system-ui, sans-serif; cursor: pointer; }
+#shop:not(.busy) .head button[data-id="stop"] { display: none; }
+#shop .cards { display: flex; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; padding: 2px 2px 6px; overscroll-behavior: contain; }
+#shop .wait { margin: 6px 8px 10px; color: var(--soft); font: 500 14px system-ui, sans-serif; }
+#shop .card { flex: none; width: min(72%, 230px); scroll-snap-align: start; display: flex; flex-direction: column; gap: 4px; padding: 10px 12px 12px;
+  border-radius: 16px; background: #fbf3e2; color: #3b2a1e; }
+#shop .card.picked { outline: 3px solid var(--accent); }
+#shop .card header { display: flex; align-items: center; gap: 6px; font: 600 12px system-ui, sans-serif; color: #8a6a50; }
+#shop .card .n { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: #3b2a1e; color: #fbf3e2; font-size: 11px; }
+#shop .card .shop { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#shop .tag { padding: 2px 7px; border-radius: 999px; font: 700 10.5px system-ui, sans-serif; }
+#shop .tag.cheap { background: #d8f0dc; color: #1f6b33; } #shop .tag.pick { background: #ffe0c7; color: #a0461a; }
+#shop .card h4 { margin: 2px 0 0; font: 600 14px/1.25 system-ui, sans-serif; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+#shop .price { margin: 0; font: 800 22px/1.1 system-ui, sans-serif; color: #2a1a10; }
+#shop .price s { font-size: 14px; font-weight: 500; color: #9a8270; }
+#shop .meta { margin: 0; min-height: 1.3em; font: 500 12px/1.3 system-ui, sans-serif; color: #7a6250; }
+#shop .go { margin-top: auto; padding: 8px 10px; border-radius: 12px; background: #3b2a1e; color: #fbf3e2; text-align: center; text-decoration: none; font: 600 13px system-ui, sans-serif;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#shop .confirm { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border-radius: 16px; background: #ffffff14; }
+#shop .confirm p { margin: 0; font: 500 14px/1.35 system-ui, sans-serif; }
+#shop .confirm div { display: flex; gap: 8px; justify-content: flex-end; }
+#shop .confirm button, #shop .confirm a { height: 38px; padding: 0 16px; border: 0; border-radius: 19px; display: inline-flex; align-items: center; font: 600 14px system-ui, sans-serif; cursor: pointer; text-decoration: none; }
+#shop .confirm button { background: #ffffff1f; color: var(--ink); }
+#shop .confirm a { background: var(--accent); color: #241509; }
