@@ -85,7 +85,10 @@ const MOST_PX = 2.4e6;
 const COMPUTER = matchMedia('(any-pointer: fine)').matches && !matchMedia('(pointer: coarse)').matches;
 const CRISP = COMPUTER || new URLSearchParams(location.search).has('crisp');
 // (the engine's 3D loads on first use, so its levels are reached once it has: boot)
-const crisp = async () => { if (CRISP) (await import('../engine/src/kit/hd3d.js')).HD.leastPx = MOST_PX; };
+// (?direct: a test browser shows the 3D canvas itself as a real one does, instead of copying each frame onto the page's
+// canvas, a read back from the chip that is slow in software and made timings say nothing: tests/startup.mjs)
+const DIRECT = new URLSearchParams(location.search).has('direct');
+const crisp = async () => { const { HD } = await import('../engine/src/kit/hd3d.js'); if (CRISP) HD.leastPx = MOST_PX; if (DIRECT) HD.direct = true; };
 
 function fit() {
   const r = stage.getBoundingClientRect();
@@ -341,12 +344,28 @@ async function boot() {
   (seen.newDay && !seen.first ? Promise.race([overnight, wait(8000)]) : Promise.resolve())
     .then(() => { if (!awake) return brain.prepare(helloFor(seen)).then(ok => console.info(`[reverie] hello ${ok ? 'ready' : 'not written ahead'}`)); });
   requestAnimationFrame(frame);
-  // every shader the room needs, built in the background before it wakes (the driver's own threads), so none is built
-  // in the middle of a chat: a whole room's shaders built in one frame was a stall of a second or more
+  // every shader the room needs, built in the background (the driver's own threads), so none is built in the middle of
+  // a chat: a whole room's shaders built in one frame was a stall of a second or more. It may be woken once everything
+  // in view is drawn: the shaders of what isn't in view yet (the games' tables, the dice, what's behind the camera) go
+  // on being built after, a few at a time, and anything shown before its shader is ready waits hidden a frame or two
   status.textContent = 'Waking up… (getting the light ready)';
-  await Promise.race([world.view.prepare(), new Promise(r => setTimeout(r, 12000))]).catch(() => {});
+  const t = performance.now();
+  await Promise.race([world.view.prepare(), inView(world.view), wait(12000)]).catch(() => {});
+  // (how long it took, in the console, and on screen with ?debug: test browsers draw in software, so only a real
+  // device's numbers say how long the wait is)
+  const line = `ready to wake in ${(performance.now() / 1000).toFixed(1)} s (the light ${((performance.now() - t) / 1000).toFixed(1)} s of it${world.view.ready ? '' : ', the rest of the shaders still building'})`;
+  console.info('[reverie] ' + line); if (debug) timing.textContent = line;
   status.textContent = '';
   wake.hidden = false; wake.textContent = 'Tap to say hi';
+}
+
+/** Resolves once the frames show everything in view: drawn a few times running with nothing held back for its shader. */
+function inView(v) {
+  return new Promise(res => {
+    let n = 0;
+    const look = () => { n = v.drawnAt && !(gs.hd.HD.info.held > 0) ? n + 1 : 0; if (n >= 3) res(); else setTimeout(look, 150); };
+    look();
+  });
 }
 
 /** Reverie's hello, one picked each time: short, spoken aloud, and a quick tour of what it can do. */

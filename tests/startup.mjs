@@ -7,7 +7,9 @@ import { createRequire } from 'node:module';
 const { chromium } = createRequire(import.meta.url)('playwright');
 const argv = process.argv.slice(2), opt = k => { const i = argv.indexOf(k); return i >= 0 ? argv.splice(i, 2)[1] : null; };
 const net = opt('--net'), runs = +(opt('--runs') || 1), list = +(opt('--list') || 15), warm = argv.includes('--warm');
-const url = argv.find(a => !a.startsWith('--')) || 'http://localhost:4179/';
+// (?direct: the 3D canvas shown as a real browser shows it, not copied onto the page each frame, which reads the
+// picture back from the software GPU and made every frame slow)
+const url = argv.find(a => !a.startsWith('--')) || 'http://localhost:4179/?direct';
 const NETS = { '4g': { down: 9e6, up: 3e6, rtt: 85 }, wifi: { down: 30e6, up: 10e6, rtt: 20 } };
 const browser = await chromium.launch({ args: ['--enable-unsafe-swiftshader', '--use-angle=swiftshader'] });
 const ctx = await browser.newContext({ viewport: { width: 420, height: 820 } });
