@@ -53,7 +53,7 @@ export function makeNoughts(stage) {
   const cellAt = i => ({ x: (i % 3) - 1, z: Math.floor(i / 3) - 1 });   // board units; row 0 is the far side
 
   function build() {
-    root = table(THREE, { w: .62, d: .5, h: TABLE_H }); root.position.set(CENTRE.x, 0, CENTRE.z);
+    root = table(THREE, { w: .62, d: .5, h: TABLE_H }); root.position.set(CENTRE.x, 0, CENTRE.z); root.name = 'game:noughts';
     board = new THREE.Group(); board.scale.setScalar(U); board.position.y = TABLE_H; root.add(board);
     board.add(slab({ w: 3.3, d: 3.3, thick: .3, rim: .22, wood: '#4a3526', rough: .5, strength: .5, paint(g, S) {
       const q = S / 3.3, o = .15 * q;
@@ -88,7 +88,7 @@ export function makeNoughts(stage) {
       creature.reach(worldOf(i)); m.position.y = 1.6; m.scale.setScalar(.01);
       if (!await clk.wait(.3) || !alive(my)) return;
       stage.sparks(worldOf(i), '#ffa24a', 14);
-      await clk.tween(.35, k => { const e = ease(k); m.scale.setScalar(popIn(Math.min(1, k * 1.6))); m.position.y = 1.6 * (1 - e); creature.reach(board.localToWorld(m.position.clone())); });
+      if (!await clk.tween(.35, k => { const e = ease(k); m.scale.setScalar(popIn(Math.min(1, k * 1.6))); m.position.y = 1.6 * (1 - e); creature.reach(board.localToWorld(m.position.clone())); })) return;
       creature.reach(null);
     } else {
       m.position.y = .8;
@@ -151,6 +151,8 @@ export function makeNoughts(stage) {
   }
 
   function begin() {
+    // (a new round mid-move: its hand comes back and its thinking stops, as the old move is dropped)
+    if (state === 'busy') { creature.reach(null); creature.state.thinking = false; }
     clk.stop(); clearBoard(); round++;
     state = first === 1 ? 'you' : 'busy';
     if (first === 2) reply();
@@ -167,6 +169,7 @@ export function makeNoughts(stage) {
       if (fresh) { score = { you: 0, me: 0, draw: 0 }; first = 1; round = 0; } else first = 3 - first;
       if (!root.parent) { scene.add(root); body = stage.physics?.box(null, .62, TABLE_H, .5, { fixed: true, at: { x: CENTRE.x, y: TABLE_H / 2, z: CENTRE.z } }); }
       begin();
+      root.scale.setScalar(1);   // (a pop-in cut short by a quick new round ends full size)
       if (fresh) { root.scale.setScalar(.01); clk.tween(.45, k => root.scale.setScalar(popIn(k))); stage.sparks(new THREE.Vector3(CENTRE.x, TABLE_H + .1, CENTRE.z), '#ffd27a', 40); }
       return `The noughts and crosses board is set up on a table in front of you, at level ${level} of 5. They are crosses, you are noughts. ${first === 1 ? 'They go first: they tap a square or say it ("top left", "the middle").' : 'You go first this round: your hands are putting your nought down now.'}`;
     },
@@ -186,7 +189,7 @@ export function makeNoughts(stage) {
       if (!ray.ray.intersectPlane(plane, p)) return false;
       const q = board.worldToLocal(p.clone()), c = Math.round(q.x) + 1, r = Math.round(q.z) + 1;
       if (c < 0 || c > 2 || r < 0 || r > 2 || Math.abs(q.x) > 1.65 || Math.abs(q.z) > 1.65) return ray.intersectObject(root, true).length > 0;
-      if (state === 'done') { api.again(); return true; }
+      if (state === 'done') { stage.again ? stage.again() : api.start(); return true; }
       play(r * 3 + c);
       return true;
     },

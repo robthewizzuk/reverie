@@ -85,6 +85,7 @@ REVERIE_FAKE=1 npm run dev -- --port 5179
 npm run smoke                 # wakes it, makes, changes and throws a prop, asks a deep question; pictures in tests/out/
 node tests/chess.mjs          # asks to play chess, taps a move, says a move, puts the board away
 node tests/kits.mjs           # rolls dice, plays three quiz questions (tap, button, said), draws a house and has it made
+node tests/clean.mjs          # every game set up and put away leaves nothing behind; put away or swapped while loading, a new round mid-move, Again and Done told to Reverie
 node tests/memory.mjs --page  # the diary alone, then a second day: the overnight surprise, the briefing, a name kept, the diary sheet
 node tests/room.mjs           # carries a lamp to the window, a teapot to the shelf, paints the room, reloads it
 node tests/pet.mjs            # its mood rises with play; makes a fox called Pip that wanders, is patted, chases a ball, plays dead, naps, and is still there after a reload

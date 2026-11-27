@@ -167,7 +167,7 @@ async function boot() {
     onTool: (name, input, r) => { noted(name, input, r); if (!r?.error && FUN_OF[name]) mood.fun(FUN_OF[name]); },
     tools: {
       window: input => world.daylight.set(input),
-      doodle: async () => { pad.show(); return 'The drawing pad is open on their screen. When they press Make it!, you will hear what they drew and it appears in your hands.'; },
+      doodle: async () => { if (world.game?.id === 'draw_and_guess') return { text: 'Not opened: the drawing pad is already in use for Draw and Guess.', error: true }; pad.show(); return 'The drawing pad is open on their screen. When they press Make it!, you will hear what they drew and it appears in your hands.'; },
       remember: async input => memory.remember(input),
       forget: async input => { const r = memory.forget(input); brain.refreshMemo(); return r; },
       briefing: async () => { today.surprise ||= await surpriseFor(); return briefingNote(memory, { weather: await weatherHere(), surprise: today.surprise }); },
@@ -323,8 +323,9 @@ function showGame() {
 }
 gamebar.addEventListener('click', e => {
   const id = e.target.closest('button')?.dataset.id, g = world?.game; if (!id || !g) return;
-  if (id === 'leave') world.stopGame();
-  else if (id === 'again') g.start();
+  // (Claude hears about both: a new round out loud, as when it calls play; a game put away with the next thing said)
+  if (id === 'leave') { const t = g.title; world.stopGame(); brain.notice(`[game] They pressed Done: ${t} is put away.`); }
+  else if (id === 'again') world.again();
   else g[id]?.();
   barKey = '';
 });

@@ -235,6 +235,9 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
 
   async function hear(text, o = {}) {
     text = String(text || '').trim().slice(0, 1000); if (!text) return;
+    // (asking for a game is read from their own words only: news going along with them talks about games too, and
+    // "[quiz] ... offer another round" must not set a new quiz up when they then say "no thanks")
+    const own = text;
     if (!o.news) try { onHeard(text); } catch { /* the diary's problem */ }
     // a game hears what they said too (Twenty Questions counts a question, spots a guess) and may add a note
     const heard = !o.news && world.game?.heard?.(text);
@@ -244,7 +247,7 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
     if (news.length) { text = news.join('\n') + '\n\n' + text; news = []; loudAt = 0; image ||= newsImage; }
     newsImage = null;
     // "let's play chess": the board goes up at once, before Claude has said a word (so it can't make a prop board instead)
-    const wantsGame = !o.news && gameAsked(text);
+    const wantsGame = !o.news && gameAsked(own);
     if (wantsGame && (world.game?.id !== wantsGame.game || ['done', 'won', 'lost', 'over'].includes(world.game.state))) {
       const r = await world.play(wantsGame.game, { level: wantsGame.level });
       text += `\n(The ${(GAMES[wantsGame.game]?.title || wantsGame.game).toLowerCase()} ${wantsGame.game === 'draw_and_guess' ? 'game' : wantsGame.game === 'chess' ? 'board' : 'table'} was set up straight away when they asked: ${r} Don't call play or make for it; just react.)`;
