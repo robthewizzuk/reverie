@@ -125,6 +125,8 @@ function checkInput(name, input) {
   if (name === 'place' && (typeof input.spot !== 'string' || !input.spot.trim())) return 'spot must be a place';
   if (name === 'place' && ['item', 'near', 'size'].some(k => input[k] != null && typeof input[k] !== 'string')) return 'item, near and size must be text';
   if (name === 'room_colours' && ['walls', 'floor', 'rug', 'wood'].some(k => input[k] != null && typeof input[k] !== 'string')) return 'colours must be text';
+  if (name === 'remember' && ['fact', 'name', 'birthday'].some(k => input[k] != null && typeof input[k] !== 'string')) return 'fact, name and birthday must be text';
+  if (name === 'forget' && (typeof input.what !== 'string' || !input.what.trim())) return 'what must say what to forget';
   if (name === 'game_move' && (typeof input.move !== 'string' || !input.move.trim())) return 'move must be text';
   return null;
 }
@@ -139,17 +141,25 @@ export function gameAsked(text) {
   return { game, level };
 }
 
-export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, onTiming = () => {}, tools: extra = {} }) {
+export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, onTiming = () => {}, tools: extra = {}, memo = () => '', onHeard = () => {}, onTool = () => {} }) {
   const creature = world.creature, speaker = makeSpeaker(creature, onCaption);
   let history = [], turn = 0, ctl = null, cut = '', deepNow = false;
   // a game's news (games/index.js): quiet news waits for the next thing said; loud news gets a reaction when it's free
   let news = [], loudAt = 0, turnCtx = '', newsImage = null;
+  // its diary (memory.js), read once when the chat starts and kept as it was, so the start of the conversation never
+  // changes under Claude's cached prompt (what it learns later in the chat is in the chat itself)
+  let memoText = null;
 
   function trimmed() {
     // keep the last KEEP messages, starting on a plain user message (never on tool results)
     let start = Math.max(0, history.length - KEEP);
     while (start < history.length && !saidByThem(history[start])) start++;
     const out = history.slice(start);
+    // the diary rides at the top of the first message (added here, never kept in the history)
+    memoText ??= memo() || '';
+    // (the first message may carry a photo from show and tell: the diary goes before its words)
+    if (memoText && out[0]) out[0] = { role: 'user', content: typeof out[0].content === 'string' ? memoText + '\n' + out[0].content
+      : out[0].content.map((b, i, all) => b.type === 'text' && i === all.findIndex(x => x.type === 'text') ? { ...b, text: memoText + '\n' + b.text } : b) };
     // the state of a game being played goes with the latest thing said (not kept in the history: it would go stale)
     const withCtx = t => t.replace(/^(\[From the device[^\n]*\n)?/, (_, d = '') => d + turnCtx + '\n');
     if (turnCtx) for (let i = out.length - 1; i >= 0; i--) if (saidByThem(out[i])) {
@@ -176,7 +186,8 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
       roll: () => world.roll(input.dice || '1d6'), ...Object.fromEntries(Object.entries(extra).map(([k, f]) => [k, () => f(input)])) }[name];
     if (!fn) return Promise.resolve({ text: `There is no tool called ${name}.`, error: true });
     // (a tool answers with a sentence, or with { text, error } when it was not done)
-    return fn().then(r => typeof r === 'string' ? { text: r } : r, e => ({ text: `It went wrong: ${String(e?.message || e).slice(0, 120)}`, error: true }));
+    return fn().then(r => typeof r === 'string' ? { text: r } : r, e => ({ text: `It went wrong: ${String(e?.message || e).slice(0, 120)}`, error: true }))
+      .then(r => { try { onTool(name, input, r); } catch (e) { console.warn('[reverie] onTool', e); } return r; });
   }
 
   async function step(tier, my, times) {
@@ -220,6 +231,7 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
   async function hear(text, o = {}) {
     text = String(text || '').trim().slice(0, 1000); if (!text) return;
     // game news not yet passed on goes first, so it knows what happened on the board
+    if (!o.news) try { onHeard(text); } catch { /* the diary's problem */ }
     let image = o.image || null;
     if (news.length) { text = news.join('\n') + '\n\n' + text; news = []; loudAt = 0; image ||= newsImage; }
     newsImage = null;
@@ -233,7 +245,8 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
     const my = ++turn;
     // talking over it: it stops, and is told what it didn't get to say
     if (ctl) { ctl.abort(); ctl = null; }
-    if (speaker.talking) { console.info('[reverie] stopped talking for a new turn: ' + text.slice(0, 80)); cut = speaker.pending || cut; speaker.stop(); }
+    // (o.keep: its own line goes on first, as with the daily briefing after its hello)
+    if (speaker.talking && !o.keep) { console.info('[reverie] stopped talking for a new turn: ' + text.slice(0, 80)); cut = speaker.pending || cut; speaker.stop(); }
     const note = cut ? ` (You were interrupted before saying: "${cut.slice(0, 200)}")` : ''; cut = '';
     // (where and when they are rides at the top of what they said: added, never changed later)
     const words = contextLine(world.scene?.()) + '\n' + text + note;
@@ -290,5 +303,7 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
     /** Says a line of its own (not from Claude), such as its hello. */
     speak(line) { speaker.feed(line + ' '); speaker.flush(); },
     get busy() { return !!ctl || creature.state.thinking; },
+    /** The diary changed outside the chat (forgotten from the diary sheet): it is read again for the next turn. */
+    refreshMemo() { memoText = null; },
   };
 }
