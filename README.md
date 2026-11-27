@@ -138,6 +138,7 @@ node tests/google-page.mjs    # the briefing with the calendar and inbox, a repl
 node tests/room.mjs           # carries a lamp to the window, a teapot to the shelf, paints the room, reloads it
 node tests/shop.mjs           # finds headphones (scripted helper), reads the cards and the news, buys number 2 through the confirm strip, brings the cards back after a reload
 node tests/shop-server.mjs    # the shopping backend with a stand-in client: the request, which links it trusts, a paused search carried on
+node tests/badges.mjs --page  # makes a teapot: a badge card, a trophy flies to the shelf, the badges tool, the diary, a reload
 node tests/pet.mjs            # its mood rises with play; makes a fox called Pip that wanders, is patted, chases a ball, plays dead, naps, and is still there after a reload
 node tests/fluid.mjs          # turn-taking with a stand-in recogniser: answered at the pause, a mid-sentence pause kept as one question, first clause first, a dropped connection retried
 npm run latency               # with your key: time to the first words from Claude, cold cache, warm cache and without thinking (a few pennies)

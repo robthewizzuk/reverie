@@ -205,3 +205,26 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 #shop .confirm button, #shop .confirm a { height: 38px; padding: 0 16px; border: 0; border-radius: 19px; display: inline-flex; align-items: center; font: 600 14px system-ui, sans-serif; cursor: pointer; text-decoration: none; }
 #shop .confirm button { background: #ffffff1f; color: var(--ink); }
 #shop .confirm a { background: var(--accent); color: #241509; }
+
+/* badges: the card that drops in when one is earned, and the badges in the diary */
+#badge-toast { position: absolute; top: 14px; left: 50%; z-index: 6; display: flex; align-items: center; gap: 12px; max-width: min(360px, calc(100% - 32px));
+  padding: 10px 18px 10px 12px; border-radius: 18px; background: #fbf3e2; color: #3b2a1e; box-shadow: 0 10px 30px #0008;
+  transform: translate(-50%, -140%); opacity: 0; transition: transform .45s cubic-bezier(.2, 1.4, .4, 1), opacity .3s; pointer-events: none; }
+#badge-toast.show { transform: translate(-50%, 0); opacity: 1; }
+#badge-toast b { display: block; font: 700 16px/1.2 Georgia, "Times New Roman", serif; }
+#badge-toast small { display: block; font: 500 13px/1.3 system-ui, sans-serif; color: #7a6450; }
+#badge-toast .medal, #diary .badges .medal { flex: none; display: grid; place-items: center; width: 42px; height: 42px; border-radius: 50%; font-size: 22px;
+  background: radial-gradient(circle at 35% 30%, #fff8, transparent 55%), var(--metal, #c98a55); box-shadow: inset 0 -3px 0 #0002, 0 2px 6px #0003; }
+.tier-bronze, #diary .badges .bronze { --metal: #d09a6a; }
+.tier-silver, #diary .badges .silver { --metal: #d6dbe1; }
+.tier-gold, #diary .badges .gold { --metal: #f2c14e; }
+#diary .badges h3 small { margin-left: 6px; font-weight: 600; letter-spacing: 0; text-transform: none; color: #8a7560; }
+#diary .badges h4 { margin: 10px 0 6px; font: 700 12px/1.2 system-ui, sans-serif; color: #8a7560; }
+#diary .badges ul { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
+#diary .badges li { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 6px 12px; border-radius: 14px; background: #fff9ee; text-align: center; overflow: hidden; }
+#diary .badges li b { font: 700 12.5px/1.2 system-ui, sans-serif; }
+#diary .badges li small { font: 500 11px/1.25 system-ui, sans-serif; color: #8a7560; }
+#diary .badges li.locked { background: #f3e9d7; }
+#diary .badges li.locked .medal { --metal: #d8ccb8; filter: grayscale(1); opacity: .55; font-weight: 700; color: #8a7560; }
+#diary .badges li.locked b { color: #8a7560; }
+#diary .badges li i { position: absolute; left: 0; bottom: 0; height: 4px; background: #e0a060; border-radius: 0 2px 2px 0; }
