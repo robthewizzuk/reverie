@@ -183,7 +183,7 @@ async function boot() {
   // watching a video together: a screen in the room; only words about it (title, captions) ever reach Claude
   const sheet = makeWatchSheet({ el: $('#watching'), onPick: v => { wakeUp(); startWatching(v); } });
   watch = makeWatch({ host: $('#screen'), sheet, world, memory, state: () => ({ speaking: brain.speaking, busy: brain.busy, listening: world.creature.state.listening }),
-    onOpen: () => { pad?.hide(); if (show?.open) show.close(); diary?.hide(); },
+    onOpen: () => { pad?.hide(); if (show?.isOpen) show.close(); diary?.hide(); },
     onNews: (text, loud) => brain.notice(text, loud) });
   world.onNews = (text, loud) => { gameNews(text); if (/^\[(chess|quiz|noughts|twenty|draw and guess|quest)/.test(text)) mood.fun(/checkmate|you win|you won|they won|last question|well played|right!|guessed it|treasure/i.test(text) ? 'win' : 'move'); brain.notice(text, loud); };
   world.onSay = line => { if (brain.busy || brain.speaking) return false; brain.speak(line); return true; };
