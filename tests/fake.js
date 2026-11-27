@@ -12,12 +12,13 @@
 //   "make me a pet fox called pip" -> pet make;  "pet sit" -> pet trick;  "[pet] ..." / "[mood] ..." -> a quip
 //   "teach me about <x>" / "teach me <language>" -> teach start;  "board" -> teach board (with a picture prop);
 //   "new word" -> teach word;  "test me" -> teach quiz;  "[lesson] ..." -> a quip;  "end the lesson" -> teach end
+//   "tell me a joke" -> a line with sound cues;  "a ghost in a cave" / "helium" -> voice with an effect, echo, pitch and speed
 //   anything else     -> a friendly line with a wave
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const lastUser = messages => [...messages].reverse().find(m => m.role === 'user');
 const textOf = m => typeof m.content === 'string' ? m.content : (m.content.find(b => b.type === 'text')?.text ?? '');
 // (without the device's line at the top: where and when they are)
-const saidOf = m => textOf(m).replace(/^\[(Your diary|From the device)[^\]]*\]\n/gm, '').replace(/ \(You were interrupted[^)]*\)$/, '');
+const saidOf = m => textOf(m).replace(/^\[(Your diary|Learning together|From the device)[^\]]*\]\n/gm, '').replace(/ \(You were interrupted[^)]*\)$/, '');
 
 function plan(body) {
   const u = lastUser(body.messages);
@@ -102,6 +103,9 @@ function plan(body) {
   if (/real sky/.test(said)) return { text: 'Back to the real sky.', tools: [['window', { time: 'live', weather: 'live' }]] };
   if ((m = /make it (.+)/.exec(said))) return { text: 'Watch this.', tools: [['change', { words: m[1] }]] };
   if ((m = /make (?:me )?(an? .+|some .+)/.exec(said))) return { text: 'Ooh, one coming right up!', tools: [['act', { gesture: 'tada', mood: 'excited' }], ['make', { words: m[1] }]] };
+  if (/joke/.test(said)) return { text: 'Why did the cookie go to the doctor? It felt crumby. [rimshot] And the winner of worst joke is [drumroll] me! [Tada]', tools: [] };
+  if (/ghost in a cave/.test(said)) return { text: 'Ooooh, spooky.', tools: [['voice', { effect: 'ghost', echo: 'cave' }]] };
+  if (/helium/.test(said)) return { text: 'Breathe in!', tools: [['voice', { pitch: 1.5, speed: 1.1, effect: 'walkie talkie' }]] };
   if (/pirate/.test(said)) return { text: 'Arr, give me a moment.', tools: [['voice', { name: 'captain_silas_blackwater' }]] };
   if (/normal voice/.test(said)) return { text: 'Back to me.', tools: [['voice', { reset: true }]] };
   if (/purple|colou?r/.test(said)) return { text: 'Ooh, a new look.', tools: [['colours', { body: '#c8b4ee', glow: '#30a0ff' }]] };
