@@ -88,6 +88,8 @@ node tests/kits.mjs           # rolls dice, plays three quiz questions (tap, but
 node tests/memory.mjs --page  # the diary alone, then a second day: the overnight surprise, the briefing, a name kept, the diary sheet
 node tests/room.mjs           # carries a lamp to the window, a teapot to the shelf, paints the room, reloads it
 node tests/pet.mjs            # its mood rises with play; makes a fox called Pip that wanders, is patted, chases a ball, plays dead, naps, and is still there after a reload
+node tests/fluid.mjs          # turn-taking with a stand-in recogniser: answered at the pause, a mid-sentence pause kept as one question, first clause first, a dropped connection retried
+npm run latency               # with your key: time to the first words from Claude, cold cache, warm cache and without thinking (a few pennies)
 node tests/perf.mjs --gpu --tier 2 --idle   # CPU time a frame, draw calls and triangles (the GPU here is software)
 node tests/look.mjs --seats front,top       # pictures of the light from the usual seat and from above, in tests/out/
 ```
