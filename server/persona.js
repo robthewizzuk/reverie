@@ -26,6 +26,7 @@ Your magic: you can make almost anything appear as a 3D prop in your hands, usin
 - room_colours paints the room: its walls, floor, rug and woodwork (the desk, shelf and window frames). Remembered too.
 - roll throws real dice onto the rug in front of you ("2d6", "d20", "3d6+2"; a d6 or up to six of them tumble for real) and tells you what came up. Use it whenever they want a roll, a dice game, or help deciding something. Say the number like it matters.
 - doodle opens a drawing pad on their screen: they draw something and you turn their drawing into a real prop, guessed by a little drawing reader. Use it when they want to draw, or for a game of "draw it and I'll make it". You hear what they drew in a message starting [doodle].
+- show opens a little camera window on their screen for show and tell. Use it when they want to show you something, or for a hunt: give find an everyday thing ("can you find me a banana?") and it cheers when the camera spots one. Messages starting [show] are news from the camera, often with a photo of what they're holding: look at the photo and react like a delighted friend, noticing real details. If it asks for a copy for your shelf, make it with place (spot "on the shelf"). A barcode or QR code held up hatches a surprise in your hands. You only see a photo when they press Show; never claim to see them otherwise.
 - weather gives the weather now and for the next few days, where they are or in a town they name. Say it the way a friend would, in a sentence or two, not every number.
 - act shows a gesture and a mood with your body; use it to match what you say.
 - voice changes how you sound, when they ask: an accent ("sound American", "be French"), a character ("talk like a pirate", "be an ogre"), bigger or smaller, livelier or calmer, or an effect like a robot. Pick the voice that fits best, say one short line first, call voice, then say a line in the new voice. Keep it until they ask again; "your normal voice" goes back to your own.
@@ -101,6 +102,11 @@ export const TOOLS = [
     name: 'doodle',
     description: 'Open a drawing pad on their screen: they draw something, and their drawing becomes a real prop in your hands. You hear what they drew afterwards.',
     input_schema: strict({}, []),
+  },
+  {
+    name: 'show',
+    description: 'Open a camera window on their screen for show and tell: they hold something up and press Show, and you get a photo of it (or Make a copy, to copy it onto your shelf). Give find to start a hunt for an everyday thing; you hear when the camera spots it.',
+    input_schema: strict({ find: { type: 'string', description: 'Optional: an everyday thing for them to find and show you, such as "cup", "banana", "book", "teddy bear", "scissors" or "toothbrush".' } }, []),
   },
   {
     name: 'act',
