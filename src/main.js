@@ -9,6 +9,7 @@ import { makeBody } from './body.js';
 import { Listener } from './listen.js';
 import { askPlace, placeAt, weather } from './place.js';
 import { makePad, madeFrom } from './doodle.js';
+import { makeShow } from './show.js';
 import { makeMemory } from './memory.js';
 import { surpriseFor, briefingNote, funDay } from './daily.js';
 import { makeDiary } from './diary.js';
@@ -17,10 +18,10 @@ const $ = s => document.querySelector(s);
 const stage = $('#stage'), canvas = $('#view'), ctx = canvas.getContext('2d');
 const input = $('#say'), form = $('#bar'), mic = $('#mic'), caption = $('#caption'), status = $('#status'), wake = $('#wake'), timing = $('#timing');
 const gamebar = $('#gamebar'), gameText = $('#gamebar span'), gameButtons = $('#gamebar div');
-const draw = $('#draw'), book = $('#book');
+const draw = $('#draw'), book = $('#book'), look = $('#look');
 const debug = new URLSearchParams(location.search).has('debug');
 
-let W = 0, H = 0, world, brain, body, voice, pad, diary, last = 0, awake = false, captionT = 0, nextAt = 0;
+let W = 0, H = 0, world, brain, body, voice, pad, diary, show, last = 0, awake = false, captionT = 0, nextAt = 0;
 // its diary, kept in this browser (memory.js), and today's surprise (daily.js): { surprise, holding, funDay }
 const memory = makeMemory();
 const today = { surprise: null, holding: null, funDay: funDay() };
@@ -137,6 +138,13 @@ async function boot() {
   // the drawing pad: what they draw is named on the device and made real; Reverie hears what it was
   pad = makePad({ el: $('#pad'), onOpen: () => { world.creature.mood('curious'); world.creature.gesture('point'); },
     onDrawn: async guesses => { const news = await madeFrom(guesses, world); console.info('[reverie] ' + news); if (world.held) memory.note('doodle', { what: world.held.short }); brain.notice(news, true); } });
+  // show and tell: a camera window; what it spots, signs and barcodes stay on the device, a press of Show sends a photo
+  show = makeShow({ el: $('#show'), world, onOpen: () => { world.creature.mood('curious'); world.creature.gesture('wave'); },
+    onNews: (text, loud, image, now) => {
+      console.info('[reverie] ' + text.slice(0, 160));
+      // (a press of Show is them talking: it answers now, even mid-sentence)
+      if (now) { brain.interrupt('shown something'); brain.hear(text, { at: performance.now(), news: true, image }); } else brain.notice(text, loud, image);
+    } });
   diary = makeDiary({ el: $('#diary'), memory, today: () => today, onForget: () => brain.refreshMemo() });
   brain = makeBrain({ world, onCaption: say, onStatus: setStatus, onTiming: showTiming,
     memo: () => memory.summary(), onHeard: text => memory.said('you', text), onTool: noted,
@@ -146,12 +154,13 @@ async function boot() {
       remember: async input => memory.remember(input),
       forget: async input => { const r = memory.forget(input); brain.refreshMemo(); return r; },
       briefing: async () => { today.surprise ||= await surpriseFor(); return briefingNote(memory, { weather: await weatherHere(), surprise: today.surprise }); },
+      show: input => show.open({ find: typeof input?.find === 'string' ? input.find : '' }),
       diary: async () => { diary.show(); return 'Your diary is open on their screen: everything you remember about them, and a way to forget any of it.'; },
     } });
   body = makeBody({ creature: world.creature, world });
   world.onNews = (text, loud) => { gameNews(text); brain.notice(text, loud); };
   voice = new Listener({ onProblem: () => listeningOff(), onNote: debug ? line => { timing.textContent = 'mic: ' + line; } : null });
-  window.__reverie = { world, brain, body, gs, voice, pad, memory, diary, today };
+  window.__reverie = { world, brain, body, gs, voice, pad, memory, diary, today, show };
   requestAnimationFrame(frame);
   // every shader the room needs, built in the background before it wakes (the driver's own threads), so none is built
   // in the middle of a chat: a whole room's shaders built in one frame was a stall of a second or more
@@ -262,6 +271,7 @@ mic.addEventListener('click', async () => {
   if (await startListening()) setStatus('');
 });
 wake.addEventListener('click', wakeUp);
+look.addEventListener('click', () => { if (!show) return; wakeUp(); if (show.open) show.close(); else show.open(); });
 draw.addEventListener('click', () => { if (!pad) return; wakeUp(); if (pad.open) pad.hide(); else pad.show(); });
 book.addEventListener('click', () => { if (!diary) return; if (diary.open) diary.hide(); else diary.show(); });
 canvas.addEventListener('pointerdown', e => {
