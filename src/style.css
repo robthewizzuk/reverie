@@ -228,3 +228,27 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 #diary .badges li.locked .medal { --metal: #d8ccb8; filter: grayscale(1); opacity: .55; font-weight: 700; color: #8a7560; }
 #diary .badges li.locked b { color: #8a7560; }
 #diary .badges li i { position: absolute; left: 0; bottom: 0; height: 4px; background: #e0a060; border-radius: 0 2px 2px 0; }
+/* watching together: the video player, fitted onto the screen in the room (watch.js sets its transform each frame) */
+#screen { position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: visible; }
+#screen[hidden] { display: none; }
+#screen > * { position: absolute; left: 0; top: 0; width: 640px; height: 360px; transform-origin: 0 0; background: #000; }
+#screen iframe, #screen video { display: block; width: 640px; height: 360px; border: 0; }
+/* (while watching, its words go at the bottom, off the picture) */
+#stage.watching #caption { top: auto; bottom: 64px; }
+@media (min-aspect-ratio: 11/10) { #stage.watching #caption { left: auto; right: 16px; transform: none; width: min(52%, 460px); } }
+/* the "what shall we watch?" sheet */
+#watching { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(calc(100% - 24px), 440px); display: flex; flex-direction: column;
+  gap: 10px; padding: 14px 16px 16px; border-radius: 22px; background: #1b120de6; backdrop-filter: blur(8px); box-shadow: 0 8px 30px #0008; }
+#watching[hidden] { display: none; }
+#watching header { display: flex; align-items: center; }
+#watching h2 { flex: 1; margin: 0; font: 700 18px/1.2 system-ui, sans-serif; }
+#watching p { margin: 0; font-size: 14px; color: var(--soft); }
+#watching .note:empty { display: none; }
+#watching .note { color: #ffc9a8; }
+#watching .row { display: flex; gap: 8px; }
+#watching input[type=url] { flex: 1; min-width: 0; height: 44px; padding: 0 14px; border-radius: 22px; border: 1px solid var(--line); background: #00000044; color: var(--ink); font-size: 16px; }
+#watching button { height: 44px; padding: 0 18px; border: 0; border-radius: 22px; background: #ffffff1f; color: var(--ink); font: 600 15px system-ui, sans-serif; cursor: pointer; }
+#watching button[data-id="go"] { background: var(--accent); color: #241509; }
+#watching button[data-id="close"] { width: 36px; height: 36px; padding: 0; }
+#watching button.file { align-self: flex-start; height: 36px; font-size: 14px; }
+@media (max-width: 380px) { #bar { gap: 4px; } #bar button { width: 36px; height: 36px; } #bar button svg { width: 20px; height: 20px; } }

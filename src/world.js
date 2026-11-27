@@ -177,6 +177,8 @@ export function makeWorld() {
   // broken bits on the floor (gs.destruction's Rubble: they fade away after a while) and little shows (fun.js)
   let rubble = null, shows = null;
   const lines = [() => outfits?.line() || ''];
+  // a camera seat set from outside (watching a video together: watch.js), used when no game has one
+  let seat = null;
   const games = {}, HOME = { pos: [0, .78, 1.95], look: [0, .4, 0] }, camAt = { pos: [...HOME.pos], look: [...HOME.look] };
   const stage = {
     THREE, get scene() { return v.scene; }, get creature() { return creature; }, get physics() { return world; },
@@ -451,7 +453,7 @@ export function makeWorld() {
       const a = W / H; v.cam.fov = a < 1 ? 2 * Math.atan(Math.tan(21 * Math.PI / 180) / a) * 180 / Math.PI : 36;
       v.cam.aspect = a; v.cam.updateProjectionMatrix();
       // the camera eases to the game's seat and back
-      const goal = game?.camera || HOME, ck = 1 - Math.exp(-dt * 3);
+      const goal = game?.camera || seat || HOME, ck = 1 - Math.exp(-dt * 3);
       for (const k of ['pos', 'look']) for (let i = 0; i < 3; i++) camAt[k][i] += (goal[k][i] - camAt[k][i]) * ck;
       const seen = look ? look.view(camAt, dt, goal) : camAt;
       v.cam.position.set(...seen.pos); v.cam.lookAt(...seen.look);
@@ -603,6 +605,12 @@ export function makeWorld() {
     get kept() { return placed; },
     /** True while it is walking about the room with something. */
     get walking() { return acts.length > 0; },
+    /** Walks it to (x, z) on the floor, after anything it is already doing. Resolves when it is there. */
+    walkTo: (x, z) => walkTo(clamp(x, -1.7, 1.9), clamp(z, -.95, 1.1)),
+    /** Walks it back to its place in the middle, facing you. */
+    goHome: () => goHome(),
+    /** Where the camera sits when no game has a seat: { pos, look }, or null for its usual place. */
+    get seat() { return seat; }, set seat(s) { seat = s || null; },
     /** Puts something in the room ({ item, spot, near, size }), carrying it there itself. Resolves a sentence. */
     place(input) { const job = carrying.then(() => placeIt(input)); carrying = job.catch(() => {}); return job; },
     /** The colours of the room's walls, floor, rug and woodwork ({ walls, floor, rug, wood, reset }), kept for next time. */
