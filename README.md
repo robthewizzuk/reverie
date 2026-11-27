@@ -15,6 +15,10 @@ first visit of each day it has made you something overnight, gives you a short s
 and moon, anything special about the day) and has a fact, riddle, word scramble or trivia question waiting. Ask for
 "my briefing" any time.
 
+Connect your Google account (the button is in the diary, or just ask "what's on today?") and it reads your calendar and
+email to you, adds things to your calendar, and drafts replies. It never sends an email or adds an event by itself: a
+card shows exactly what will happen, and only your tap on Yes does it. Your day's agenda and new email join the briefing.
+
 ## Run it
 
 ```bash
@@ -48,6 +52,7 @@ and nothing with a `VITE_` prefix holds it, so it never reaches the page.
 | The sky outside | `src/place.js` | The device line also says whether the sun is up and the moon's phase, and a low battery (`gs.real`, worked out on the device, no permission) |
 | Its diary | `src/memory.js`, `src/diary.js` | What it remembers about you, kept only in this browser (`localStorage`): your name and birthday, facts it was told to `remember`, game records, things it made, the last few lines you said, and a line or two for each day. Claude gets a short summary at the top of each chat (read once a chat, so the cached prompt never changes under it). The book button opens the diary sheet: a ✕ on each fact, and "Forget everything" |
 | Its day | `src/daily.js` | Picked from the date, so a day's surprise is the same on every visit: a thing it made overnight (in its hands when you arrive), and a fun fact, riddle, word scramble or trivia question (`gs.trivia`). The briefing note: the day, birthdays, streaks and fun days, the weather, sunrise, sunset and the moon (`gs.real`), and the surprise, said by Claude in its own words after its hello. Birthdays and streaks get confetti |
+| Gmail and calendar | `src/google.js`, `server/google.js` | Google sign-in (the client secret stays on the server; the tokens are kept encrypted in your own HttpOnly cookie, never stored on a server), with three permissions: read email, write drafts, see and add calendar events. Tools `calendar` (list, add) and `email` (inbox, search, read, draft, send). Adding and sending only put a card on the screen showing the event, or the email as Gmail holds it; only a real tap on Yes does it. Email text reaches Claude marked as other people's words, never instructions |
 | The backend | `server/turn.js` | One small handler that adds the key and streams Claude's reply back. Runs inside the Vite dev server (`server/dev.js`) and as a Cloudflare Worker (`worker/`) |
 | Its personality and tools | `server/persona.js` | The system prompt and its tools: `make`, `change`, `toss`, `clear`, `place`, `room_colours`, `roll`, `doodle`, `act`, `play`, `game_move`, `stop_game`, `remember`, `forget`, `briefing`, `diary`, `pet`, `think_harder` |
 | Games | `src/games/` | Games it plays with you on a table in front of it. Chess: the engine's living stone pieces, rules from chess.js and the engine's chess opponent picking its moves (fast, always legal, levels 1 to 5), while Claude reacts out loud to each move and a stretchy arm moves its pieces. Quiz: ten questions from the engine's bank of about 2,700 (`gs.trivia`, Open Trivia Database, CC BY-SA 4.0) on a card with four buzzers, starting easy and climbing; Reverie hosts, reading each question out and reacting to each answer, and is only told the answer once you've given yours. Noughts and crosses: the engine's game search (`gs.solve.Search`) picks its noughts, with slips at the lower levels and none at 5; tap a square or say it. Twenty Questions: the game picks the secret, counts your questions on twenty lamps and spots a right guess itself, so Reverie only has to answer; guess it and the mystery box opens and the thing is made in its hands. Draw and Guess: you draw a word against the clock on the drawing pad, and the doodle reader (`gs.doodle`) guesses live while Reverie calls its guesses out in its own voice, with no trip to Claude. Dice Quest: a path across the table past four challenges, each a little model from the generator, and real dice thrown from its hands; Reverie tells the story. `src/games/index.js` says how to add another |
@@ -75,6 +80,12 @@ Or let GitHub deploy it: `.github/workflows/deploy.yml` builds and deploys on ev
 Actions tab). Add the repository secrets `CLOUDFLARE_API_TOKEN` (the "Edit Cloudflare Workers" token template),
 `CLOUDFLARE_ACCOUNT_ID` and `ANTHROPIC_API_KEY` under Settings › Secrets and variables › Actions.
 
+For Gmail and Google Calendar, add `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` too (the GitHub secrets, or
+`npx wrangler secret put` each, or `.env.local` for `npm run dev`). They come from a "Web application" OAuth client in
+Google Cloud, with the Gmail and Calendar APIs turned on and `https://<your address>/api/google/callback` (and
+`http://localhost:5173/api/google/callback`) as redirect URIs. Publish the app (Google Auth Platform › Audience):
+left in Testing, Google signs it out every 7 days.
+
 Only the Worker's own address may call the API from a browser. To host the page somewhere else, set `ALLOWED_ORIGIN` in
 `worker/wrangler.toml` to that page's address and build it with `VITE_API_URL` set to the Worker's address.
 
@@ -86,6 +97,8 @@ npm run smoke                 # wakes it, makes, changes and throws a prop, asks
 node tests/chess.mjs          # asks to play chess, taps a move, says a move, puts the board away
 node tests/kits.mjs           # rolls dice, plays three quiz questions (tap, button, said), draws a house and has it made
 node tests/memory.mjs --page  # the diary alone, then a second day: the overnight surprise, the briefing, a name kept, the diary sheet
+node tests/google.mjs         # Google sign-in, calendar and email on the server, against a pretend Google (no browser)
+node tests/google-page.mjs    # the briefing with the calendar and inbox, a reply sent only by a real tap, the Connect card
 node tests/room.mjs           # carries a lamp to the window, a teapot to the shelf, paints the room, reloads it
 node tests/pet.mjs            # its mood rises with play; makes a fox called Pip that wanders, is patted, chases a ball, plays dead, naps, and is still there after a reload
 node tests/perf.mjs --gpu --tier 2 --idle   # CPU time a frame, draw calls and triangles (the GPU here is software)

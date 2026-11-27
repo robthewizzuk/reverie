@@ -165,7 +165,8 @@ const sky = now => {
 
 /**
  * The note Claude gets for a briefing: the day, what's special, the weather (if known), the sky, the diary and the
- * surprise, with how to say it. o: { weather: text or null, surprise, firstToday, holding (what it's holding) }
+ * surprise, with how to say it. o: { weather: text or null, google: their calendar today and new email (google.js), or '',
+ * surprise, firstToday, holding (what it's holding) }
  */
 export function briefingNote(memory, o = {}) {
   const now = o.now || new Date(), p = o.visit || memory.peek();
@@ -177,12 +178,13 @@ export function briefingNote(memory, o = {}) {
     : `[Their daily briefing, from the device, not said aloud: it is ${when}, ${part}.`);
   const special = specialToday(memory, now); if (special.length) lines.push(`Special today: ${special.join('; ')}.`);
   if (o.weather) lines.push(`The weather: ${o.weather}`);
+  if (o.google) lines.push(o.google);
   const s = sky(now); if (s) lines.push(`The sky: ${s}.`);
   if (o.surprise) {
     if (o.firstToday && o.holding) lines.push(`Your surprise: you made ${o.holding} for them overnight, and it is in your hands now: show it off proudly (say you made it while they were away).`);
     lines.push(o.surprise.text);
   }
-  lines.push(`Give them a short, playful daily briefing out loud, like a cheerful little morning show: ${o.firstToday ? 'a warm hello (by name if you know it), ' : ''}the weather and the sky in a few words, one thing from your diary if there is something nice (last time, a record, a thing you made), then the surprise. 4 to 6 short spoken sentences in all, no lists. Don't call the weather or briefing tools for this.]`);
+  lines.push(`Give them a short, playful daily briefing out loud, like a cheerful little morning show: ${o.firstToday ? 'a warm hello (by name if you know it), ' : ''}the weather and the sky in a few words, ${o.google ? 'what is on their calendar today and any new email worth mentioning (who from, not every subject), ' : ''}one thing from your diary if there is something nice (last time, a record, a thing you made), then the surprise. ${o.google ? '5 to 7' : '4 to 6'} short spoken sentences in all, no lists. Don't call the weather, briefing, calendar or email tools for this.]`);
   return lines.join(' ');
 }
 

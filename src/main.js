@@ -15,6 +15,7 @@ import { makeShow } from './show.js';
 import { makeMemory } from './memory.js';
 import { surpriseFor, briefingNote, funDay } from './daily.js';
 import { makeDiary } from './diary.js';
+import { makeGoogle } from './google.js';
 
 const $ = s => document.querySelector(s);
 const stage = $('#stage'), canvas = $('#view'), ctx = canvas.getContext('2d');
@@ -23,7 +24,7 @@ const gamebar = $('#gamebar'), gameText = $('#gamebar span'), gameButtons = $('#
 const draw = $('#draw'), book = $('#book'), look = $('#look');
 const debug = new URLSearchParams(location.search).has('debug');
 
-let W = 0, H = 0, world, brain, body, voice, pad, diary, mood, show, last = 0, awake = false, captionT = 0, nextAt = 0;
+let W = 0, H = 0, world, brain, body, voice, pad, diary, mood, show, google, last = 0, awake = false, captionT = 0, nextAt = 0;
 // its diary, kept in this browser (memory.js), and today's surprise (daily.js): { surprise, holding, funDay }
 const memory = makeMemory();
 const today = { surprise: null, holding: null, funDay: funDay() };
@@ -151,7 +152,10 @@ async function boot() {
       // (a press of Show is them talking: it answers now, even mid-sentence)
       if (now) { brain.interrupt('shown something'); brain.hear(text, { at: performance.now(), news: true, image }); } else brain.notice(text, loud, image);
     } });
-  diary = makeDiary({ el: $('#diary'), memory, today: () => today, onForget: () => brain.refreshMemo() });
+  // Gmail and the calendar: read when asked; sending an email or adding an event only on a tap of Yes on its card
+  google = makeGoogle({ el: $('#ask'), onNews: (text, loud) => { console.info('[reverie] ' + text); brain.notice(text, loud); } });
+  google.check();
+  diary = makeDiary({ el: $('#diary'), memory, today: () => today, onForget: () => brain.refreshMemo(), google });
   // its mood: lifted by play, shown in its body, glow and voice, and told to Claude; a level up is a little burst of hearts
   mood = makeMood({ onLevel: (level, up) => {
     console.info(`[reverie] mood: ${level}`);
@@ -170,7 +174,9 @@ async function boot() {
       doodle: async () => { pad.show(); return 'The drawing pad is open on their screen. When they press Make it!, you will hear what they drew and it appears in your hands.'; },
       remember: async input => memory.remember(input),
       forget: async input => { const r = memory.forget(input); brain.refreshMemo(); return r; },
-      briefing: async () => { today.surprise ||= await surpriseFor(); return briefingNote(memory, { weather: await weatherHere(), surprise: today.surprise }); },
+      briefing: async () => { today.surprise ||= await surpriseFor(); const [wx, day] = await Promise.all([weatherHere(), googleDay()]); return briefingNote(memory, { weather: wx, surprise: today.surprise, google: day }); },
+      calendar: input => google.calendar(input),
+      email: input => google.email(input),
       show: input => show.open({ find: typeof input?.find === 'string' ? input.find : '' }),
       diary: async () => { diary.show(); return 'Your diary is open on their screen: everything you remember about them, and a way to forget any of it.'; },
     } });
@@ -179,7 +185,7 @@ async function boot() {
   world.onSay = line => { if (brain.busy || brain.speaking) return false; brain.speak(line); return true; };
   world.pad = pad;
   voice = new Listener({ onProblem: () => listeningOff(), onNote: debug ? line => { timing.textContent = 'mic: ' + line; } : null });
-  window.__reverie = { world, brain, body, gs, voice, pad, memory, diary, today, mood, show };
+  window.__reverie = { world, brain, body, gs, voice, pad, memory, diary, today, mood, show, google };
   requestAnimationFrame(frame);
   // every shader the room needs, built in the background before it wakes (the driver's own threads), so none is built
   // in the middle of a chat: a whole room's shaders built in one frame was a stall of a second or more
@@ -228,17 +234,19 @@ function welcome(visit) {
 }
 
 const weatherHere = async () => placeAt() ? weather('').catch(() => null) : null;
+/** Today's calendar and new email, for the briefing ('' when Google isn't connected, or after 4 seconds). */
+const googleDay = () => Promise.race([google.briefing().catch(() => ''), wait(4000).then(() => '')]);
 const wait = ms => new Promise(r => setTimeout(r, ms));
 
 /** The first visit of a day: the briefing, said by Claude after its hello (with the weather once the place is known). */
 async function dailyBriefing(visit, asked) {
   await Promise.race([Promise.all([overnight, asked]), wait(7000)]);
-  const wx = await Promise.race([weatherHere(), wait(4000).then(() => null)]);
+  const [wx, day] = await Promise.all([Promise.race([weatherHere(), wait(4000).then(() => null)]), googleDay()]);
   if (!today.surprise) return;
   for (let i = 0; i < 40 && brain.busy; i++) await wait(500);   // (they got talking first: after that turn)
   memory.once('surprise');
   memory.note('day', { line: today.holding ? `found ${today.holding} waiting, and ${today.surprise.show}` : `the day's surprise was ${today.surprise.show}` });
-  brain.hear(briefingNote(memory, { weather: wx, surprise: today.surprise, firstToday: true, holding: today.holding, visit }), { at: performance.now(), news: true, keep: true });
+  brain.hear(briefingNote(memory, { weather: wx, surprise: today.surprise, firstToday: true, holding: today.holding, visit, google: day }), { at: performance.now(), news: true, keep: true });
 }
 
 /** A tool Claude used, for the records: things it made, and dice. */

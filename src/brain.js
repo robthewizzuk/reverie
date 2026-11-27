@@ -129,6 +129,8 @@ function checkInput(name, input) {
   if (name === 'remember' && ['fact', 'name', 'birthday'].some(k => input[k] != null && typeof input[k] !== 'string')) return 'fact, name and birthday must be text';
   if (name === 'forget' && (typeof input.what !== 'string' || !input.what.trim())) return 'what must say what to forget';
   if (name === 'game_move' && (typeof input.move !== 'string' || !input.move.trim())) return 'move must be text';
+  if (name === 'calendar' && (!['list', 'add'].includes(input.action) || ['day', 'title', 'start', 'end', 'where', 'notes'].some(k => input[k] != null && typeof input[k] !== 'string') || ['days', 'minutes'].some(k => input[k] != null && typeof input[k] !== 'number'))) return 'action must be list or add, days and minutes numbers, the rest text';
+  if (name === 'email' && (!['inbox', 'search', 'read', 'draft', 'send'].includes(input.action) || ['q', 'id', 'reply_to', 'to', 'subject', 'body', 'draft'].some(k => input[k] != null && typeof input[k] !== 'string') || input.max != null && typeof input.max !== 'number')) return 'action must be inbox, search, read, draft or send, max a number, the rest text';
   if (name === 'pet' && (!['make', 'trick', 'rename', 'away'].includes(input.action) || ['animal', 'name', 'colour', 'trick'].some(k => input[k] != null && typeof input[k] !== 'string'))) return 'action must be make, trick, rename or away, and the rest text';
   return null;
 }
@@ -234,7 +236,7 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
   }
 
   async function hear(text, o = {}) {
-    text = String(text || '').trim().slice(0, 1000); if (!text) return;
+    text = String(text || '').trim().slice(0, o.news ? 2500 : 1000); if (!text) return;
     if (!o.news) try { onHeard(text); } catch { /* the diary's problem */ }
     // a game hears what they said too (Twenty Questions counts a question, spots a guess) and may add a note
     const heard = !o.news && world.game?.heard?.(text);

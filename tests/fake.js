@@ -10,6 +10,8 @@
 //   "roll ..."        -> roll;  "quiz me" -> play quiz;  "[quiz] ..." -> a quip;  "answer b" -> game_move;  "draw" -> doodle;  "[doodle] ..." -> a quip
 //   "square <x>"      -> game_move (noughts);  "[noughts|twenty|draw and guess] ..." -> a quip;  a counted question -> "Nope!"
 //   "make me a pet fox called pip" -> pet make;  "pet sit" -> pet trick;  "[pet] ..." / "[mood] ..." -> a quip
+//   "what's on today" -> calendar list;  "add <x> tomorrow at <h>" -> calendar add;  "check my email" -> email inbox
+//   "reply to sam ..." -> email draft;  "send it" -> email send;  "[calendar|email|google] ..." -> a quip
 //   anything else     -> a friendly line with a wave
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const lastUser = messages => [...messages].reverse().find(m => m.role === 'user');
@@ -37,6 +39,11 @@ function plan(body) {
     if (/^Forgot /.test(r)) return { text: 'Poof, forgotten.', tools: [] };
     if (/^\[Their daily briefing/.test(r)) return { text: 'Here is your briefing: it is a lovely day for making things.', tools: [] };
     if (/diary is open/i.test(r)) return { text: 'There it is, my diary.', tools: [] };
+    if (/^Their calendar:|^Nothing on their calendar/.test(r)) return { text: /Dentist/.test(r) ? 'You have the dentist at ten, then football at five.' : 'A free day!', tools: [] };
+    if (/A card (showing the email )?is on their screen/.test(r)) return { text: 'Tap yes if that looks right.', tools: [] };
+    if (/newest first:/.test(r)) return { text: /Sam/.test(r) ? 'Sam wants to know if you are still up for Saturday.' : 'A few new emails.', tools: [] };
+    if (/^Drafted, and saved/.test(r)) return { text: 'I wrote it in your drafts. Shall I send it?', tools: [] };
+    if (/connected their Google account yet/.test(r)) return { text: 'Tap Connect on your screen first.', tools: [] };
     if (/^Answered /.test(r)) return { text: 'Ooh.', tools: [] };
     if (/noughts and crosses board is set up/i.test(r)) return { text: 'Crosses, your move.', tools: [] };
     if (/Twenty Questions is set up/.test(r)) return { text: "I'm thinking of something. Twenty questions, go!", tools: [] };
@@ -67,6 +74,12 @@ function plan(body) {
   if ((m0 = /^forget (?:about )?(.+)/.exec(said))) return { text: 'Okay.', tools: [['forget', { what: m0[1].replace(/^(that|my|the) /, s => s === 'my ' ? 'my ' : '') }]] };
   if (/briefing/.test(said)) return { text: 'Ooh, briefing time.', tools: [['briefing', {}]] };
   if (/diary/.test(said)) return { text: 'Here you go.', tools: [['diary', {}]] };
+  if (/^\[(calendar|email|google)\]/.test(said)) return { text: /they tapped yes: .* sent/.test(said) ? 'Sent!' : /they tapped yes/.test(said) ? 'Done, it is on your calendar.' : /they connected/.test(said) ? 'Connected! Ask me what is on today.' : 'Okay, I left it.', tools: [] };
+  if (/what'?s on (today|my calendar)|my calendar/.test(said)) return { text: 'Let me look at your calendar.', tools: [['calendar', { action: 'list', day: 'today' }]] };
+  if ((m0 = /^add (.+) tomorrow at (\d+)/.exec(said))) { const d = new Date(); d.setDate(d.getDate() + 1); const ymd = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; return { text: 'Ooh, let me pop that in.', tools: [['calendar', { action: 'add', title: m0[1][0].toUpperCase() + m0[1].slice(1), start: `${ymd}T${String(+m0[2] + 12).padStart(2, '0')}:00`, minutes: 30 }]] }; }
+  if (/check my email|my inbox|any email/.test(said)) return { text: 'Peeking at your inbox.', tools: [['email', { action: 'inbox' }]] };
+  if (/^reply to sam/.test(said)) return { text: 'Writing it now.', tools: [['email', { action: 'draft', reply_to: 'm1', body: 'Yes! The park at 2 sounds great.\n\nRob' }]] };
+  if (/^send it/.test(said)) return { text: 'Here it is.', tools: [['email', { action: 'send', draft: 'd1' }]] };
   if (/was set up straight away/.test(said)) return { text: 'Oh, you are on!', tools: [] };
   if (/play chess|game of chess/.test(said)) return { text: 'Oh, you are on!', tools: [['play', { game: 'chess', level: 1 }]] };
   if (/stop playing|put it away/.test(said)) return { text: 'Fine, fine.', tools: [['stop_game', {}]] };
