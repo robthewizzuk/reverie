@@ -144,6 +144,7 @@ function checkInput(name, input) {
   if (name === 'forget' && (typeof input.what !== 'string' || !input.what.trim())) return 'what must say what to forget';
   if (name === 'game_move' && (typeof input.move !== 'string' || !input.move.trim())) return 'move must be text';
   if (name === 'music' && (typeof input.action !== 'string' || (input.query != null && typeof input.query !== 'string') || (input.level != null && typeof input.level !== 'number'))) return 'action must be text, query text and level a number';
+  if (name === 'karaoke' && (['verse', 'chorus', 'verse2', 'bridge'].some(k => input[k] != null && (!Array.isArray(input[k]) || input[k].some(x => typeof x !== 'string'))) || ['song', 'title', 'name', 'mode', 'mood', 'style'].some(k => input[k] != null && typeof input[k] !== 'string'))) return 'verse, chorus, verse2 and bridge must be lists of lines, the rest text';
   if (name === 'pet' && (!['make', 'trick', 'rename', 'away'].includes(input.action) || ['animal', 'name', 'colour', 'trick'].some(k => input[k] != null && typeof input[k] !== 'string'))) return 'action must be make, trick, rename or away, and the rest text';
   return null;
 }

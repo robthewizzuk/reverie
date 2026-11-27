@@ -10,6 +10,7 @@
 //   "roll ..."        -> roll;  "quiz me" -> play quiz;  "[quiz] ..." -> a quip;  "answer b" -> game_move;  "draw" -> doodle;  "[doodle] ..." -> a quip
 //   "square <x>"      -> game_move (noughts);  "[noughts|twenty|draw and guess] ..." -> a quip;  a counted question -> "Nope!"
 //   "make me a pet fox called pip" -> pet make;  "pet sit" -> pet trick;  "[pet] ..." / "[mood] ..." -> a quip
+//   "sing <song>" -> karaoke;  "write a song" -> karaoke with new words;  "stop the song" -> karaoke stop
 //   "dance" -> dance;  "stop dancing" -> dance stop;  "play music <x>" -> music play;  "pause the music" -> music pause
 //   "tell me a joke" -> a line with sound cues;  "a ghost in a cave" / "helium" -> voice with an effect, echo, pitch and speed
 //   anything else     -> a friendly line with a wave
@@ -77,6 +78,9 @@ function plan(body) {
   if ((m = /^answer (.+)/.exec(said))) return { text: 'Locking it in.', tools: [['game_move', { move: m[1] }]] };
   if ((m = /^square (.+)/.exec(said))) return { text: 'Brave.', tools: [['game_move', { move: m[1] }]] };
   if (/^i give up/.test(said)) return { text: 'Ha!', tools: [['game_move', { move: 'give up' }]] };
+  if (/^stop the song/.test(said)) return { text: 'Aww.', tools: [['karaoke', { action: 'stop' }]] };
+  if (/^write a song/.test(said)) return { text: 'Ooh, a new one!', tools: [['karaoke', { action: 'sing', title: 'Biscuit Blues', verse: ['My dog is called Biscuit', 'He sleeps on the stairs', 'He chases the postman', 'And no one is scared'], chorus: ['Biscuit, Biscuit', 'Wag your tail for me', 'Biscuit, Biscuit', 'Best dog there could be'], mood: 'silly' }]] };
+  if ((m = /^(duet|sing) (.+)/.exec(said))) return { text: 'Let\'s sing!', tools: [['karaoke', { action: 'sing', song: m[2], mode: m[1] === 'duet' ? 'duet' : 'sing' }]] };
   if (/^stop dancing/.test(said)) return { text: 'Phew!', tools: [['dance', { stop: true }]] };
   if (/^dance/.test(said)) return { text: 'Ooh, I love this one!', tools: [['dance', {}]] };
   if ((m = /^play music (.+)/.exec(said))) return { text: 'Coming right up!', tools: [['music', { action: 'play', query: m[1] }]] };

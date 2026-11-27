@@ -10,12 +10,14 @@ import { Listener } from './listen.js';
 import { askPlace, placeAt, weather } from './place.js';
 import { makePad, madeFrom } from './doodle.js';
 import { makeMood, toneOf } from './mood.js';
-import { setTone } from './looks.js';
+import { setTone, echoNow } from './looks.js';
 import { makeShow } from './show.js';
 import { makeMemory } from './memory.js';
 import { surpriseFor, briefingNote, funDay } from './daily.js';
 import { makeDiary } from './diary.js';
 import { makeMusic } from './music.js';
+import { makeKaraoke } from './karaoke.js';
+import { makeLyrics } from './lyrics.js';
 
 const $ = s => document.querySelector(s);
 const stage = $('#stage'), canvas = $('#view'), ctx = canvas.getContext('2d');
@@ -24,13 +26,13 @@ const gamebar = $('#gamebar'), gameText = $('#gamebar span'), gameButtons = $('#
 const draw = $('#draw'), book = $('#book'), look = $('#look');
 const debug = new URLSearchParams(location.search).has('debug');
 
-let W = 0, H = 0, world, brain, body, voice, pad, diary, mood, show, music, last = 0, awake = false, captionT = 0, nextAt = 0;
+let W = 0, H = 0, world, brain, body, voice, pad, diary, mood, show, music, karaoke, last = 0, awake = false, captionT = 0, nextAt = 0;
 // its diary, kept in this browser (memory.js), and today's surprise (daily.js): { surprise, holding, funDay }
 const memory = makeMemory();
 const today = { surprise: null, holding: null, funDay: funDay() };
 let overnight = Promise.resolve();
 // which kind of fun each of Claude's tools is, for its mood (mood.js FUN)
-const FUN_OF = { make: 'make', change: 'change', toss: 'toss', place: 'place', room_colours: 'room', colours: 'colours', roll: 'roll', doodle: 'doodle', play: 'game', game_move: 'move', voice: 'voice', show: 'show', music: 'music', dance: 'dance' };
+const FUN_OF = { make: 'make', change: 'change', toss: 'toss', place: 'place', room_colours: 'room', colours: 'colours', roll: 'roll', doodle: 'doodle', play: 'game', game_move: 'move', voice: 'voice', show: 'show', music: 'music', dance: 'dance', karaoke: 'game' };
 
 // What the engine's speed kit is told is being played, so the 3D view paces and tunes itself as it does for a Next Gen
 // game in the app: 60 frames a second on a phone or a laptop's browser (not every refresh of a 120 Hz screen, which is
@@ -110,7 +112,8 @@ function frame(now) {
         const ok = brain.speaking ? deliberate(f) || (all && f.words.length >= 2)
           : brain.busy ? deliberate(f) || all
           : !f.words.length || f.yours.length / f.words.length > .3;
-        if (ok && music && !music.heardOk(said)) console.info(`[reverie] music is on: took "${said}" for a lyric (say Reverie's name, or a music command)`);
+        if (ok && karaoke && !karaoke.heardOk(said)) console.info(`[reverie] a song is on: took "${said}" for singing (say Reverie's name, or stop)`);
+        else if (ok && music && !music.heardOk(said)) console.info(`[reverie] music is on: took "${said}" for a lyric (say Reverie's name, or a music command)`);
         else if (ok) brain.hear(said);
         else { console.info(`[reverie] ignored its own voice: "${said}" (yours: ${f.yours.join(' ') || 'none'})`); if (debug) timing.textContent = 'ignored echo: ' + said; }
       }
@@ -118,6 +121,7 @@ function frame(now) {
     captionT -= dt; if (captionT < 0 && !brain?.speaking) caption.hidden = true;
     if (awake) body.update(dt);
     music.update(dt);
+    karaoke.update(dt);
     mood.update(dt);
     const c = world.creature; c.cheer += (mood.cheer - c.cheer) * (1 - Math.exp(-dt * 1.5));   // (its body follows its mood, gently)
     brain.update();
@@ -166,6 +170,14 @@ async function boot() {
   // music and dancing (music.js): Spotify plays, the mic hears the beat, and it dances
   music = makeMusic({ world, el: $('#music'), onNews: (text, loud) => brain?.notice(text, loud) });
   world.addLine(() => music.line());
+  // karaoke (karaoke.js): it sings with the band, the words light up on screen, a mirror ball comes down; and the words
+  // of their own Spotify songs, from LRC files they add with the mic button on the music bar (lyrics.js)
+  karaoke = makeKaraoke({ world, el: $('#karaoke'), music, lyrics: makeLyrics(), memory, echo: echoNow, onNews: (text, loud) => brain?.notice(text, loud) });
+  world.addLine(() => karaoke.line());
+  $('#karaoke [data-id="stop"]')?.addEventListener('click', () => { const was = karaoke.tools.karaoke({ action: 'stop' }); was.then(t => brain?.notice(`[karaoke] They pressed stop. ${t}`, false)); });
+  const lrc = $('#lrc');
+  $('#music')?.addEventListener('click', e => { if (e.target.closest('button')?.dataset.id === 'lyrics') lrc?.click(); });
+  lrc?.addEventListener('change', async () => { const f = lrc.files?.[0]; lrc.value = ''; if (f) brain?.notice(await karaoke.lyricsFor(f), true); });
   world.creature.cheer = mood.cheer;
   setTone(() => toneOf(mood.cheer));
   brain = makeBrain({ world, onCaption: say, onStatus: setStatus, onTiming: showTiming,
@@ -179,6 +191,7 @@ async function boot() {
       briefing: async () => { today.surprise ||= await surpriseFor(); return briefingNote(memory, { weather: await weatherHere(), surprise: today.surprise }); },
       show: input => show.open({ find: typeof input?.find === 'string' ? input.find : '' }),
       ...music.tools,
+      ...karaoke.tools,
       diary: async () => { diary.show(); return 'Your diary is open on their screen: everything you remember about them, and a way to forget any of it.'; },
     } });
   body = makeBody({ creature: world.creature, world, mood });
@@ -186,7 +199,7 @@ async function boot() {
   world.onSay = line => { if (brain.busy || brain.speaking) return false; brain.speak(line); return true; };
   world.pad = pad;
   voice = new Listener({ onProblem: () => listeningOff(), onNote: debug ? line => { timing.textContent = 'mic: ' + line; } : null });
-  window.__reverie = { world, brain, body, gs, voice, pad, memory, diary, today, mood, show, music };
+  window.__reverie = { world, brain, body, gs, voice, pad, memory, diary, today, mood, show, music, karaoke };
   requestAnimationFrame(frame);
   // every shader the room needs, built in the background before it wakes (the driver's own threads), so none is built
   // in the middle of a chat: a whole room's shaders built in one frame was a stall of a second or more
