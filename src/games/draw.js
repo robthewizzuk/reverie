@@ -32,7 +32,7 @@ export function gotIt(guesses, word) {
 
 export function makeDraw(stage) {
   const { creature } = stage, { sounds } = gs.tabletop;
-  let state = 'off', level = 2, list = [], n = 0, word = null, left = 0, results = [], said = new Set(), lastSay = 0, t = 0, wait = 0, seen = new Set();
+  let state = 'off', rounds = 0, level = 2, list = [], n = 0, word = null, left = 0, results = [], said = new Set(), lastSay = 0, t = 0, wait = 0, seen = new Set();
 
   const pad = () => stage.pad;
   const title = () => {
@@ -59,10 +59,12 @@ export function makeDraw(stage) {
   }
   async function finish() {
     state = 'over'; pad()?.leave();
+    const my = ++rounds;
     const got = results.filter(r => r.got), best = got.slice().sort((a, b) => a.took - b.took)[0];
     creature.mood(got.length >= 3 ? 'excited' : 'happy'); creature.gesture('tada'); sounds.gong();
     let made = '';
     if (best && stage.make) made = await stage.make(an(best.word));
+    if (my !== rounds || state !== 'over') return;   // (put away, or a new round begun, while it was being made)
     const list = results.map(r => `${r.word} (${r.got ? Math.round(r.took) + ' s' : 'missed'})`).join(', ');
     stage.news(`[draw and guess] The round is over: you guessed ${got.length} of their ${ROUND} drawings: ${list}.${best ? ` You magicked their quickest one, the ${best.word}, into a real one: ${made}` : ''} Cheer them on, say what you thought of their drawings, and offer another round.`, true);
   }
@@ -93,7 +95,7 @@ export function makeDraw(stage) {
       const pool = WORDS.slice(0, level === 1 ? EASY : level === 2 ? 40 : WORDS.length).filter(w => !seen.has(w));
       const from = pool.length >= ROUND ? pool : WORDS.slice();
       list = []; while (list.length < ROUND) { const w = from.splice(Math.floor(Math.random() * from.length), 1)[0]; list.push(w); seen.add(w); }
-      n = 0; results = []; t = 0;
+      n = 0; results = []; t = 0; rounds++;
       pad().take({ title: '', buttons, onDraw, onButton, onLeave: () => { if (state === 'drawing' || state === 'between') { state = 'off'; stage.stopGame?.(); } } });
       nextWord();
       return `Draw and Guess is on: the drawing pad is open on their screen with a word for them to draw (the first is ${an(word)}; never say it before you guess it), ${TIME[level - 1]} seconds a word, ${ROUND} words. A drawing reader on the device guesses out loud in your voice as they draw. Say one short, excited line to get them going.`;

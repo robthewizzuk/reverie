@@ -21,14 +21,15 @@ export function table(THREE, { w = .72, d = .5, h = .3 } = {}) {
   return g;
 }
 
-/** Tweens on a clock: tween(seconds, k => ...) resolves true when it ran to the end, false when dropped by stop(). */
+/** Tweens on a clock: tween(seconds, k => ...) resolves true when it ran to the end, false (at once) when dropped by stop(). */
 export function clock() {
   let list = [], epoch = 0;
   return {
     get epoch() { return epoch; },
     tween(dur, fn) { const my = epoch; return new Promise(res => list.push({ t: 0, dur, fn, done: () => res(my === epoch) })); },
     wait(s) { return this.tween(s, () => {}); },
-    stop() { epoch++; list = []; },
+    // (dropped tweens resolve false at once, so nothing awaiting one is left hanging, such as a spoken move Claude waits on)
+    stop() { epoch++; const old = list; list = []; for (const tw of old) tw.done(); },
     update(dt) {
       for (const tw of list) { tw.t += dt; tw.fn(Math.min(1, tw.t / tw.dur), tw.t); }
       const done = list.filter(tw => tw.t >= tw.dur); list = list.filter(tw => tw.t < tw.dur); for (const tw of done) tw.done();

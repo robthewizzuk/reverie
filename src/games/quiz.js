@@ -37,7 +37,7 @@ export function makeQuiz(stage) {
   let quiz = null, q = null, n = 0, state = 'off', picked = -1, correct = -1, tweens = [], epoch = 0, t = 0, level = 2;
 
   function build() {
-    root = new THREE.Group(); root.position.set(CENTRE.x, 0, CENTRE.z);
+    root = new THREE.Group(); root.position.set(CENTRE.x, 0, CENTRE.z); root.name = 'game:quiz';
     const top = wood('#7a5234', { repeat: [2, 1] }), legs = wood('#5d3d25');
     const tt = new THREE.Mesh(rbox(.72, .04, .46, .015), top); tt.position.y = TABLE_H - .02; root.add(tt);
     for (const [x, z] of [[-.31, -.18], [.31, -.18], [-.31, .18], [.31, .18]]) { const l = new THREE.Mesh(rbox(.04, TABLE_H - .04, .04, .01), legs); l.position.set(x, (TABLE_H - .04) / 2, z); root.add(l); }
@@ -65,6 +65,8 @@ export function makeQuiz(stage) {
   // ---- little animations, run from update(dt); a stop() drops them all
   function tween(dur, fn) { const my = epoch; return new Promise(res => tweens.push({ t: 0, dur, fn, done: () => res(my === epoch) })); }
   const wait = s => tween(s, () => {});
+  // (the old round's animations end at once, each resolving false: a spoken answer Claude is waiting on finishes)
+  function drop() { const old = tweens; tweens = []; for (const tw of old) tw.done(); }
 
   /** Paints the card: the question, its answers (the chosen and the right one marked once answered), and the credit. */
   function paint() {
@@ -107,7 +109,7 @@ export function makeQuiz(stage) {
   function showBuzzers() {
     const count = q ? q.answers.length : 0;
     buzzers.forEach((b, i) => {
-      b.visible = i < count;
+      b.visible = i < count; b.userData.cap.position.y = .018;   // (up again, if a press was cut short)
       b.position.x = (i - (count - 1) / 2) * (count === 2 ? .2 : .15);
       b.userData.label.userData.redraw((c, w, h) => {
         c.fillStyle = '#ffffff'; c.textAlign = 'center'; c.textBaseline = 'middle';
@@ -185,7 +187,7 @@ export function makeQuiz(stage) {
       for (let i = 0; ; i++) { try { quiz = new gs.trivia.Quiz({ difficulty, climb: level === 1 || level === 5 ? false : 2, seed: Math.random() * 2 ** 31 >>> 0 }); break; } catch (e) { if (!e?.kitLoading || i > 20) throw e; await e.kitLoading; } }
       if (level === 4) quiz.level = 2;
       if (!root) build();
-      epoch++; tweens = []; n = 0; q = null;
+      epoch++; drop(); n = 0; q = null;
       if (!root.parent) { scene.add(root); body = stage.physics?.box(null, .72, TABLE_H, .46, { fixed: true, at: { x: CENTRE.x, y: TABLE_H / 2, z: CENTRE.z } }); }
       root.scale.setScalar(.01); tween(.45, k => root.scale.setScalar(Math.max(.01, 1 + 2.7 * Math.pow(k - 1, 3) + 1.7 * Math.pow(k - 1, 2))));
       stage.sparks(new THREE.Vector3(CENTRE.x, TABLE_H + .1, CENTRE.z), '#ffd27a', 40);
@@ -193,7 +195,7 @@ export function makeQuiz(stage) {
       return `The quiz table is set up in front of you: ${ROUND} questions, and you are the host. They answer by tapping a buzzer or saying it. The first one is on the card: ${first}${READ}`;
     },
     stop() {
-      epoch++; tweens = []; state = 'off'; q = null;
+      epoch++; drop(); state = 'off'; q = null;
       if (root?.parent) { root.removeFromParent(); body?.remove?.(); body = null; }
     },
     update(dt) {
