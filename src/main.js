@@ -23,6 +23,8 @@ import { makeWisps } from './helper-wisps.js';
 import { makeGoogle } from './google.js';
 import { makeLearning } from './learn.js';
 import { useLearning } from './games/lesson.js';
+import { makeReminders } from './reminders.js';
+import { makeTimers } from './timers.js';
 
 const $ = s => document.querySelector(s);
 const stage = $('#stage'), canvas = $('#view'), ctx = canvas.getContext('2d');
@@ -31,12 +33,14 @@ const gamebar = $('#gamebar'), gameText = $('#gamebar span'), gameButtons = $('#
 const draw = $('#draw'), book = $('#book'), look = $('#look'), recentre = $('#recentre'), helperList = $('#helpers');
 const debug = new URLSearchParams(location.search).has('debug');
 
-let W = 0, H = 0, world, brain, body, voice, pad, diary, mood, show, shaker, music, helpers, wisps, google, last = 0, awake = false, captionT = 0, nextAt = 0;
+let W = 0, H = 0, world, brain, body, voice, pad, diary, mood, show, shaker, music, helpers, wisps, google, timers, last = 0, awake = false, captionT = 0, nextAt = 0;
 // its diary, kept in this browser (memory.js), and today's surprise (daily.js): { surprise, holding, funDay }
 const memory = makeMemory();
 // what you are learning together (learn.js), kept beside the diary; the lessons write their days in the diary too
 const learning = makeLearning();
 useLearning(learning, { onDay: line => memory.note('day', { line }) });
+// reminders and timers, kept in this browser too (reminders.js), with their chips, chime and notifications (timers.js)
+const reminders = makeReminders();
 const today = { surprise: null, holding: null, funDay: funDay() };
 let overnight = Promise.resolve(), hello = '';
 // which kind of fun each of Claude's tools is, for its mood (mood.js FUN)
@@ -212,7 +216,7 @@ async function boot() {
   world.creature.cheer = mood.cheer;
   setTone(() => toneOf(mood.cheer));
   brain = makeBrain({ world, onCaption: say, onStatus: setStatus, onTiming: showTiming,
-    memo: () => [memory.summary(), learning.summary()].filter(Boolean).join('\n'), onHeard: (text, again) => { memory.said('you', text, again); if (!again) mood.fun('chat'); },
+    memo: () => [memory.summary(), learning.summary()].filter(Boolean).join('\n'), onHeard: (text, again) => { memory.said('you', text, again); if (!again) mood.fun('chat'); timers?.heard(); },
     onTool: (name, input, r) => { noted(name, input, r); if (!r?.error && FUN_OF[name]) mood.fun(FUN_OF[name]); },
     tools: {
       window: input => world.daylight.set(input),
@@ -239,7 +243,14 @@ async function boot() {
       send_helper: input => helpers.send(input),
       helpers: input => helpers.manage(input),
       diary: async () => { diary.show(); return 'Your diary is open on their screen: everything you remember about them, and a way to forget any of it.'; },
+      reminder: input => timers.tool(input),
     } });
+  // reminders and timers: chips on the stage, a chime and Reverie saying so when one goes off (once it is free to talk)
+  world.addLine(() => reminders.line());
+  timers = makeTimers({ el: $('#timers'), reminders,
+    canTalk: () => awake && !brain.busy && !brain.speaking && !world.creature.state.listening,
+    announce: text => brain.hear(text, { at: performance.now(), news: true }),
+    onRing: () => { const c = world.creature; if (!c.busy) c.gesture('wave'); c.mood('excited'); const at = c.coreAt(new gs.hd.THREE.Vector3()); world.floaties.burst({ x: at.x, y: at.y + .3, z: at.z }, { n: 4 }); } });
   body = makeBody({ creature: world.creature, world, mood });
   // the phone in their hands (fun.js): shaken, it gets dizzy and Claude hears of it; tilted, things on the floor roll
   shaker = makeShaker({ world: world.physics, creature: world.creature, floaties: world.floaties, floor: world.floorBodies, pet: () => world.keeper,
@@ -248,7 +259,7 @@ async function boot() {
   world.onSay = line => { if (brain.busy || brain.speaking) return false; brain.speak(line); return true; };
   world.pad = pad;
   voice = new Listener({ onProblem: () => listeningOff(), onNote: debug ? line => { timing.textContent = 'mic: ' + line; } : null });
-  window.__reverie = { world, brain, body, gs, voice, pad, memory, learning, diary, today, mood, show, shaker, music, helpers, google };
+  window.__reverie = { world, brain, body, gs, voice, pad, memory, learning, diary, today, mood, show, shaker, music, helpers, google, reminders, timers };
   requestAnimationFrame(frame);
   // every shader the room needs, built in the background before it wakes (the driver's own threads), so none is built
   // in the middle of a chat: a whole room's shaders built in one frame was a stall of a second or more

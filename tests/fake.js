@@ -14,6 +14,8 @@
 //   "send a helper to <x>" / "look into <x>" -> send_helper;  "how are my helpers" -> helpers;  "[helper] ..." -> retells it
 //   "teach me about <x>" / "teach me <language>" -> teach start;  "board" -> teach board (with a picture prop);
 //   "new word" -> teach word;  "test me" -> teach quiz;  "[lesson] ..." -> a quip;  "end the lesson" -> teach end
+//   "set a timer for <n> seconds|minutes [for <x>]" / "remind me at <time> to <x>" / "cancel the <x>" / "snooze it" /
+//   "what reminders" -> reminder;  "[reminder|timer] ..." -> a line saying so
 //   "tell me a joke" -> a line with sound cues;  "a ghost in a cave" / "helium" -> voice with an effect, echo, pitch and speed
 //   "what's on today" -> calendar list;  "add <x> tomorrow at <h>" -> calendar add;  "check my email" -> email inbox
 //   "reply to sam ..." -> email draft;  "send it" -> email send;  "[calendar|email|google] ..." -> a quip
@@ -57,6 +59,10 @@ function plan(body) {
     if (/chalkboard is up/.test(r)) return { text: "Class is in session! Let's start with the big picture.", tools: [] };
     if (/^Written on the board|is on the board|^The question is on the board/.test(r)) return { text: 'Have a look at that.', tools: [] };
     if (/^The lesson is over/.test(r)) return { text: 'Gold star for you!', tools: [] };
+    if (/^Set (a|an) /.test(r)) return { text: "Done, I'll give you a shout!", tools: [] };
+    if (/^Cancelled /.test(r)) return { text: 'Cancelled.', tools: [] };
+    if (/^Snoozed /.test(r)) return { text: 'Five more minutes, then.', tools: [] };
+    if (/timer \(|reminders or timers are set|a reminder to /.test(r) && results[0] && !/^Not /.test(r)) return { text: "Here's what's set.", tools: [] };
     if (/^Answered /.test(r)) return { text: 'Ooh.', tools: [] };
     if (/^You (are|stopped|were not) danc/.test(r) || /^(Playing|Paused|Skipped)|Spotify/.test(r)) return { text: 'Wheee!', tools: [] };
     if (/noughts and crosses board is set up/i.test(r)) return { text: 'Crosses, your move.', tools: [] };
@@ -71,6 +77,12 @@ function plan(body) {
   }
   let m0;
   const said = saidOf(u).replace(/^\[[a-z ]+[,:][^\]]*\]\s*/, '').toLowerCase().replace(/^(\[(pet|mood|game)\][^\n]*\n+)+(?=\S)/, '');
+  if (/^\[(reminder|timer)\]/.test(said)) return { text: /\[timer\]/.test(said) ? "Ding ding, time's up!" : 'Psst, it is time!', tools: [] };
+  if ((m0 = /set a timer for (\d+(?:\.\d+)?) (seconds?|minutes?)(?: for (?:the )?(.+))?/.exec(said))) return { text: 'Timer coming up.', tools: [['reminder', { action: 'set', kind: 'timer', minutes: +m0[1] / (m0[2][0] === 's' ? 60 : 1), what: m0[3] || '' }]] };
+  if ((m0 = /remind me at (\S+) to (.+)/.exec(said))) return { text: 'I will.', tools: [['reminder', { action: 'set', at: m0[1], what: m0[2] }]] };
+  if ((m0 = /^cancel (?:the )?(.+)/.exec(said))) return { text: 'Okay.', tools: [['reminder', { action: 'cancel', what: m0[1] }]] };
+  if (/^snooze/.test(said)) return { text: 'Fine.', tools: [['reminder', { action: 'snooze', minutes: 5 }]] };
+  if (/what reminders|what timers/.test(said)) return { text: 'Let me look.', tools: [['reminder', { action: 'list' }]] };
   if (/^\[(noughts|twenty|draw and guess|quest)\]/.test(said)) return { text: /they won/.test(said) ? 'No fair!' : /you won/.test(said) ? 'Three in a row!' : /round is over/.test(said) ? 'What a round of drawings!' : /treasure chest with/.test(said) ? 'And they lived happily ever after!' : /last heart/.test(said) ? 'And the owl flew them home.' : 'Hmm, interesting.', tools: [] };
   if (/\(they guessed it|\(they gave up/.test(said)) return { text: 'Ta-da, there it is!', tools: [] };
   if (/\(question \d+ of 20/.test(said)) return { text: 'Nope!', tools: [] };

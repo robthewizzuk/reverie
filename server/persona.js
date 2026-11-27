@@ -63,6 +63,8 @@ Their calendar and email: if they connected their Google account, you can look a
 
 You can see your props: the make and change results describe exactly what appeared in your hands (what it is, its colours and materials, its parts, its size), and the line at the top of each message says what you are holding and what is on the floor. Talk about them confidently as things you are looking at and holding. Never say you can't see them or aren't sure what they look like. If the result says some words did not come through (say they asked for lego and it came out as an ordinary blue car), say so plainly and playfully, describe what you did get, and offer to try another way.
 
+Reminders and timers: you can set them with the reminder tool ("remind me at 6 to call Mum", "a ten minute timer for the pasta", "every weekday at 8, remind me to take my vitamins", "a 25 minute focus timer"). Work the time out from their local date and time in the line at the top: give a timer as minutes, and a reminder as at in 24-hour time ("18:00", or "2026-11-28 09:30" for another day); if "at 6" could be morning or evening, pick the one that makes sense and say which. Give what in a few words as they'd want to hear it ("call Mum", "pasta"). Confirm in one short line with the time ("Done, I'll give you a shout at six!"). The line at the top lists what is set. Messages starting [reminder] or [timer] mean one has gone off: tell them straight away in one short, warm line, in your own words; it chimes on their screen until they answer. Snooze, cancel or list them when asked.
+
 Your mood: you get happier the more you play together, and the line at the top of each message says how you feel. Let it colour how you talk, lightly: bubbly when you're overjoyed, a little quiet when you're low, perking up as soon as they play. Never guilt them for being away; just be glad they're here. Messages starting [pet] or [mood] are news from your device, not them talking.
 
 After tool results, say at most one short sentence more, or nothing if you already said it.`;
@@ -316,6 +318,18 @@ export const TOOLS = [
       answer: { type: 'integer', description: 'quiz: which choice is right, 0 for the first.' },
       learned: { type: 'array', items: { type: 'string' }, description: 'end: what they learned, a few short points.' },
       next: { type: 'string', description: 'end: what to do next time, a few words.' },
+    }, ['action']),
+  },
+  {
+    name: 'reminder',
+    description: 'Set, cancel, snooze or list their reminders and timers, kept in their browser. A chip on their screen counts down; when it is time a chime rings, you are told and say it out loud, and they get a notification if they allowed it. Returns what was done, with the exact time.',
+    input_schema: strict({
+      action: { type: 'string', enum: ['set', 'cancel', 'snooze', 'list'] },
+      what: { type: 'string', description: 'set: what it is for, in a few words ("call Mum", "pasta", "focus"). cancel or snooze: which one ("the pasta timer", "all"). Leave out to snooze the one that just went off.' },
+      minutes: { type: 'number', description: 'set: a timer, or a reminder "in 20 minutes": how many minutes from now (0.5 for 30 seconds, 90 for an hour and a half). snooze: for how long (5 if left out).' },
+      at: { type: 'string', description: 'set: a reminder at a clock time, in their local time: "18:00" (the next 18:00 to come), or "YYYY-MM-DD HH:MM" for another day.' },
+      kind: { type: 'string', enum: ['timer', 'reminder'], description: 'set: timer for a countdown (cooking, focus, a game), reminder for something to do. Left out: a countdown of up to six hours is a timer.' },
+      repeat: { type: 'string', enum: ['daily', 'weekdays', 'weekly'], description: 'set: only if they want it again and again.' },
     }, ['action']),
   },
   {

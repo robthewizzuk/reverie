@@ -20,6 +20,8 @@ export function reverieApi(env) {
     name: 'reverie-api',
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
+        // (push for reminders runs on the Worker only: here the page keeps them while it is open)
+        if ((req.url || '').startsWith('/api/push')) { res.statusCode = 404; res.setHeader('content-type', 'application/json'); return res.end('{"error":"push runs on the Worker only"}'); }
         const path = req.url || '', google = path.startsWith('/api/google/');
         const warm = path.startsWith('/api/warm'), helpers = path.startsWith('/api/helpers');
         if (!path.startsWith('/api/turn') && !google && !warm && !helpers) return next();

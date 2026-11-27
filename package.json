@@ -18,6 +18,7 @@
     "test:sounds": "node tests/sounds.mjs",
     "test:fluid": "node tests/fluid.mjs",
     "latency": "node tests/latency.mjs",
+    "test:reminders": "node tests/reminders.mjs && node tests/push.mjs",
     "worker:dev": "npm run build && cd worker && wrangler dev",
     "deploy": "npm run build && cd worker && wrangler deploy"
   },
