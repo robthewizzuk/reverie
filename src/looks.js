@@ -1,10 +1,11 @@
 // How Reverie sounds and looks, as it chose when asked ("talk like a pirate", "go purple"), kept on this device.
-// The voice is one of the engine's built-in voices (voices.js) with the engine's size, liveliness and effects on top.
+// The voice is one of the engine's built-in voices (voices.js) with the engine's size, liveliness and effects on top,
+// its pitch and pace, and the echo of the room it talks in (through the engine's mixer).
 // The colours are its plush body and its glowing core.
-import { byName, EFFECTS } from './voices.js';
+import { byName, EFFECTS, ECHOES, fxFor } from './voices.js';
 
 // Its own voice: a British woman's, a little smaller and livelier than she is (the same one it always had).
-export const DEFAULT_VOICE = { name: '', size: .92, lively: .65, effect: 'none' };
+export const DEFAULT_VOICE = { name: '', size: .92, lively: .65, effect: 'none', pitch: 1, speed: 1, echo: 'none' };
 export const DEFAULT_COLOURS = { body: '#e8dccb', glow: '#ff5200' };
 
 const KEY = 'reverie.looks.v1';
@@ -45,7 +46,10 @@ function tidyVoice(input, base) {
   }
   if (input.size != null) { const s = num(input.size, .7, 1.4); if (s == null) return { error: 'size must be a number' }; out.size = s; }
   if (input.lively != null) { const l = num(input.lively, 0, 1); if (l == null) return { error: 'lively must be a number' }; out.lively = l; }
-  if (input.effect != null) { const e = String(input.effect).toLowerCase(); if (!EFFECTS.includes(e)) return { error: `effect must be one of ${EFFECTS.join(', ')}` }; out.effect = e; }
+  if (input.effect != null) { const e = String(input.effect).toLowerCase().replace(/[\s-]+/g, '_'); if (!EFFECTS.includes(e)) return { error: `effect must be one of ${EFFECTS.join(', ')}` }; out.effect = e; }
+  if (input.pitch != null) { const p = num(input.pitch, .6, 1.6); if (p == null) return { error: 'pitch must be a number' }; out.pitch = p; }
+  if (input.speed != null) { const r = num(input.speed, .7, 1.4); if (r == null) return { error: 'speed must be a number' }; out.speed = r; }
+  if (input.echo != null) { const e = String(input.echo).toLowerCase().replace(/[\s-]+/g, '_'); if (!(e in ECHOES)) return { error: `echo must be one of ${Object.keys(ECHOES).join(', ')}` }; out.echo = e; }
   return { voice: out };
 }
 
@@ -68,11 +72,17 @@ export function sayOptions() {
   // (a voice by name: the fragment is its name as the engine lists it, "Jule (built in", so "jule" never finds "jules")
   const voice = v.name ? { like: [v.name.replace(/_/g, ' ') + ' (built in'] } : { kind: 'woman', lang: ['en-GB'], take: 2 };
   const size = Math.max(.7, Math.min(1.4, v.size * (t.size ?? 1))), lively = Math.max(0, Math.min(1, v.lively + (t.lively ?? 0)));
-  return { voice, respell: SAY_AS, size: +size.toFixed(3), lively: +lively.toFixed(3), ...(t.mood ? { mood: t.mood } : {}), ...(v.effect !== 'none' ? { fx: v.effect } : {}) };
+  const fx = fxFor(v.effect);
+  return { voice, respell: SAY_AS, size: +size.toFixed(3), lively: +lively.toFixed(3), ...(t.mood ? { mood: t.mood } : {}), ...(fx ? { fx } : {}),
+    ...(v.pitch !== 1 ? { pitch: v.pitch } : {}), ...(v.speed !== 1 ? { rate: v.speed } : {}) };
 }
 
+/** The echo of the room it talks in, for gs.sound.mixer.place: { tail, wet, echo, delay } or null for none. */
+export const echoNow = () => ECHOES[now.voice.echo] || null;
+
 /** A sentence saying what a voice is, for Claude. */
-const told = v => `${v.name ? `${v.name.replace(/_/g, ' ')} (${byName.get(v.name).about})` : 'your own voice'}, size ${v.size.toFixed(2)}, liveliness ${v.lively.toFixed(2)}, ${v.effect === 'none' ? 'no effect' : `the ${v.effect} effect`}`;
+const told = v => `${v.name ? `${v.name.replace(/_/g, ' ')} (${byName.get(v.name).about})` : 'your own voice'}, size ${v.size.toFixed(2)}, liveliness ${v.lively.toFixed(2)}, ${v.effect === 'none' ? 'no effect' : `the ${v.effect.replace(/_/g, ' ')} effect`}`
+  + `${v.pitch !== 1 ? `, pitch ${v.pitch.toFixed(2)}` : ''}${v.speed !== 1 ? `, speed ${v.speed.toFixed(2)}` : ''}${v.echo !== 'none' ? `, with the echo of a ${v.echo.replace(/_/g, ' ')}` : ''}`;
 
 /** The voice tool: changes what was given, keeps the rest. Returns { text, error? }. */
 export function setVoice(input = {}) {

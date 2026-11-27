@@ -10,6 +10,7 @@
 //   "roll ..."        -> roll;  "quiz me" -> play quiz;  "[quiz] ..." -> a quip;  "answer b" -> game_move;  "draw" -> doodle;  "[doodle] ..." -> a quip
 //   "square <x>"      -> game_move (noughts);  "[noughts|twenty|draw and guess] ..." -> a quip;  a counted question -> "Nope!"
 //   "make me a pet fox called pip" -> pet make;  "pet sit" -> pet trick;  "[pet] ..." / "[mood] ..." -> a quip
+//   "tell me a joke" -> a line with sound cues;  "a ghost in a cave" / "helium" -> voice with an effect, echo, pitch and speed
 //   anything else     -> a friendly line with a wave
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const lastUser = messages => [...messages].reverse().find(m => m.role === 'user');
@@ -92,6 +93,9 @@ function plan(body) {
   if ((m = /make (?:me )?(an? .+|some .+)/.exec(said))) return { text: 'Ooh, one coming right up!', tools: [['act', { gesture: 'tada', mood: 'excited' }], ['make', { words: m[1] }]] };
   if ((m = /^(?:wear|put on|dress up as) (?:a |an |the |your )?(.+?)(?: in (#?\w+))?$/.exec(said))) return { text: 'Ooh, dressing up!', tools: [['wear', { put_on: [m[1]], ...(m[2] ? { colour: m[2] } : {}) }]] };
   if ((m = /^take (?:off )?(?:your |the )?(.+?)(?: off)?$/.exec(said)) && !/^(it|a|the) /.test(m[1])) return { text: 'Okay, off it comes.', tools: [['wear', { take_off: [m[1]] }]] };
+  if (/joke/.test(said)) return { text: 'Why did the cookie go to the doctor? It felt crumby. [rimshot] And the winner of worst joke is [drumroll] me! [Tada]', tools: [] };
+  if (/ghost in a cave/.test(said)) return { text: 'Ooooh, spooky.', tools: [['voice', { effect: 'ghost', echo: 'cave' }]] };
+  if (/helium/.test(said)) return { text: 'Breathe in!', tools: [['voice', { pitch: 1.5, speed: 1.1, effect: 'walkie talkie' }]] };
   if (/pirate/.test(said)) return { text: 'Arr, give me a moment.', tools: [['voice', { name: 'captain_silas_blackwater' }]] };
   if (/normal voice/.test(said)) return { text: 'Back to me.', tools: [['voice', { reset: true }]] };
   if (/purple|colou?r/.test(said)) return { text: 'Ooh, a new look.', tools: [['colours', { body: '#c8b4ee', glow: '#30a0ff' }]] };

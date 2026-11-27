@@ -203,7 +203,9 @@ export function makeShow({ el, world, onNews = () => {}, onOpen = () => {} }) {
   el.addEventListener('click', e => { const id = e.target.closest('button')?.dataset.id; if (id) press(id); });
 
   const show = {
-    get open() { return !el.hidden; },
+    /** Whether the window is open now. (Not `open`: that is the method below, and a getter of the same name would be
+     * overwritten by it, leaving show.open always truthy, so the camera button only ever closed the window.) */
+    get isOpen() { return !el.hidden; },
     get hunting() { return hunt?.name || null; },
     get gifts() { return gifts; },
     /** Opens the window and the camera (the browser asks the first time). o.find: something to hunt for. Resolves a sentence for Claude. */

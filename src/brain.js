@@ -4,7 +4,9 @@
 // little more. Talking over it stops it at once.
 import gs from '../engine/src/gamescroll.js';
 import { weather, contextLine } from './place.js';
-import { sayOptions, setVoice, voiceNow } from './looks.js';
+import { sayOptions, setVoice, voiceNow, echoNow } from './looks.js';
+import { splitCues } from './cues.js';
+import { playCue } from './sounds.js';
 import { GAMES } from './games/index.js';
 
 const API = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '') + '/api/turn';
@@ -32,21 +34,28 @@ function near(a, b) {
   return d + (a.length - i) + (b.length - j) <= 1;
 }
 
-/** Says sentences in order, one after another, with the mouth moving; the next is written while one is said. */
+// The room's echo (looks.js): set on the mixer before each line, so a voice change is heard from its next word
+// (and it comes back if anything reset the mixer)
+const roomEcho = () => { try { gs.sound.mixer.place(echoNow(), .3); } catch { /* no audio yet */ } };
+
+/** Says sentences in order, one after another, with the mouth moving; the next is written while one is said.
+ * A sound cue in the words ("[drumroll]", cues.js) plays in its place, between the words before and after it. */
 function makeSpeaker(creature, onCaption) {
   let queue = [], busy = false, epoch = 0, buf = '', idle = Promise.resolve(), endIdle = () => {};
   // what it said lately, as words, so the mic can tell its own voice from yours (said: { words, until })
   let said = [];
   const wait = ms => new Promise(r => setTimeout(r, ms));
+  const nextLine = () => queue.find(x => typeof x === 'string');
   async function run(my) {
     busy = true; creature.state.speaking = true;
     while (queue.length && my === epoch) {
       const line = queue.shift();
+      if (typeof line !== 'string') { roomEcho(); const s = playCue(line.cue); if (s > 0) await wait(s * 1000); continue; }
       // the bubble shows when the voice starts, not while the line is still being made ready
       let shown = false; const show = () => { if (!shown && my === epoch) { shown = true; onCaption(line); } };
       said.push({ words: new Set(wordsOf(line)), until: Infinity }); if (said.length > 6) said.shift();
-      const t0 = performance.now();
-      if (queue[0]) gs.sound.prepare(queue[0], sayOptions()).catch(() => {});
+      const t0 = performance.now(); roomEcho();
+      const next = nextLine(); if (next) gs.sound.prepare(next, sayOptions()).catch(() => {});
       const ok = await creature.say(line, sayOptions(), show).catch(() => false);
       show();   // (no voice here: the bubble alone, for as long as it takes to read)
       // no voice here (a browser that can't speak): give the line the time it takes to read
@@ -55,12 +64,16 @@ function makeSpeaker(creature, onCaption) {
     }
     if (my === epoch) { busy = false; creature.state.speaking = false; endIdle(); }
   }
-  function push(line) {
-    line = spoken(line); if (!line) return;
-    queue.push(line);
-    if (!busy) { idle = new Promise(r => { endIdle = r; }); run(epoch); }
-    else if (queue.length === 1) gs.sound.prepare(line, sayOptions()).catch(() => {});
+  function push(text) {
+    let added = 0;
+    for (const part of splitCues(text)) {
+      const line = typeof part === 'string' ? spoken(part) : part; if (!line) continue;
+      queue.push(line); added++;
+      if (busy && typeof line === 'string' && nextLine() === line) gs.sound.prepare(line, sayOptions()).catch(() => {});
+    }
+    if (added && !busy) { idle = new Promise(r => { endIdle = r; }); run(epoch); }
   }
+  const words = () => [...queue.filter(x => typeof x === 'string'), buf].join(' ').trim();
   return {
     /** Text as it streams in: each whole sentence goes to the voice straight away. */
     feed(text) {
@@ -75,14 +88,14 @@ function makeSpeaker(creature, onCaption) {
     },
     flush() { if (buf.trim()) push(buf); buf = ''; },
     /** Everything said so far in this reply that is still to come, for "you were interrupted". */
-    get pending() { return [...queue, buf].join(' ').trim(); },
+    get pending() { return words(); },
     get talking() { return busy; },
     /** The words in `text` that are not its own voice coming back through the mic: everything while it is quiet, and
      * only the words it has not just said while it talks or has just stopped (an echo reaches the mic late). */
     yours(text) {
       const now = performance.now(), mine = new Set();
       for (const x of said) if (now - x.until < ECHO_KEEP) for (const w of x.words) mine.add(w);
-      for (const w of wordsOf([...queue, buf].join(' '))) mine.add(w);   // (about to be said: the reply streams ahead of the voice)
+      for (const w of wordsOf(words())) mine.add(w);   // (about to be said: the reply streams ahead of the voice)
       const words = wordsOf(text);
       return { words, yours: mine.size ? words.filter(w => !mine.has(w) && ![...mine].some(m => near(w, m))) : words };
     },
@@ -118,7 +131,8 @@ function checkInput(name, input) {
   if ((name === 'make' || name === 'change') && (typeof input.words !== 'string' || !input.words.trim())) return 'words must be text';
   if (name === 'weather' && input.place != null && typeof input.place !== 'string') return 'place must be text';
   if (name === 'voice' && input.name != null && typeof input.name !== 'string') return 'name must be text';
-  if (name === 'voice' && ['size', 'lively'].some(k => input[k] != null && typeof input[k] !== 'number')) return 'size and lively must be numbers';
+  if (name === 'voice' && ['size', 'lively', 'pitch', 'speed'].some(k => input[k] != null && typeof input[k] !== 'number')) return 'size, lively, pitch and speed must be numbers';
+  if (name === 'voice' && ['effect', 'echo'].some(k => input[k] != null && typeof input[k] !== 'string')) return 'effect and echo must be names';
   if (name === 'colours' && ['body', 'glow'].some(k => input[k] != null && typeof input[k] !== 'string')) return 'colours must be text';
   if (name === 'wear' && (['put_on', 'take_off'].some(k => input[k] != null && !(Array.isArray(input[k]) ? input[k].every(w => typeof w === 'string') : typeof input[k] === 'string')) || (input.colour != null && typeof input.colour !== 'string'))) return 'put_on and take_off must be lists of names, colour text';
   if (name === 'act' && (!GESTURES.includes(input.gesture) || !MOODS.includes(input.mood))) return 'unknown gesture or mood';
