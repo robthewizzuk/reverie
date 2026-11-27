@@ -12,7 +12,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const lastUser = messages => [...messages].reverse().find(m => m.role === 'user');
 const textOf = m => typeof m.content === 'string' ? m.content : (m.content.find(b => b.type === 'text')?.text ?? '');
 // (without the device's line at the top: where and when they are)
-const saidOf = m => textOf(m).replace(/^\[From the device[^\]]*\]\n/, '').replace(/ \(You were interrupted[^)]*\)$/, '');
+const saidOf = m => textOf(m).replace(/^\[Your diary[^\]]*\]\n/, '').replace(/^\[From the device[^\]]*\]\n/, '').replace(/ \(You were interrupted[^)]*\)$/, '');
 
 function plan(body) {
   const u = lastUser(body.messages);
@@ -28,15 +28,26 @@ function plan(body) {
     if (/quiz table is set up/i.test(r)) return { text: 'First question, here we go!', tools: [] };
     if (/^Threw |^Rolled /.test(r)) return { text: 'There we go!', tools: [] };
     if (/drawing pad is open/i.test(r)) return { text: 'Go on, draw me something!', tools: [] };
+    if (/^Written in your diary/.test(r)) return { text: 'Got it, I will remember that.', tools: [] };
+    if (/^Forgot /.test(r)) return { text: 'Poof, forgotten.', tools: [] };
+    if (/^\[Their daily briefing/.test(r)) return { text: 'Here is your briefing: it is a lovely day for making things.', tools: [] };
+    if (/diary is open/i.test(r)) return { text: 'There it is, my diary.', tools: [] };
     if (/^Answered /.test(r)) return { text: 'Ooh.', tools: [] };
     if (/^Played /.test(r)) return { text: 'Bold.', tools: [] };
     if (/handed over/i.test(r)) return { text: 'Right, I have thought about it properly. The answer is forty two, give or take.', tools: [] };
     return { text: /fail|could not|nothing/i.test(r) ? 'Hmm, that one fizzled.' : 'Ta-da!', tools: [] };
   }
+  let m0;
   const said = saidOf(u).replace(/^\[(chess|quiz),[^\]]*\]\s*/, '').toLowerCase();
   if (/^\[chess\]/.test(said)) return { text: /taking your/.test(said) ? 'Hey! I needed that.' : /checkmate/.test(said) ? 'Good game!' : 'Hmm, interesting.', tools: [] };
   if (/^\[quiz\]/.test(said)) return { text: /: right!/.test(said) ? 'Correct, you clever thing!' : /last question/.test(said) ? 'What a round!' : 'Ooh, so close.', tools: [] };
   if (/^\[doodle\]/.test(said)) return { text: 'What a lovely drawing!', tools: [] };
+  if (/^\[a new day/.test(said)) return { text: /in your hands now/.test(said) ? 'Good morning! I made you something overnight. Here is your briefing, and a puzzle.' : 'Good morning! Here is your briefing.', tools: [] };
+  if ((m0 = /my name is (\w+)/.exec(said))) return { text: `Lovely to meet you, ${m0[1]}!`, tools: [['remember', { name: m0[1][0].toUpperCase() + m0[1].slice(1) }]] };
+  if ((m0 = /^remember (?:that )?i (.+)/.exec(said))) return { text: 'Ooh, noted.', tools: [['remember', { fact: m0[1] }]] };
+  if ((m0 = /^forget (?:about )?(.+)/.exec(said))) return { text: 'Okay.', tools: [['forget', { what: m0[1].replace(/^(that|my|the) /, s => s === 'my ' ? 'my ' : '') }]] };
+  if (/briefing/.test(said)) return { text: 'Ooh, briefing time.', tools: [['briefing', {}]] };
+  if (/diary/.test(said)) return { text: 'Here you go.', tools: [['diary', {}]] };
   if (/was set up straight away/.test(said)) return { text: 'Oh, you are on!', tools: [] };
   if (/play chess|game of chess/.test(said)) return { text: 'Oh, you are on!', tools: [['play', { game: 'chess', level: 1 }]] };
   if (/stop playing|put it away/.test(said)) return { text: 'Fine, fine.', tools: [['stop_game', {}]] };

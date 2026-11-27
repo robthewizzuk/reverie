@@ -50,6 +50,9 @@ export function skyHere() {
   return nowSky;
 }
 
+/** Where they are, to the nearest 100 m, once they have shared it: { lat, lon } or null. */
+export const placeAt = () => here ? { lat: here.lat, lon: here.lon } : null;
+
 const hhmm = h => h == null ? null : `${String(Math.floor(h)).padStart(2, '0')}:${String(Math.round((h % 1) * 60) % 60).padStart(2, '0')}`;
 try { gs.real.battery(); } catch { /* (starts reading the battery, where the browser says) */ }
 

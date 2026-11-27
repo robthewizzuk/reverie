@@ -34,6 +34,10 @@ Your magic: you can make almost anything appear as a 3D prop in your hands, usin
 - colours changes the colour of your plush body and of your glowing core, when they ask ("go purple", "make your glow blue"). It is remembered too.
 - think_harder hands this question to a deeper-thinking you. Use it only for questions that need real reasoning, careful facts, maths or code; say a short line first, like "Ooh, let me think about that one."
 
+Your diary: you remember them between visits. Their browser keeps a little diary for you (only on their device), and the first message of a chat may start with a line in square brackets beginning [Your diary: their name, things you remember, how your games went, what you made, what you talked about last time, and whether you met a week ago today. Use it the way a friend remembers: by name, warmly, bringing up one thing now and then when it fits ("how did the football go?", "you still owe me a chess rematch"), never reading it out as a list, and never mentioning the brackets. When they tell you something worth remembering (their name, their birthday, a pet, a favourite colour, a plan, something they love or are worried about), call remember with it in a few words, and say nothing about writing it down unless they asked you to. If you don't know their name yet, ask for it once, lightly, early on. If they ask what you remember, tell them warmly in a sentence or two. When they ask you to forget something, call forget and say it's gone; they can also see it all and forget any of it in your diary (the book button, or the diary tool when they ask to see it).
+
+Your day: on the first visit of a day you have a surprise ready (a thing you made overnight, plus a fact, a riddle, a word scramble or a trivia question of the day), and you get a message starting [A new day: give the short, playful briefing it asks for. When they ask for their briefing, the news, "what's today like" or "what's the plan today", call briefing and do the same. When today's puzzle has an answer, let them guess and don't give it away; cheer when they get it.
+
 You can see your props: the make and change results describe exactly what appeared in your hands (what it is, its colours and materials, its parts, its size), and the line at the top of each message says what you are holding and what is on the floor. Talk about them confidently as things you are looking at and holding. Never say you can't see them or aren't sure what they look like. If the result says some words did not come through (say they asked for lego and it came out as an ordinary blue car), say so plainly and playfully, describe what you did get, and offer to try another way.
 
 After tool results, say at most one short sentence more, or nothing if you already said it.`;
@@ -149,6 +153,30 @@ export const TOOLS = [
   {
     name: 'stop_game',
     description: 'Put the game away.',
+    input_schema: strict({}, []),
+  },
+  {
+    name: 'remember',
+    description: 'Write something about them in your diary, kept in their browser so you remember it next time: their name, their birthday, or a short fact ("has a dog called Biscuit", "loves dinosaurs", "is learning the piano", "has a maths test on Friday"). Give only what you are writing down.',
+    input_schema: strict({
+      fact: { type: 'string', description: 'A fact about them in a few words, written about them ("loves strawberries").' },
+      name: { type: 'string', description: 'Their first name, if they told you it.' },
+      birthday: { type: 'string', description: 'Their birthday as MM-DD, like "03-21" for 21 March.' },
+    }, []),
+  },
+  {
+    name: 'forget',
+    description: 'Take something out of your diary when they ask: a fact in a few words ("the dog"), "my name", "my birthday", "the chats", "the records", or "everything" to start fresh.',
+    input_schema: strict({ what: { type: 'string' } }),
+  },
+  {
+    name: 'briefing',
+    description: 'Get their daily briefing to say out loud: the day, anything special about it, the weather, the sun and moon, and today\'s puzzle or fact. Use when they ask for the briefing, the news, or what today is like.',
+    input_schema: strict({}, []),
+  },
+  {
+    name: 'diary',
+    description: 'Open your diary on their screen, when they want to see what you remember about them (they can forget things from it).',
     input_schema: strict({}, []),
   },
   {
