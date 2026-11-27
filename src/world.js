@@ -642,6 +642,8 @@ export function makeWorld() {
     get physics() { return world; },
     /** The bodies of everything loose on the floor: props thrown down and broken bits. */
     floorBodies: () => [...loose.map(e => e.body), ...(rubble?.list || []).map(m => m.body)].filter(b => b && !b.dead),
+    /** A little shower of sparks at a point in the room (trophies.js). */
+    sparks: (p, colour, n) => stage.sparks(p, colour, n),
     /** A burst of confetti round it, and a little hop (a birthday, a streak). */
     celebrate() {
       creature.gesture('tada'); creature.mood('excited');

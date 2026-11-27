@@ -5,6 +5,7 @@
 // chat lines are boiled down into recaps by the same thinking that answers you (recap.js), while learning is on.
 // At the bottom, Gmail and the calendar can be connected or disconnected.
 import { prettyDay, daysBetween, dayOf, KINDS } from './memory.js';
+import { FAMILIES, ICONS } from './achievements.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const nice = ymd => new Date(ymd + 'T12:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
@@ -12,7 +13,7 @@ const btns = (edit, forget, label) => `<button type="button" data-edit="${esc(ed
 
 /** el: the #diary element. memory: memory.js. onForget(): after anything is forgotten or changed (so the chat reads it again).
  * extra(): more sections of the sheet as HTML (the lessons, from learn.js), or ''. */
-export function makeDiary({ el, memory, today = () => ({}), onForget = () => {}, google = null, extra = () => '' }) {
+export function makeDiary({ el, memory, achievements = null, today = () => ({}), onForget = () => {}, google = null, extra = () => '' }) {
   const body = el.querySelector('.pages'), wipe = el.querySelector('[data-id="wipe"]');
   let armed = 0, editing = null;
 
@@ -51,6 +52,7 @@ export function makeDiary({ el, memory, today = () => ({}), onForget = () => {},
     if (r.doodles) rec.push(`Drawings turned real: ${r.doodles}`);
     if (r.rolls) rec.push(`Dice rolled: ${r.rolls}`);
     if (rec.length) parts.push(`<section><h3>Records</h3><ul>${rec.map(x => `<li>${esc(x)}</li>`).join('')}</ul><button type="button" class="small" data-forget="records">Reset records</button></section>`);
+    if (achievements) parts.push(badges());
     const days = Object.keys(m.days).sort().reverse().slice(0, 14);
     if (days.length) parts.push(`<section><h3>Our days</h3>${days.map(x => `<div class="day"><b>${k(x, d)}</b><span>${esc(m.days[x].join(' · '))}</span></div>`).join('')}</section>`);
     if (m.chat.length) parts.push(`<section><h3>What we said lately</h3><ul class="chat">${m.chat.slice(-8).map(x => `<li class="${x.who === 'you' ? 'you' : 'me'}">${esc(x.text)}</li>`).join('')}</ul><button type="button" class="small" data-forget="the chats">Forget our chats</button></section>`);
@@ -71,6 +73,16 @@ export function makeDiary({ el, memory, today = () => ({}), onForget = () => {},
     memory.edit(id, box.value);   // (empty: forgotten)
     editing = null; onForget('a change'); render();
   }
+  /** The badges: each family's, earned ones in their metal, the rest faded with how far along they are. */
+  function badges() {
+    const list = achievements.list(), t = achievements.tally;
+    const fams = Object.keys(FAMILIES).filter(f => list.some(a => a.family === f));
+    return `<section class="badges"><h3>Badges <small>${t.got} of ${t.of}</small></h3>${fams.map(f => `<h4>${esc(FAMILIES[f].title)}</h4><ul>${list.filter(a => a.family === f).map(a => {
+      const hidden = a.secret && !a.got, title = hidden ? 'A secret badge' : a.title, about = hidden ? 'Keep playing to find it' : a.got ? `You ${a.about}` : `${a.about[0].toUpperCase() + a.about.slice(1)}${a.at > 1 ? ` (${a.have} of ${a.at})` : ''}`;
+      return `<li class="${a.got ? 'got ' + a.tier : 'locked'}" title="${esc(about)}"><span class="medal" aria-hidden="true">${hidden ? '?' : ICONS[f]}</span><b>${esc(title)}</b><small>${esc(about)}</small>${!a.got && a.at > 1 && !hidden ? `<i style="width:${Math.round(a.have / a.at * 100)}%"></i>` : ''}</li>`;
+    }).join('')}</ul>`).join('')}</section>`;
+  }
+
   el.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.id === 'close') return hide();
@@ -103,6 +115,7 @@ export function makeDiary({ el, memory, today = () => ({}), onForget = () => {},
   // (the diary changes as they chat: it shows that, but never under a box they're typing in)
   memory.onChange(() => { if (!el.hidden && !editing && !el.contains(document.activeElement?.closest?.('input[type="text"], select'))) render(); });
   google?.onChange(() => { if (!el.hidden && !editing) render(); });
+  achievements?.onChange(() => { if (!el.hidden && !editing) render(); });
   function show() { editing = null; render(); disarm(); el.hidden = false; }
   function hide() { el.hidden = true; editing = null; }
   return { show, hide, get open() { return !el.hidden; } };

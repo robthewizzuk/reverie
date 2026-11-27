@@ -17,6 +17,7 @@
 //   "set a timer for <n> seconds|minutes [for <x>]" / "remind me at <time> to <x>" / "cancel the <x>" / "snooze it" /
 //   "what reminders" -> reminder;  "[reminder|timer] ..." -> a line saying so
 //   "find me <x>[ under £n]" -> shop find;  "[shop] ..." -> a quip;  "buy number <n>" / "buy it" -> shop buy;  "show my shopping" -> shop show
+//   "my badges" -> badges;  "[achievement] ..." -> a cheer with a fanfare
 //   "tell me a joke" -> a line with sound cues;  "a ghost in a cave" / "helium" -> voice with an effect, echo, pitch and speed
 //   "what's on today" -> calendar list;  "add <x> tomorrow at <h>" -> calendar add;  "check my email" -> email inbox
 //   "reply to sam ..." -> email draft;  "send it" -> email send;  "[calendar|email|google] ..." -> a quip
@@ -25,7 +26,7 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const lastUser = messages => [...messages].reverse().find(m => m.role === 'user');
 const textOf = m => typeof m.content === 'string' ? m.content : (m.content.find(b => b.type === 'text')?.text ?? '');
 // (without the device's line at the top: where and when they are)
-const saidOf = m => textOf(m).replace(/^\[(Your diary|Learning together|From the device)[^\]]*\]\n/gm, '').replace(/ \(You were interrupted[^)]*\)$/, '');
+const saidOf = m => textOf(m).replace(/^\[(Your diary|Learning together|Badges they have|From the device)[^\]]*\]\n/gm, '').replace(/ \(You were interrupted[^)]*\)$/, '');
 
 function plan(body) {
   const u = lastUser(body.messages);
@@ -53,6 +54,7 @@ function plan(body) {
     if (/^Written in your diary/.test(r)) return { text: 'Got it, I will remember that.', tools: [] };
     if (/^Forgot /.test(r)) return { text: 'Poof, forgotten.', tools: [] };
     if (/^\[Their daily briefing/.test(r)) return { text: 'Here is your briefing: it is a lovely day for making things.', tools: [] };
+    if (/^(No badges yet|They have \d+ of \d+ badges)/.test(r)) return { text: 'Look at all those trophies!', tools: [] };
     if (/diary is open/i.test(r)) return { text: 'There it is, my diary.', tools: [] };
     if (/^(Smashed|Sliced) /.test(r)) return { text: 'Oops! Well, that was fun.', tools: [] };
     if (/^(Six little fireworks|Confetti|Magic|Bubbles|It snowed|Hearts)/.test(r)) return { text: 'Pretty!', tools: [] };
@@ -81,7 +83,7 @@ function plan(body) {
     return { text: /fail|could not|nothing/i.test(r) ? 'Hmm, that one fizzled.' : 'Ta-da!', tools: [] };
   }
   let m0;
-  const said = saidOf(u).replace(/^\[[a-z ]+[,:][^\]]*\]\s*/, '').toLowerCase().replace(/^(\[(pet|mood|game)\][^\n]*\n+)+(?=\S)/, '');
+  const said = saidOf(u).replace(/^\[[a-z ]+[,:][^\]]*\]\s*/, '').toLowerCase().replace(/^(\[(pet|mood|game|achievement)\][^\n]*\n+)+(?=\S)/, '');
   if (/^\[(reminder|timer)\]/.test(said)) return { text: /\[timer\]/.test(said) ? "Ding ding, time's up!" : 'Psst, it is time!', tools: [] };
   if ((m0 = /set a timer for (\d+(?:\.\d+)?) (seconds?|minutes?)(?: for (?:the )?(.+))?/.exec(said))) return { text: 'Timer coming up.', tools: [['reminder', { action: 'set', kind: 'timer', minutes: +m0[1] / (m0[2][0] === 's' ? 60 : 1), what: m0[3] || '' }]] };
   if ((m0 = /remind me at (\S+) to (.+)/.exec(said))) return { text: 'I will.', tools: [['reminder', { action: 'set', at: m0[1], what: m0[2] }]] };
@@ -89,6 +91,8 @@ function plan(body) {
   if (/^snooze/.test(said)) return { text: 'Fine.', tools: [['reminder', { action: 'snooze', minutes: 5 }]] };
   if (/what reminders|what timers/.test(said)) return { text: 'Let me look.', tools: [['reminder', { action: 'list' }]] };
   if (/^\[(noughts|twenty|draw and guess|quest)\]/.test(said)) return { text: /they won/.test(said) ? 'No fair!' : /you won/.test(said) ? 'Three in a row!' : /round is over/.test(said) ? 'What a round of drawings!' : /treasure chest with/.test(said) ? 'And they lived happily ever after!' : /last heart/.test(said) ? 'And the owl flew them home.' : 'Hmm, interesting.', tools: [] };
+  if (/^\[achievement\]/.test(said)) return { text: '[fanfare] Woohoo, a new badge for you!', tools: [] };
+  if (/\b(badges?|trophies|achievements?)\b/.test(said)) return { text: 'Let me look at my shelf.', tools: [['badges', {}]] };
   if (/\(they guessed it|\(they gave up/.test(said)) return { text: 'Ta-da, there it is!', tools: [] };
   if (/\(question \d+ of 20/.test(said)) return { text: 'Nope!', tools: [] };
   if (/\(the die is being thrown/.test(said)) return { text: 'Here it goes...', tools: [] };
@@ -167,7 +171,7 @@ function plan(body) {
   if (/weather|rain|sunny/.test(said)) return { text: 'Let me peek outside.', tools: [['weather', {}]] };
   if (/clear|tidy/.test(said)) return { text: 'Poof, all gone.', tools: [['clear', {}]] };
   if (/think|why|how does/.test(said)) return { text: 'Ooh, let me think about that one.', tools: [['think_harder', {}]] };
-  if (/^\[(pet|mood|game)\]/.test(said)) return { text: 'Aww.', tools: [] };
+  if (/^\[(pet|mood|game|achievement)\]/.test(said)) return { text: 'Aww.', tools: [] };
   return { text: 'Hello! I am a little test version of me. Ask me to make you something.', tools: [['act', { gesture: 'wave', mood: 'happy' }]] };
 }
 
