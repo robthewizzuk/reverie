@@ -3,6 +3,7 @@
 // lets the page make sound.
 import gs, { loadParts } from '../engine/src/gamescroll.js';
 import { speed, fpsFor, tick as tickHz, screenHz } from '../engine/src/kit/speed.js';
+import { audio } from '../engine/src/sfx.js';
 import { makeWorld } from './world.js';
 import { makeLook } from './look.js';
 import { makeBrain } from './brain.js';
@@ -11,7 +12,7 @@ import { Listener, sameWords } from './listen.js';
 import { askPlace, placeAt, weather, contextLine } from './place.js';
 import { makePad, madeFrom } from './doodle.js';
 import { makeMood, toneOf } from './mood.js';
-import { setTone, sayOptions, echoNow } from './looks.js';
+import { setTone, echoNow } from './looks.js';
 import { makeShow } from './show.js';
 import { makeMemory } from './memory.js';
 import { surpriseFor, briefingNote, funDay } from './daily.js';
@@ -56,7 +57,7 @@ const recapper = makeRecapper({ memory });
 // its badges, kept in this browser too (achievements.js), and their trophies on the shelf (trophies.js)
 const achievements = makeAchievements();
 const today = { surprise: null, holding: null, funDay: funDay() };
-let overnight = Promise.resolve(), hello = '';
+let overnight = Promise.resolve();
 // which kind of fun each of Claude's tools is, for its mood (mood.js FUN)
 const FUN_OF = { make: 'make', change: 'change', toss: 'toss', place: 'place', room_colours: 'room', colours: 'colours', roll: 'roll', doodle: 'doodle', play: 'game', game_move: 'move', voice: 'voice', show: 'show', smash: 'smash', effect: 'effect', music: 'music', dance: 'dance', teach: 'game', wear: 'wear', watch: 'watch', karaoke: 'game' };
 
@@ -72,6 +73,19 @@ speed.playing = () => !document.hidden;
 // OUT_PX). The 3D is drawn at its tier's size and blown up to this, so past that a big desktop window only paid for
 // a bigger upscale and finishing pass (a 1920 x 1080 window at 2x is 8.3 million), and looked no sharper.
 const MOST_PX = 2.4e6;
+
+// On a computer, the 3D is drawn at that size itself, not at a phone's budget for its quality level and blown up to it.
+// The engine's levels are sized for a phone's screen (high: 1.3 million pixels), so a laptop's 2.4 million pixel window
+// had its 3D drawn with about half the pixels and upscaled, and the upscaler, which builds each frame on the last ones,
+// stepped along the edges of a body that is always breathing and swaying: jagged outlines, and a dotted ring round the
+// core under its glass. One creature in one room is light work for a computer's graphics chip; if it can't keep up, the
+// engine still steps the size down, then the level, as it does for any game (and medium and low keep their own sizes).
+// Phones and tablets keep the engine's sizes: their screens are about a level's size already, and there the heat
+// counts. ?crisp tries it anywhere.
+const COMPUTER = matchMedia('(any-pointer: fine)').matches && !matchMedia('(pointer: coarse)').matches;
+const CRISP = COMPUTER || new URLSearchParams(location.search).has('crisp');
+// (the engine's 3D loads on first use, so its levels are reached once it has: boot)
+const crisp = async () => { if (CRISP) (await import('../engine/src/kit/hd3d.js')).HD.leastPx = MOST_PX; };
 
 function fit() {
   const r = stage.getBoundingClientRect();
@@ -183,6 +197,7 @@ async function boot() {
   fit(); new ResizeObserver(fit).observe(stage);   // (the stage changes size when the status line comes and goes, not only with the window)
   status.textContent = 'Waking up…';
   await loadParts(['hd', 'models', 'characters', 'physics3d', 'fx3d']);
+  await crisp();
   world = makeWorld();
   await whenLoaded(() => world.reset());
   world.resize(W, H);
@@ -319,6 +334,12 @@ async function boot() {
   world.play = (game, o) => { memory.note('play', { game }); return play0(game, o); };
   window.__reverie = { world, brain, body, gs, voice, pad, memory, learning, diary, today, mood, show, shaker, music, helpers, google, reminders, timers, recapper, shop, achievements, trophies, garden, watch, karaoke };
   achievements.onUnlock(celebrateBadge);
+  // its voice (about 48 MB the first time, then from the cache) loaded and its hello written while the light gets
+  // ready, so the tap is answered at once: the web version of the engine otherwise loads it with the first line, and
+  // a first visit's hello waited for the whole download (and went unsaid past 9 seconds)
+  const seen = memory.peek();
+  (seen.newDay && !seen.first ? Promise.race([overnight, wait(8000)]) : Promise.resolve())
+    .then(() => { if (!awake) return brain.prepare(helloFor(seen)).then(ok => console.info(`[reverie] hello ${ok ? 'ready' : 'not written ahead'}`)); });
   requestAnimationFrame(frame);
   // every shader the room needs, built in the background before it wakes (the driver's own threads), so none is built
   // in the middle of a chat: a whole room's shaders built in one frame was a stall of a second or more
@@ -336,8 +357,14 @@ const HELLOS = [
   "Hi! I'm Reverie, your little maker. Doodle it and I'll build it, ask and I'll paint the walls, or challenge me to chess, a quiz or the dice. I know the weather too!",
 ];
 
+// (picked once a visit, so the hello written ahead while it wakes is the one it says)
+const PICK = Math.random();
+/** What it says when woken: the tour the first time, after that a hello by name. */
+const helloFor = visit => visit.first ? HELLOS[Math.floor(PICK * HELLOS.length)] : welcome(visit);
+
 function wakeUp() {
   if (awake) return; awake = true; wake.hidden = true;
+  audio();   // (the page's sound started in the tap itself: a phone keeps it silent if it's only asked for later)
   const c = world.creature, visit = memory.visit();
   visited();
   c.gesture('wave'); c.mood('happy');
@@ -352,24 +379,21 @@ function wakeUp() {
   garden.greet();   // (what grew, or wants a drink, while they were away)
   world.daylight.sound(true);   // (the rain's patter, now the page may make sound)
   // (through its speaker, so the mic knows this is its voice): the tour the first time, after that a hello by name
-  brain.speak(visit.first ? hello || pick(HELLOS) : welcome(visit));
+  brain.speak(helloFor(visit));
   if (memory.birthdayToday() || [7, 30, 100].includes(memory.visits.streak) && visit.newDay) world.celebrate?.();
   // the browser's prompts, from this tap: the microphone, then where they are (for the weather and local things)
   const asked = startListening().finally(() => askPlace());
   if (visit.newDay && !visit.first) dailyBriefing(visit, asked).catch(e => console.warn('[reverie] briefing', e));
 }
 
-const pick = list => list[Math.floor(Math.random() * list.length)];
 
 /**
  * While it wakes, everything the first exchange needs is got ready, so the first hello and the first answer don't wait:
- * its voice (on the web the engine loads it with the first line said, a few seconds the first time) with the first
- * hello written ahead, and Claude's prompt read into the API's cache (the first turn then reads it instead).
+ * Claude's prompt read into the API's cache (the first turn then reads it instead); the voice and the hello are got
+ * ready in boot.
  */
 function warmUp() {
-  const visit = memory.peek();
-  if (visit.first) hello = pick(HELLOS);
-  gs.sound.prepare(hello || 'Hello again!', sayOptions()).catch(() => {});
+  // (its voice and its hello are written ahead in boot: brain.prepare(helloFor(...)))
   fetch(API_WARM, { method: 'POST' }).then(r => r.json()).then(r => console.info(`[reverie] warmed the prompt cache: ${r.ms ?? '?'} ms${r.error ? ', ' + r.error : ''}`)).catch(() => {});
 }
 const API_WARM = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '') + '/api/warm';
@@ -379,7 +403,7 @@ function welcome(visit) {
   const n = memory.name ? ', ' + memory.name : '', h = new Date().getHours();
   if (memory.birthdayToday()) return `Happy birthday${n}! Oh, this is the best day!`;
   const hi = h < 5 ? `Ooh, a midnight visit${n}!` : h < 12 ? `Good morning${n}!` : h < 17 ? `Good afternoon${n}!` : h < 22 ? `Good evening${n}!` : `Hello, night owl${n}!`;
-  if (!visit.newDay) return [`Welcome back${n}!`, `Oh, you're back${n}!`, `Hello again${n}!`][Math.floor(Math.random() * 3)];
+  if (!visit.newDay) return [`Welcome back${n}!`, `Oh, you're back${n}!`, `Hello again${n}!`][Math.floor(PICK * 3)];
   return hi + (visit.away > 6 ? " I've missed you!" : '') + (today.holding ? ' Look what I made while you were away!' : " I've got something for you.");
 }
 

@@ -39,6 +39,10 @@ function setup() {
   // parts that may still be loading go first: if one throws StillLoading, setup runs again from the top with nothing made
   const w3 = new gs.physics3d.World3D({ gravity: -9.81 });
   v = new HDView({ bg: '#2a1d16', fog: 0, fov: 36 });   // (its light, mood and finish: light.js)
+  // Edges smoothed in each frame (multisampling on high, FXAA below), not by the engine's usual SGSR 2, which smooths
+  // them from the frames before: on the creature, always breathing and swaying, and the glass over its glowing core, that
+  // history kept being thrown away, and its outline and the ring round its core came out stepped and dotted.
+  v.upscaler = 'sgsr1';
   room = new THREE.Group(); v.scene.add(room);
   const shade = o => { o.traverse(m => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } }); return o; };
   // A calm modern room in Reverie's own style: soft rounded shapes, matte warm-white walls, pale oak, one soft rug and
