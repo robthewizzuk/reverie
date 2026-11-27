@@ -9,12 +9,12 @@ export const SHELL = {
   n: 2.4,              // how square the plan is: 2 a circle, higher squarer
   cove: .4,            // the curve from the floor up into the wall (its radius)
   seam: 1.02,          // where the dome starts, with a soft seam round the room
-  top: 3.05,           // the dome's crown
+  top: 2.6,            // the dome's crown (kept low, so the shelves and windows sit in view)
 };
 
 // the big window in the left wall (metres): a long window with round ends, z and y its extent on the wall, r its
 // corners' radius, x where its glass is (out past the curve of the wall, at the end of its reveal)
-export const WINDOW = { x: -2.52, z0: -.45, z1: 1.35, y0: .62, y1: 1.9, r: .45 };
+export const WINDOW = { x: -2.52, z0: -.45, z1: 1.35, y0: .62, y1: 1.75, r: .45 };
 
 const S = SHELL;
 /** The plan's radius from the middle towards angle phi (the wall at the seam). */

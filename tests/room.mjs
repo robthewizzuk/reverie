@@ -62,7 +62,7 @@ await ask('put it on the shelf', settled);
 room = await R(() => window.__reverie.world.room);
 const pot = room.find(i => i.spot === 'on the shelf');
 if (!pot) fail('the teapot is not on the shelf: ' + JSON.stringify(room));
-else if (pot.size > .31 || Math.abs(pot.y - 1.475) > .01) fail('the teapot on the shelf is the wrong size or height: ' + JSON.stringify(pot));
+else if (pot.size > .31 || Math.abs(pot.y - 1.245) > .01) fail('the teapot on the shelf is the wrong size or height: ' + JSON.stringify(pot));
 if (await R(() => !!window.__reverie.world.held)) fail('it still holds the teapot');
 
 // 3. move the lamp somewhere else, and paint the room

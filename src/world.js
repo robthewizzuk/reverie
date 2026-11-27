@@ -60,7 +60,7 @@ function setup() {
   // two windows are cut cleanly into the curve: a long rounded one in the left wall (the daylight) and a round one in
   // the back wall, each with a deep reveal out to the glass, as in a thick moulded wall.
   const W0 = WINDOW, wz = (W0.z0 + W0.z1) / 2, wy = (W0.y0 + W0.y1) / 2;
-  const PORT = { x: -.3, y: 1.55, r: .3 }, portOut = backZ(PORT.x, PORT.y) - .05;
+  const PORT = { x: -.3, y: 1.32, r: .3 }, portOut = backZ(PORT.x, PORT.y) - .05;
   const cut = buildShell(THREE, [
     { wall: 'side', sdf: roundRect(wz, wy, (W0.z1 - W0.z0) / 2, (W0.y1 - W0.y0) / 2, W0.r), at: [wz, wy], out: W0.x },
     { wall: 'back', sdf: circle(PORT.x, PORT.y, PORT.r), at: [PORT.x, PORT.y], out: portOut },
@@ -75,16 +75,9 @@ function setup() {
   cut.outlines.forEach(rim => rimTube(rim, .02));
   const glassRim = (pts, toOut) => add(part('wood', new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(...toOut(p))), true), pts.length * 2, .016, 8, true), wood)));
   glassRim(cut.outlines[0], p => [W0.x + .02, p[1], p[2]]);
-  // the seam round the middle, where the dome meets the wall: a soft bead in the same paint (broken by the window)
-  {
-    const pts = [], N = 240, y = SHELL.seam;
-    // (round from the window and back to it, so the window is the one break)
-    for (let i = 0; i <= N; i++) {
-      const phi = Math.PI + i / N * Math.PI * 2, r = shellR(phi, y) - .004, x = SHELL.cx + Math.cos(phi) * r, z = SHELL.cz + Math.sin(phi) * r;
-      if (!(x < SHELL.cx - .5 && z > W0.z0 - .06 && z < W0.z1 + .06)) pts.push(new THREE.Vector3(x, y, z));
-    }
-    add(part('walls', new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), pts.length * 2, .011, 8, false), wallMat)));
-  }
+  // (no bead at the seam where the dome meets the wall: a moulding a centimetre thick is thinner than a pixel from the
+  // seat, so the upscaler drew it as a broken line of dashes across the wall; the curve itself shows where the dome starts)
+
   // (the day outside the side window: a soft bright sky the room's reflections and bounce light pick up; it throws
   // no shadow. daylight.js paints it with the real sky outside: day, dusk, night with stars, cloud, fog)
   const sky = new THREE.Mesh(new THREE.PlaneGeometry(5, 3.4), pbr('#eef0ec', { glow: 1.05, glowCol: '#f4f2ea', rough: 1 }));
@@ -103,6 +96,11 @@ function setup() {
     for (let i = N; i >= 0; i--) sh.lineTo(xs[i], -(backZ(xs[i], y) + .012 + B.d));
     const g = new THREE.ExtrudeGeometry(sh, { depth: thick - .012, bevelEnabled: true, bevelThickness: .006, bevelSize: .008, bevelSegments: 3, curveSegments: 4 });
     g.rotateX(-Math.PI / 2);
+    // (the grain laid along the board on every face: the extruder's own UVs on a curved edge flip between two ways
+    // round from one facet to the next, which striped the front of each board like a row of bricks)
+    const P = g.attributes.position, nm = g.attributes.normal, uv = g.attributes.uv;
+    for (let i = 0; i < P.count; i++) uv.setXY(i, P.getX(i), Math.abs(nm.getY(i)) > .5 ? P.getZ(i) : P.getY(i) + P.getZ(i) * .3);
+    uv.needsUpdate = true;
     const m = part('wood', new THREE.Mesh(g, wood)); m.position.y = B.y - thick + .006; return add(m);
   };
   board(SILL, .04); board(DESK, .045); board(SHELF, .04);
@@ -185,7 +183,7 @@ export function makeWorld() {
   const lines = [() => outfits?.line() || ''];
   // a camera seat set from outside (watching a video together: watch.js), used when no game has one
   let seat = null;
-  const games = {}, HOME = { pos: [0, .78, 1.95], look: [0, .4, 0] }, camAt = { pos: [...HOME.pos], look: [...HOME.look] };
+  const games = {}, HOME = { pos: [0, .78, 1.95], look: [0, .4, 0] }, WIDE = { pos: [0, .86, 2.05], look: [0, .6, 0] }, camAt = { pos: [...HOME.pos], look: [...HOME.look] };
   const stage = {
     THREE, get scene() { return v.scene; }, get creature() { return creature; }, get physics() { return world; },
     sparks(p, color = '#ffd27a', count = 24) { fx.sparks({ x: p.x, y: p.y, z: p.z }, { color, count, power: .7, light: false }); },
@@ -461,7 +459,8 @@ export function makeWorld() {
       const a = W / H; v.cam.fov = a < 1 ? 2 * Math.atan(Math.tan(21 * Math.PI / 180) / a) * 180 / Math.PI : 36;
       v.cam.aspect = a; v.cam.updateProjectionMatrix();
       // the camera eases to the game's seat and back
-      const goal = game?.camera || seat || HOME, ck = 1 - Math.exp(-dt * 3);
+      // (a wide window looks a little higher, so the shelves and windows on the back wall are in the picture, not cut off at the top)
+      const goal = game?.camera || seat || (a > 1.05 ? WIDE : HOME), ck = 1 - Math.exp(-dt * 3);
       for (const k of ['pos', 'look']) for (let i = 0; i < 3; i++) camAt[k][i] += (goal[k][i] - camAt[k][i]) * ck;
       const seen = look ? look.view(camAt, dt, goal) : camAt;
       v.cam.position.set(...seen.pos); v.cam.lookAt(...seen.look);

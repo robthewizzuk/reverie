@@ -17,6 +17,10 @@ export const FEEL = {
   bump: .09,       // how far brushing past it rocks it
   vanish: { freq: 3, swell: .7 },   // shrinking away: how quick (Hz, about .35 s in all) and how much it swells first
   lights: 2,       // props that may light the room at once (a lamp, a candle): each is a light
+  // how strong a prop's own light is in the room: about the desk lamp's, a small pool on what is near it. (The engine's
+  // own, 6 reaching a couple of metres, is for a game's lantern outdoors; on a shelf against the pale wall at night it
+  // burnt a big white blot into the wall and washed out everything round it.)
+  glow: { i: 1, reach: 1.1 },
 };
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 
@@ -56,8 +60,14 @@ export function makeMotion({ view, fx, sound = () => {} }) {
     try {
       e.life = gs.models.bring(thing, view, false, { body: false, breaks: false, explodes: false, pickup: false, drive: false, light, fx, idle: flag && !o.still ? false : true });
     } catch { e.life = null; return null; }
-    if (e.life.light) { lit++; e.life.lit = true; }
+    if (e.life.light) { lit++; e.life.lit = true; roomLight(e.life.light, f.light); }
     return e.life;
+  }
+  // a prop's light toned to the room's: as soft as the desk lamp (a fire or a torch a little more), and a short reach
+  function roomLight(l, L) {
+    if (l.i0 == null || !l.s) return;   // (a plain point light, on a view with no lamps: left as it is)
+    l.i0 = FEEL.glow.i * clamp(L?.intensity ?? 1, .5, 1.6);
+    l.s.reach = Math.min(l.s.reach, FEEL.glow.reach);
   }
   // stops them, keeping the thing itself (bring's remove() would take the thing away too)
   function stop(e) {
