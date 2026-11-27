@@ -7,11 +7,11 @@ import { makeWorld } from './world.js';
 import { makeLook } from './look.js';
 import { makeBrain } from './brain.js';
 import { makeBody } from './body.js';
-import { Listener } from './listen.js';
+import { Listener, sameWords } from './listen.js';
 import { askPlace, placeAt, weather } from './place.js';
 import { makePad, madeFrom } from './doodle.js';
 import { makeMood, toneOf } from './mood.js';
-import { setTone } from './looks.js';
+import { setTone, sayOptions } from './looks.js';
 import { makeShow } from './show.js';
 import { makeMemory } from './memory.js';
 import { surpriseFor, briefingNote, funDay } from './daily.js';
@@ -28,7 +28,7 @@ let W = 0, H = 0, world, brain, body, voice, pad, diary, mood, show, last = 0, a
 // its diary, kept in this browser (memory.js), and today's surprise (daily.js): { surprise, holding, funDay }
 const memory = makeMemory();
 const today = { surprise: null, holding: null, funDay: funDay() };
-let overnight = Promise.resolve();
+let overnight = Promise.resolve(), hello = '';
 // which kind of fun each of Claude's tools is, for its mood (mood.js FUN)
 const FUN_OF = { make: 'make', change: 'change', toss: 'toss', place: 'place', room_colours: 'room', colours: 'colours', roll: 'roll', doodle: 'doodle', play: 'game', game_move: 'move', voice: 'voice', show: 'show' };
 
@@ -74,10 +74,15 @@ function setStatus(s) {
 function say(line) { memory.said('me', line); caption.textContent = line; caption.hidden = false; captionT = 4 + line.length * .06; }
 function showTiming(t) {
   const ms = x => x == null ? '–' : Math.round(x - t.start) + ' ms';
-  const line = `first words ${ms(t.text)} · first tool ${ms(t.tool)} · whole turn ${ms(t.end)}`;
+  // (from about when their last word was heard: the recogniser's wait, the reply's first words, then its voice)
+  const line = `taken ${ms(t.heard)} · first words ${ms(t.text)} · voice ${ms(t.voice)} · first tool ${ms(t.tool)} · whole turn ${ms(t.end)}`;
   console.info('[reverie] ' + line);
   if (debug) timing.textContent = line;
 }
+
+// How long the words being heard must stand still before they are answered, without waiting for the recogniser to be
+// sure the phrase is over (it often takes a second or more after the last word). If they go on, the rest joins on.
+const SETTLE_MS = 650;
 
 /** Words heard that are clearly someone talking, not its voice coming back: 3 or more new words, most of what was heard. */
 const deliberate = h => !!h && h.yours.length >= 3 && h.yours.length / Math.max(1, h.words.length) >= .5;
@@ -97,9 +102,16 @@ function frame(now) {
       const heard = voice.text.trim(), h = heard ? brain.yours(heard) : null, mine = h ? h.yours.length : 0;
       world.creature.state.listening = mine > 0;
       if (mine) input.placeholder = heard;
+      // still going after a pause it took as the end: it stops and waits for the rest (asked again whole, not cut short)
+      const early = voice.early, rest = early && heard.startsWith(early + ' ') ? brain.yours(heard.slice(early.length)) : null;
+      if (rest && rest.yours.length && (brain.speaking || brain.busy)) brain.interrupt(`they went on: "${heard}"`, { rest: true });
       // talking over it: three or more words of yours, most of what was heard, stop it (less is its own voice misheard)
-      if (brain.speaking && deliberate(h)) brain.interrupt(`talked over by "${heard}"`);
-      const said = voice.next();
+      // (not the words it took at a pause and is answering now: the recogniser shows them until it gives its final)
+      else if (brain.speaking && !(early && sameWords(heard, early)) && deliberate(h)) brain.interrupt(`talked over by "${heard}"`);
+      // words that have stood still are answered now (not while it talks: that is talking over it, above); not in a game
+      // that counts what is said (Twenty Questions), where a phrase taken twice would count twice
+      if (mine && !brain.speaking && !world.game?.heard) voice.settle(SETTLE_MS);
+      const next = voice.next(), said = next?.text;
       if (said) {
         input.placeholder = 'Say something, or type…';
         const f = brain.yours(said);
@@ -110,7 +122,7 @@ function frame(now) {
         const ok = brain.speaking ? deliberate(f) || (all && f.words.length >= 2)
           : brain.busy ? deliberate(f) || all
           : !f.words.length || f.yours.length / f.words.length > .3;
-        if (ok) brain.hear(said);
+        if (ok) brain.hear(said, { more: next.more, at: next.at });
         else { console.info(`[reverie] ignored its own voice: "${said}" (yours: ${f.yours.join(' ') || 'none'})`); if (debug) timing.textContent = 'ignored echo: ' + said; }
       }
     }
@@ -137,6 +149,7 @@ async function boot() {
   await whenLoaded(() => world.reset());
   world.resize(W, H);
   world.look = looking;
+  warmUp();
   // a new day (and not the first ever): something it made overnight is waiting in its hands, made now while it wakes
   const visit = memory.peek();
   overnight = surpriseFor().then(async s => {
@@ -167,7 +180,7 @@ async function boot() {
   world.creature.cheer = mood.cheer;
   setTone(() => toneOf(mood.cheer));
   brain = makeBrain({ world, onCaption: say, onStatus: setStatus, onTiming: showTiming,
-    memo: () => memory.summary(), onHeard: text => { memory.said('you', text); mood.fun('chat'); },
+    memo: () => memory.summary(), onHeard: (text, again) => { memory.said('you', text, again); if (!again) mood.fun('chat'); },
     onTool: (name, input, r) => { noted(name, input, r); if (!r?.error && FUN_OF[name]) mood.fun(FUN_OF[name]); },
     tools: {
       window: input => world.daylight.set(input),
@@ -215,12 +228,27 @@ function wakeUp() {
   world.keeper?.greet();
   world.daylight.sound(true);   // (the rain's patter, now the page may make sound)
   // (through its speaker, so the mic knows this is its voice): the tour the first time, after that a hello by name
-  brain.speak(visit.first ? HELLOS[Math.floor(Math.random() * HELLOS.length)] : welcome(visit));
+  brain.speak(visit.first ? hello || pick(HELLOS) : welcome(visit));
   if (memory.birthdayToday() || [7, 30, 100].includes(memory.visits.streak) && visit.newDay) world.celebrate?.();
   // the browser's prompts, from this tap: the microphone, then where they are (for the weather and local things)
   const asked = startListening().finally(() => askPlace());
   if (visit.newDay && !visit.first) dailyBriefing(visit, asked).catch(e => console.warn('[reverie] briefing', e));
 }
+
+const pick = list => list[Math.floor(Math.random() * list.length)];
+
+/**
+ * While it wakes, everything the first exchange needs is got ready, so the first hello and the first answer don't wait:
+ * its voice (on the web the engine loads it with the first line said, a few seconds the first time) with the first
+ * hello written ahead, and Claude's prompt read into the API's cache (the first turn then reads it instead).
+ */
+function warmUp() {
+  const visit = memory.peek();
+  if (visit.first) hello = pick(HELLOS);
+  gs.sound.prepare(hello || 'Hello again!', sayOptions()).catch(() => {});
+  fetch(API_WARM, { method: 'POST' }).then(r => r.json()).then(r => console.info(`[reverie] warmed the prompt cache: ${r.ms ?? '?'} ms${r.error ? ', ' + r.error : ''}`)).catch(() => {});
+}
+const API_WARM = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '') + '/api/warm';
 
 /** Its hello on a later visit: by name if it knows it, for the time of day, and a hint of the surprise on a new day. */
 function welcome(visit) {
