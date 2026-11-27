@@ -51,7 +51,11 @@ function tidyVoice(input, base) {
 
 // How its name is said, by every voice: REV-uh-ree. Only the sound changes: the bubble still reads "Reverie", and the
 // engine maps each spoken word back to the written one, so the mouth stays in step ("Reverie's" is covered too).
-export const SAY_AS = { Reverie: 'rev uh ree' };
+// One word, so it is said at the pace of the line: "rev uh ree" was three words to the voice, each said as a word of
+// its own with gaps between (slow, and "ah" for "uh"). Picked by ear by Rob (2026-11-27) from spellings tried with the
+// engine's scripts/say-as.mjs in 7 voices: "Revurry" keeps the quick "er" in the middle ("Revree" and "Revery" lost it);
+// as written, "Reverie" came out ri-VAIR-ee, and "Rev" with a vowel or a double v after it is read as "Reverend".
+export const SAY_AS = { Reverie: 'Revurry' };
 
 // its mood's share of the voice (mood.js toneOf): { lively, size, mood } added to the voice it chose, or null
 let tone = () => null;

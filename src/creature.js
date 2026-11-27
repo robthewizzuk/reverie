@@ -267,19 +267,11 @@ export function makeCreature() {
     get busy() { return !!gesture; },
     /** Drowsy: eyes half shut, a slower glow. Anything that happens wakes it. */
     get drowsy() { return drowsy; }, set drowsy(v) { drowsy = !!v; },
-    /** Says a line with its mouth moving (the engine's Face.say), and calls onStart once the voice is really heard. */
-    say(line, o, onStart = () => {}) {
-      const { visemes } = gs.characters;
-      const L = face.line = { v: visemes(line, o), t: 0, i: 0, spoken: null };
-      let started = false;
-      const p = gs.sound.say(line, { ...o, onWord: at => {
-        if (!started) { started = true; onStart(); }
-        if (face.line !== L) return;
-        const k = L.v.findIndex((x, j) => j >= at); if (k >= 0 && k < L.v.length) L.t = L.v[k].t;
-      } });
-      p.then(ok => { if (face.line === L && ok) L.t = Math.max(L.t, L.v.end); }, () => {});
-      return p;
-    },
+    /**
+     * Says a line with its mouth moving (the engine's Face.say: the mouth follows the sound itself, shut until it is
+     * heard and in its pauses), and calls onStart once the voice is really heard.
+     */
+    say(line, o, onStart = () => {}) { return face.say(line, { ...o, onStart }); },
     /** A tap on it: a giggle and a look. */
     poke() { giggle = 1; setMood('happy'); face.blink(); },
     /** Reaches for a point in the world (a THREE.Vector3) with the nearer hand; null puts the hand back. */
