@@ -20,7 +20,7 @@ import { handleVideo } from './video.js';
 export function reverieApi(env) {
   const fake = env.REVERIE_FAKE === '1' && !env.GOOGLE_CLIENT_ID ? fakeGoogle() : null;
   const googleEnv = fake ? { ...env, GOOGLE_CLIENT_ID: 'fake', GOOGLE_CLIENT_SECRET: 'fake-secret' } : env;
-  return {
+  const api = {
     name: 'reverie-api',
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
@@ -60,4 +60,7 @@ export function reverieApi(env) {
       });
     },
   };
+  // (the same routes on `vite preview`, so the built page can be tested against the scripted Claude too)
+  api.configurePreviewServer = api.configureServer;
+  return api;
 }
