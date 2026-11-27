@@ -137,12 +137,19 @@ async function boot() {
   wake.hidden = false; wake.textContent = 'Tap to say hi';
 }
 
+/** Reverie's hello, one picked each time: short, spoken aloud, and a quick tour of what it can do. */
+const HELLOS = [
+  "Hi, I'm Reverie! I can play chess, host a quiz, roll dice, or turn your doodles into real things. Ask me to paint the room, change my voice, or check the weather. Go on, try me!",
+  "Hello, I'm Reverie! Fancy a game of chess, a quiz, or a roll of the dice? Draw me something and I'll make it real, or tell me where to put things and how to paint this place.",
+  "Hey there, I'm Reverie! I magic up props, decorate the room, and play chess, quizzes and dice. I can even talk like a pirate, or tell you what the sky's up to. What shall we do?",
+  "Hi! I'm Reverie, your little maker. Doodle it and I'll build it, ask and I'll paint the walls, or challenge me to chess, a quiz or the dice. I know the weather too!",
+];
+
 function wakeUp() {
   if (awake) return; awake = true; wake.hidden = true;
   const c = world.creature;
   c.gesture('wave'); c.mood('happy');
-  const hello = "Hi, I'm Reverie! Ask me anything you like, like what the weather's up to. Or say the word and I'll magic something up for us to play with.";
-  brain.speak(hello);   // (through its speaker, so the mic knows this is its voice)
+  brain.speak(HELLOS[Math.floor(Math.random() * HELLOS.length)]);   // (through its speaker, so the mic knows this is its voice)
   // the browser's prompts, from this tap: the microphone, then where they are (for the weather and local things)
   startListening().finally(() => askPlace());
 }
