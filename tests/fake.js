@@ -3,6 +3,7 @@
 //   "make a <thing>"  -> says a line and calls make
 //   "make it <x>"     -> says a line and calls change
 //   "throw it"        -> toss;  "clear"  -> clear;  "think ..." -> think_harder, then a deep answer
+//   "show me a sunset [with rain]" / "make it snow|rain|storm|night" / "the real sky" -> window
 //   "make <x> and put it <spot>" / "put it <spot>" / "move the <x> <spot>" -> place;  "paint the walls <c>" -> room_colours
 //   "play chess"      -> play;  "[chess] ..." (news from the board) -> a quip;  "move e4" -> game_move;  "stop playing" -> stop_game
 //   "roll ..."        -> roll;  "quiz me" -> play quiz;  "[quiz] ..." -> a quip;  "answer b" -> game_move;  "draw" -> doodle;  "[doodle] ..." -> a quip
@@ -49,6 +50,9 @@ function plan(body) {
   if ((m = /^put it (.+)/.exec(said))) return { text: 'Hup, over we go.', tools: [['place', { item: 'it', spot: SPOT.exec(m[1])?.[1] || m[1] }]] };
   if ((m = /^(?:move|bring) the (\w+) (.+)/.exec(said))) return { text: 'On it.', tools: [['place', { item: m[1], spot: /back|me/.test(m[2]) ? 'your hands' : SPOT.exec(m[2])?.[1] || m[2] }]] };
   if ((m = /^paint the (walls|floor|rug|wood) (.+)/.exec(said))) return { text: 'Ooh, redecorating.', tools: [['room_colours', { [m[1]]: m[2] }]] };
+  if ((m = /^show me (?:a |an |the )?(sunset|sunrise|night|midnight|dawn|dusk|noon|morning|evening|golden hour)(?: with (\w+))?/.exec(said))) return { text: 'Ooh, watch the window.', tools: [['window', { time: m[1], ...(m[2] ? { weather: m[2] } : {}) }]] };
+  if ((m = /^make it (snow|rain|storm|foggy|cloudy|night)\b/.exec(said))) return { text: 'Ooh, watch the window.', tools: [['window', m[1] === 'night' ? { time: 'night' } : { weather: { foggy: 'fog' }[m[1]] || m[1] }]] };
+  if (/real sky/.test(said)) return { text: 'Back to the real sky.', tools: [['window', { time: 'live', weather: 'live' }]] };
   if ((m = /make it (.+)/.exec(said))) return { text: 'Watch this.', tools: [['change', { words: m[1] }]] };
   if ((m = /make (?:me )?(an? .+|some .+)/.exec(said))) return { text: 'Ooh, one coming right up!', tools: [['act', { gesture: 'tada', mood: 'excited' }], ['make', { words: m[1] }]] };
   if (/pirate/.test(said)) return { text: 'Arr, give me a moment.', tools: [['voice', { name: 'captain_silas_blackwater' }]] };

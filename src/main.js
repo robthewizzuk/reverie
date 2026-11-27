@@ -123,7 +123,7 @@ async function boot() {
   pad = makePad({ el: $('#pad'), onOpen: () => { world.creature.mood('curious'); world.creature.gesture('point'); },
     onDrawn: async guesses => { const news = await madeFrom(guesses, world); console.info('[reverie] ' + news); brain.notice(news, true); } });
   brain = makeBrain({ world, onCaption: say, onStatus: setStatus, onTiming: showTiming,
-    tools: { doodle: async () => { pad.show(); return 'The drawing pad is open on their screen. When they press Make it!, you will hear what they drew and it appears in your hands.'; } } });
+    tools: { window: input => world.daylight.set(input), doodle: async () => { pad.show(); return 'The drawing pad is open on their screen. When they press Make it!, you will hear what they drew and it appears in your hands.'; } } });
   body = makeBody({ creature: world.creature, world });
   world.onNews = (text, loud) => brain.notice(text, loud);
   voice = new Listener({ onProblem: () => listeningOff(), onNote: debug ? line => { timing.textContent = 'mic: ' + line; } : null });
@@ -149,6 +149,7 @@ function wakeUp() {
   if (awake) return; awake = true; wake.hidden = true;
   const c = world.creature;
   c.gesture('wave'); c.mood('happy');
+  world.daylight.sound(true);   // (the rain's patter, now the page may make sound)
   brain.speak(HELLOS[Math.floor(Math.random() * HELLOS.length)]);   // (through its speaker, so the mic knows this is its voice)
   // the browser's prompts, from this tap: the microphone, then where they are (for the weather and local things)
   startListening().finally(() => askPlace());

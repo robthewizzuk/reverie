@@ -46,6 +46,14 @@ await ask("what's the weather like", () => !window.__reverie.brain.busy);
 const wx = await page.evaluate(() => JSON.stringify(window.__reverie.brain.history.slice(-4)));
 if (!/Weather in Leeds/.test(wx)) fail('no weather for Leeds: ' + wx.slice(0, 300));
 if (!/From the device[^\]]*Leeds/.test(wx)) fail('the place did not reach Claude');
+// the room follows the weather there (raining in Leeds: the mock), and Claude hears it; asking for a sky shows it
+await page.waitForFunction(() => window.__reverie.world.daylight.state.rain > .1, null, { timeout: 60000 }).catch(() => fail('the rain in Leeds did not reach the window'));
+await ask('show me a sunset with snow', () => !window.__reverie.brain.busy);
+const sky = await page.evaluate(() => window.__reverie.world.daylight.state);
+if (sky.asked.time !== 'sunset' || sky.asked.weather !== 'snow') fail('the window did not change: ' + JSON.stringify(sky));
+await page.waitForTimeout(2500); await shot('4b-sunset-snow');
+await ask('back to the real sky', () => !window.__reverie.brain.busy);
+if ((await page.evaluate(() => window.__reverie.world.daylight.state.asked.time)) !== 'live') fail('the real sky did not come back');
 await ask('why is the sky blue', () => !window.__reverie.brain.busy);
 const tiers = await page.evaluate(() => window.__reverie.brain.history.at(-1));
 console.log('last:', JSON.stringify(tiers).slice(0, 200));
