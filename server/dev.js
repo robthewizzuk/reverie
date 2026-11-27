@@ -1,4 +1,4 @@
-// The Claude route inside `npm run dev`: POST /api/turn runs server/turn.js in the Vite dev server, with the key
+// The Claude routes inside `npm run dev`: POST /api/turn runs server/turn.js (and /api/recap server/recap.js) in the Vite dev server, with the key
 // read from .env.local (or the shell). /api/google/* runs server/google.js the same way (Gmail and the calendar, with
 // GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET from .env.local). Nothing here reaches the page's bundle.
 //
@@ -7,8 +7,9 @@
 // With no Google client set, it also signs in to a pretend Google (tests/fake-google.js), with a calendar and an inbox.
 import { Readable } from 'node:stream';
 import { handleTurn, handleWarm } from './turn.js';
+import { handleRecap } from './recap.js';
 import { handleGoogle } from './google.js';
-import { fakeTurn } from '../tests/fake.js';
+import { fakeTurn, fakeRecap } from '../tests/fake.js';
 import { fakeGoogle } from '../tests/fake-google.js';
 import { handleHelpers } from './helpers.js';
 import { fakeHelpers } from '../tests/fake-helpers.js';
@@ -23,8 +24,8 @@ export function reverieApi(env) {
         // (push for reminders runs on the Worker only: here the page keeps them while it is open)
         if ((req.url || '').startsWith('/api/push')) { res.statusCode = 404; res.setHeader('content-type', 'application/json'); return res.end('{"error":"push runs on the Worker only"}'); }
         const path = req.url || '', google = path.startsWith('/api/google/');
-        const warm = path.startsWith('/api/warm'), helpers = path.startsWith('/api/helpers');
-        if (!path.startsWith('/api/turn') && !google && !warm && !helpers) return next();
+        const warm = path.startsWith('/api/warm'), recap = path.startsWith('/api/recap'), helpers = path.startsWith('/api/helpers');
+        if (!path.startsWith('/api/turn') && !google && !warm && !helpers && !recap) return next();
         const ac = new AbortController();
         res.on('close', () => { if (!res.writableEnded) ac.abort(); });
         const chunks = []; for await (const c of req) chunks.push(c);
@@ -38,6 +39,7 @@ export function reverieApi(env) {
           : google ? await handleGoogle(request, googleEnv, fake ? { fetch: fake.fetch, authUrl: `http://${req.headers.host}/api/google/fake_consent` } : {}) ?? new Response('Not found', { status: 404 })
           : warm ? (env.REVERIE_FAKE === '1' ? Response.json({ ok: true, fake: true }) : await handleWarm(request, env))
           : helpers ? (env.REVERIE_FAKE === '1' ? await fakeHelpers(request) : await handleHelpers(request, env))
+          : recap ? (env.REVERIE_FAKE === '1' ? await fakeRecap(request) : await handleRecap(request, env))
           : env.REVERIE_FAKE === '1' ? await fakeTurn(request) : await handleTurn(request, env);
         res.statusCode = response.status;
         response.headers.forEach((v, k) => { if (k !== 'set-cookie') res.setHeader(k, v); });

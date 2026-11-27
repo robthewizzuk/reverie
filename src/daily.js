@@ -177,6 +177,9 @@ export function briefingNote(memory, o = {}) {
     ? `[A new day, from the device, not said aloud: they just arrived for the first time today, ${when}, in ${part}${p.away > 1 ? `, ${p.away} days since their last visit` : p.away === 1 ? ', and they were here yesterday too' : ''}.`
     : `[Their daily briefing, from the device, not said aloud: it is ${when}, ${part}.`);
   const special = specialToday(memory, now); if (special.length) lines.push(`Special today: ${special.join('; ')}.`);
+  // (something of theirs that was due, or is coming: the friend's question)
+  const fu = memory.followUps?.() || [];
+  if (fu.length) lines.push(`From your diary, worth asking about: ${fu.map(f => `${f.text} (${f.said})`).join('; ')}.`);
   if (o.weather) lines.push(`The weather: ${o.weather}`);
   if (o.google) lines.push(o.google);
   const s = sky(now); if (s) lines.push(`The sky: ${s}.`);
@@ -184,7 +187,7 @@ export function briefingNote(memory, o = {}) {
     if (o.firstToday && o.holding) lines.push(`Your surprise: you made ${o.holding} for them overnight, and it is in your hands now: show it off proudly (say you made it while they were away).`);
     lines.push(o.surprise.text);
   }
-  lines.push(`Give them a short, playful daily briefing out loud, like a cheerful little morning show: ${o.firstToday ? 'a warm hello (by name if you know it), ' : ''}the weather and the sky in a few words, ${o.google ? 'what is on their calendar today and any new email worth mentioning (who from, not every subject), ' : ''}one thing from your diary if there is something nice (last time, a record, a thing you made), then the surprise. ${o.google ? '5 to 7' : '4 to 6'} short spoken sentences in all, no lists. Don't call the weather, briefing, calendar or email tools for this.]`);
+  lines.push(`Give them a short, playful daily briefing out loud, like a cheerful little morning show: ${o.firstToday ? 'a warm hello (by name if you know it), ' : ''}the weather and the sky in a few words, ${o.google ? 'what is on their calendar today and any new email worth mentioning (who from, not every subject), ' : ''}one thing from your diary (if something is worth asking about, ask how it went or wish them luck; otherwise something nice from last time, a record or a thing you made), then the surprise. ${o.google ? '5 to 7' : '4 to 6'} short spoken sentences in all, no lists. Don't call the weather, briefing, calendar or email tools for this.]`);
   return lines.join(' ');
 }
 
