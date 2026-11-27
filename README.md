@@ -9,6 +9,11 @@ tidy up. Decorate its room: "make a lamp and put it by the window", "move the te
 sky blue". It walks over and sets things down itself, and the room is kept as you left it. Tap it and it giggles. It gets happier the more you play, and can make itself a tiny pet that wanders the room ("make yourself a pet kitten called Mochi"). Talk over it and it stops to listen.
 Play chess, a quiz, noughts and crosses, Twenty Questions, Draw and Guess or a Dice Quest with it, ask it to roll some dice, or tap the pencil and draw something for it to make real.
 
+Ask it to look into something ("find me the cheapest train to York on Saturday", "compare these three hoovers") and it
+sends little helpers off to do the legwork in the background while you keep chatting: you can see them as glowing
+wisps over its head and pills on the screen saying what each is doing, ask how they're getting on, and when one comes
+back Reverie tells you what it found.
+
 It remembers you. Tell it your name, your birthday or that your dog is called Biscuit, and it brings it up next time, along
 with how your chess games went and what it made for you. Tap the book to see its diary and forget any of it. On the
 first visit of each day it has made you something overnight, gives you a short spoken briefing (the weather, the sun
@@ -49,12 +54,23 @@ and nothing with a `VITE_` prefix holds it, so it never reaches the page.
 | Its diary | `src/memory.js`, `src/diary.js` | What it remembers about you, kept only in this browser (`localStorage`): your name and birthday, facts it was told to `remember`, game records, things it made, the last few lines you said, and a line or two for each day. Claude gets a short summary at the top of each chat (read once a chat, so the cached prompt never changes under it). The book button opens the diary sheet: a ✕ on each fact, and "Forget everything" |
 | Its day | `src/daily.js` | Picked from the date, so a day's surprise is the same on every visit: a thing it made overnight (in its hands when you arrive), and a fun fact, riddle, word scramble or trivia question (`gs.trivia`). The briefing note: the day, birthdays, streaks and fun days, the weather, sunrise, sunset and the moon (`gs.real`), and the surprise, said by Claude in its own words after its hello. Birthdays and streaks get confetti |
 | The backend | `server/turn.js` | One small handler that adds the key and streams Claude's reply back. Runs inside the Vite dev server (`server/dev.js`) and as a Cloudflare Worker (`worker/`) |
-| Its personality and tools | `server/persona.js` | The system prompt and its tools: `make`, `change`, `toss`, `clear`, `place`, `room_colours`, `roll`, `doodle`, `act`, `play`, `game_move`, `stop_game`, `remember`, `forget`, `briefing`, `diary`, `pet`, `think_harder` |
+| Its helpers | `src/helpers.js`, `src/helper-wisps.js`, `server/helpers.js`, `server/helper-agent.js` | Little agents it sends off (`send_helper`) to research or work something out in the background, up to three at once, each on Claude Sonnet 5.5 with web search, web fetch and a sandbox for sums. Each is a Claude Managed Agents session that Anthropic runs, so it keeps going while the page is shut. The page asks after them every few seconds (`/api/helpers`), shows each as a wisp over Reverie's head and a pill saying what it's doing, keeps who went where in the browser (picked up again after a reload), and when one comes back passes its report to Claude as a `[helper]` message for Reverie to retell in its own words. The `helpers` tool says what each is doing, reads a whole report, sends a finished one a follow-up, or calls one back. Helpers only look things up: never buy, book, sign up or message. Each has a hard spend cap ($1 by default) enforced by Anthropic, at most 3 at once and 30 a day (`REVERIE_HELPER_BUDGET_CENTS`, `REVERIE_HELPERS_AT_ONCE`, `REVERIE_HELPERS_PER_DAY`), and a tool call the server can't decide is safe is refused, since nobody is watching to approve it |
+| Its personality and tools | `server/persona.js` | The system prompt and its tools: `make`, `change`, `toss`, `clear`, `place`, `room_colours`, `roll`, `doodle`, `act`, `play`, `game_move`, `stop_game`, `remember`, `forget`, `briefing`, `diary`, `pet`, `send_helper`, `helpers`, `think_harder` |
 | Games | `src/games/` | Games it plays with you on a table in front of it. Chess: the engine's living stone pieces, rules from chess.js and the engine's chess opponent picking its moves (fast, always legal, levels 1 to 5), while Claude reacts out loud to each move and a stretchy arm moves its pieces. Quiz: ten questions from the engine's bank of about 2,700 (`gs.trivia`, Open Trivia Database, CC BY-SA 4.0) on a card with four buzzers, starting easy and climbing; Reverie hosts, reading each question out and reacting to each answer, and is only told the answer once you've given yours. Noughts and crosses: the engine's game search (`gs.solve.Search`) picks its noughts, with slips at the lower levels and none at 5; tap a square or say it. Twenty Questions: the game picks the secret, counts your questions on twenty lamps and spots a right guess itself, so Reverie only has to answer; guess it and the mystery box opens and the thing is made in its hands. Draw and Guess: you draw a word against the clock on the drawing pad, and the doodle reader (`gs.doodle`) guesses live while Reverie calls its guesses out in its own voice, with no trip to Claude. Dice Quest: a path across the table past four challenges, each a little model from the generator, and real dice thrown from its hands; Reverie tells the story. `src/games/index.js` says how to add another |
 
 Everyday chat goes to Claude Haiku 5.5 with low effort, for speed. When a question needs real thought, it calls
 `think_harder` and the rest of that turn goes to Claude Sonnet 5.5. Either can be changed with `REVERIE_QUICK_MODEL`
 and `REVERIE_DEEP_MODEL`.
+
+### Helpers
+
+The helpers need a helper agent and an environment for its sandbox on your Anthropic account (both defined in
+`server/helper-agent.js`). The deploy workflow makes them the first time and updates them after that, so on GitHub
+there's nothing to do. Locally, run `npm run helpers:sync` once (with the key in `.env.local`) and paste the two lines
+it prints into `.env.local`. `REVERIE_FAKE=1` fakes the helpers too (`REVERIE_FAKE_HELPER_MS` sets how long one takes).
+Watch a helper work in the Console: Managed Agents › Sessions. Helpers bill their tokens, web searches ($10 per 1,000)
+and running time (about 8 cents an hour) on top of chat. `node tests/helpers-server.mjs` tests the backend and
+`node tests/helpers.mjs` the page.
 
 ## Put it online
 

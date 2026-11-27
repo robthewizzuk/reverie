@@ -10,6 +10,7 @@
 //   "roll ..."        -> roll;  "quiz me" -> play quiz;  "[quiz] ..." -> a quip;  "answer b" -> game_move;  "draw" -> doodle;  "[doodle] ..." -> a quip
 //   "square <x>"      -> game_move (noughts);  "[noughts|twenty|draw and guess] ..." -> a quip;  a counted question -> "Nope!"
 //   "make me a pet fox called pip" -> pet make;  "pet sit" -> pet trick;  "[pet] ..." / "[mood] ..." -> a quip
+//   "send a helper to <x>" / "look into <x>" -> send_helper;  "how are my helpers" -> helpers;  "[helper] ..." -> retells it
 //   anything else     -> a friendly line with a wave
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const lastUser = messages => [...messages].reverse().find(m => m.role === 'user');
@@ -33,6 +34,9 @@ function plan(body) {
     if (/camera window is open/i.test(r)) return { text: 'Go on, show me something!', tools: [] };
     if (/drawing pad is open/i.test(r)) return { text: 'Go on, draw me something!', tools: [] };
     if (/^Made .*as your pet|does |is now called|gone off/.test(r)) return { text: 'Aww, look at it!', tools: [] };
+    if (/^Sent \w+ (off|back out)/.test(r)) return { text: 'Off it goes!', tools: [] };
+    if (/^Not sent/.test(r)) return { text: 'Hmm, my helpers are busy.', tools: [] };
+    if (/ is (searching|reading|getting started|thinking|writing)| finished| was called back|full report/.test(r)) return { text: 'Let me see, my helpers are busy bees.', tools: [] };
     if (/^Written in your diary/.test(r)) return { text: 'Got it, I will remember that.', tools: [] };
     if (/^Forgot /.test(r)) return { text: 'Poof, forgotten.', tools: [] };
     if (/^\[Their daily briefing/.test(r)) return { text: 'Here is your briefing: it is a lovely day for making things.', tools: [] };
@@ -60,6 +64,9 @@ function plan(body) {
     : { text: /surprise hatched/.test(said) ? 'A surprise, from a barcode!' : /photo is attached/.test(said) ? 'Ooh, what a lovely thing.' : 'Ha!', tools: [] };
   const sm = /^(?:show|look)(?: at)?(?: me)?(?: something)?(?: find (?:me )?(.+))?$/.exec(said);
   if (sm) return { text: 'Show me!', tools: [['show', sm[1] ? { find: sm[1] } : {}]] };
+  if (/^\[helper\]/.test(said)) return { text: /without an answer/.test(said) ? 'Aw, my helper came back empty-handed.' : 'My helper is back! The short answer is yes.', tools: [] };
+  if ((m0 = /^(?:send a helper to|look into|find out) (.+)/.exec(said))) return { text: "I'll send Pip off to find out!", tools: [['send_helper', { name: 'Pip', task: m0[1] }]] };
+  if (/how are my helpers|what are my helpers/.test(said)) return { text: 'Let me check.', tools: [['helpers', { action: 'status' }]] };
   if (/^\[doodle\]/.test(said)) return { text: 'What a lovely drawing!', tools: [] };
   if (/^\[a new day/.test(said)) return { text: /in your hands now/.test(said) ? 'Good morning! I made you something overnight. Here is your briefing, and a puzzle.' : 'Good morning! Here is your briefing.', tools: [] };
   if ((m0 = /my name is (\w+)/.exec(said))) return { text: `Lovely to meet you, ${m0[1]}!`, tools: [['remember', { name: m0[1][0].toUpperCase() + m0[1].slice(1) }]] };
