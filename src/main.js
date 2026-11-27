@@ -9,15 +9,16 @@ import { makeBody } from './body.js';
 import { Listener } from './listen.js';
 import { askPlace } from './place.js';
 import { makePad, madeFrom } from './doodle.js';
+import { makeShow } from './show.js';
 
 const $ = s => document.querySelector(s);
 const stage = $('#stage'), canvas = $('#view'), ctx = canvas.getContext('2d');
 const input = $('#say'), form = $('#bar'), mic = $('#mic'), caption = $('#caption'), status = $('#status'), wake = $('#wake'), timing = $('#timing');
 const gamebar = $('#gamebar'), gameText = $('#gamebar span'), gameButtons = $('#gamebar div');
-const draw = $('#draw');
+const draw = $('#draw'), look = $('#look');
 const debug = new URLSearchParams(location.search).has('debug');
 
-let W = 0, H = 0, world, brain, body, voice, pad, last = 0, awake = false, captionT = 0, nextAt = 0;
+let W = 0, H = 0, world, brain, body, voice, pad, show, last = 0, awake = false, captionT = 0, nextAt = 0;
 
 // What the engine's speed kit is told is being played, so the 3D view paces and tunes itself as it does for a Next Gen
 // game in the app: 60 frames a second on a phone or a laptop's browser (not every refresh of a 120 Hz screen, which is
@@ -122,12 +123,20 @@ async function boot() {
   // the drawing pad: what they draw is named on the device and made real; Reverie hears what it was
   pad = makePad({ el: $('#pad'), onOpen: () => { world.creature.mood('curious'); world.creature.gesture('point'); },
     onDrawn: async guesses => { const news = await madeFrom(guesses, world); console.info('[reverie] ' + news); brain.notice(news, true); } });
+  // show and tell: a camera window; what it spots, signs and barcodes stay on the device, a press of Show sends a photo
+  show = makeShow({ el: $('#show'), world, onOpen: () => { world.creature.mood('curious'); world.creature.gesture('wave'); },
+    onNews: (text, loud, image, now) => {
+      console.info('[reverie] ' + text.slice(0, 160));
+      // (a press of Show is them talking: it answers now, even mid-sentence)
+      if (now) { brain.interrupt('shown something'); brain.hear(text, { at: performance.now(), news: true, image }); } else brain.notice(text, loud, image);
+    } });
   brain = makeBrain({ world, onCaption: say, onStatus: setStatus, onTiming: showTiming,
-    tools: { doodle: async () => { pad.show(); return 'The drawing pad is open on their screen. When they press Make it!, you will hear what they drew and it appears in your hands.'; } } });
+    tools: { doodle: async () => { pad.show(); return 'The drawing pad is open on their screen. When they press Make it!, you will hear what they drew and it appears in your hands.'; },
+      show: input => show.open({ find: typeof input?.find === 'string' ? input.find : '' }) } });
   body = makeBody({ creature: world.creature, world });
   world.onNews = (text, loud) => brain.notice(text, loud);
   voice = new Listener({ onProblem: () => listeningOff(), onNote: debug ? line => { timing.textContent = 'mic: ' + line; } : null });
-  window.__reverie = { world, brain, body, gs, voice, pad };
+  window.__reverie = { world, brain, body, gs, voice, pad, show };
   requestAnimationFrame(frame);
   // every shader the room needs, built in the background before it wakes (the driver's own threads), so none is built
   // in the middle of a chat: a whole room's shaders built in one frame was a stall of a second or more
@@ -190,6 +199,7 @@ mic.addEventListener('click', async () => {
   if (await startListening()) setStatus('');
 });
 wake.addEventListener('click', wakeUp);
+look.addEventListener('click', () => { if (!show) return; wakeUp(); if (show.open) show.close(); else show.open(); });
 draw.addEventListener('click', () => { if (!pad) return; wakeUp(); if (pad.open) pad.hide(); else pad.show(); });
 canvas.addEventListener('pointerdown', e => {
   speed.inputAt = performance.now();

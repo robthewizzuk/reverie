@@ -8,6 +8,7 @@ import { sayOptions, setVoice } from './looks.js';
 
 const API = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '') + '/api/turn';
 const KEEP = 40;                 // messages kept in the conversation (older ones drop off, whole turns at a time)
+const KEEP_PHOTOS = 2;           // photos from show and tell sent along (the newest ones)
 const MAX_STEPS = 5;             // model calls in one turn (tool rounds)
 const GESTURES = ['none', 'wave', 'point', 'tada', 'shrug', 'think', 'nod', 'shake', 'bounce'];
 const MOODS = ['calm', 'happy', 'excited', 'curious', 'sad', 'surprised'];
@@ -107,6 +108,9 @@ async function readEvents(res, onEvent) {
   }
 }
 
+/** A message they sent (words, maybe with a photo), not tool results. */
+const saidByThem = m => m.role === 'user' && (typeof m.content === 'string' || (Array.isArray(m.content) && !m.content.some(b => b.type === 'tool_result')));
+
 /** A tool input is checked before it runs: streamed tool inputs are not checked by the API. */
 function checkInput(name, input) {
   if (!input || typeof input !== 'object') return 'no input';
@@ -139,15 +143,26 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
   const creature = world.creature, speaker = makeSpeaker(creature, onCaption);
   let history = [], turn = 0, ctl = null, cut = '', deepNow = false;
   // a game's news (games/index.js): quiet news waits for the next thing said; loud news gets a reaction when it's free
-  let news = [], loudAt = 0, turnCtx = '';
+  let news = [], loudAt = 0, turnCtx = '', newsImage = null;
 
   function trimmed() {
     // keep the last KEEP messages, starting on a plain user message (never on tool results)
     let start = Math.max(0, history.length - KEEP);
-    while (start < history.length && !(history[start].role === 'user' && typeof history[start].content === 'string')) start++;
+    while (start < history.length && !saidByThem(history[start])) start++;
     const out = history.slice(start);
     // the state of a game being played goes with the latest thing said (not kept in the history: it would go stale)
-    if (turnCtx) for (let i = out.length - 1; i >= 0; i--) if (out[i].role === 'user' && typeof out[i].content === 'string') { out[i] = { role: 'user', content: out[i].content.replace(/^(\[From the device[^\n]*\n)?/, (_, d = '') => d + turnCtx + '\n') }; break; }
+    const withCtx = t => t.replace(/^(\[From the device[^\n]*\n)?/, (_, d = '') => d + turnCtx + '\n');
+    if (turnCtx) for (let i = out.length - 1; i >= 0; i--) if (saidByThem(out[i])) {
+      const m = out[i];
+      out[i] = { role: 'user', content: typeof m.content === 'string' ? withCtx(m.content) : m.content.map(b => b.type === 'text' ? { ...b, text: withCtx(b.text) } : b) };
+      break;
+    }
+    // photos they showed (show.js): only the last KEEP_PHOTOS go along; older ones are a line saying there was one
+    let photos = 0;
+    for (let i = out.length - 1; i >= 0; i--) {
+      const m = out[i]; if (m.role !== 'user' || !Array.isArray(m.content) || !m.content.some(b => b.type === 'image')) continue;
+      if (++photos > KEEP_PHOTOS) out[i] = { ...m, content: m.content.map(b => b.type === 'image' ? { type: 'text', text: '(a photo they showed you earlier)' } : b) };
+    }
     return out;
   }
 
@@ -205,7 +220,9 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
   async function hear(text, o = {}) {
     text = String(text || '').trim().slice(0, 1000); if (!text) return;
     // game news not yet passed on goes first, so it knows what happened on the board
-    if (news.length) { text = news.join('\n') + '\n\n' + text; news = []; loudAt = 0; }
+    let image = o.image || null;
+    if (news.length) { text = news.join('\n') + '\n\n' + text; news = []; loudAt = 0; image ||= newsImage; }
+    newsImage = null;
     // "let's play chess": the board goes up at once, before Claude has said a word (so it can't make a prop board instead)
     const wantsGame = !o.news && gameAsked(text);
     if (wantsGame && (world.game?.id !== wantsGame.game || world.game.state === 'done')) {
@@ -219,7 +236,9 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
     if (speaker.talking) { console.info('[reverie] stopped talking for a new turn: ' + text.slice(0, 80)); cut = speaker.pending || cut; speaker.stop(); }
     const note = cut ? ` (You were interrupted before saying: "${cut.slice(0, 200)}")` : ''; cut = '';
     // (where and when they are rides at the top of what they said: added, never changed later)
-    history.push({ role: 'user', content: contextLine(world.scene?.()) + '\n' + text + note });
+    const words = contextLine(world.scene?.()) + '\n' + text + note;
+    // (a photo they showed, from show.js: a small JPEG, before the words about it)
+    history.push({ role: 'user', content: image ? [{ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: image } }, { type: 'text', text: words }] : words });
     creature.state.thinking = true; creature.state.listening = false;
     creature.gesture('nod'); onStatus('thinking');
     const times = { start: o.at ?? performance.now() };
@@ -249,8 +268,9 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
   return {
     hear,
     /** News from a game: loud news is reacted to out loud as soon as it is free, quiet news waits. */
-    notice(text, loud = false) {
-      news.push(String(text).slice(0, 600)); if (news.length > 6) news.shift();
+    notice(text, loud = false, image = null) {
+      news.push(String(text).slice(0, 900)); if (news.length > 6) news.shift();
+      if (image) newsImage = image;   // (a photo from show and tell rides with the news: the newest one)
       if (loud && !loudAt) loudAt = performance.now();
     },
     /** Every frame: says something about loud news once it isn't busy (news older than 8 s waits for the next turn). */
@@ -258,8 +278,8 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
       if (!loudAt) return;
       if (performance.now() - loudAt > 8000) { loudAt = 0; return; }
       if (ctl || creature.state.thinking || speaker.talking || creature.state.listening) return;
-      const said = news.join('\n'); news = []; loudAt = 0;
-      hear(said, { at: performance.now(), news: true });
+      const said = news.join('\n'), image = newsImage; news = []; loudAt = 0; newsImage = null;
+      hear(said, { at: performance.now(), news: true, image });
     },
     /** You started talking: it stops and listens. */
     interrupt(why = '') { if (speaker.talking || ctl) console.info('[reverie] stopped: ' + (why || 'interrupted')); turn++; if (ctl) { ctl.abort(); ctl = null; } if (speaker.talking) cut = speaker.pending || cut; speaker.stop(); creature.state.thinking = false; creature.state.listening = true; },

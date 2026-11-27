@@ -23,6 +23,16 @@
       <canvas aria-label="Drawing pad"></canvas>
       <div><button type="button" data-id="cancel">Cancel</button><button type="button" data-id="clear">Clear</button><button type="button" data-id="done">Make it!</button></div>
     </div>
+    <div id="show" hidden>
+      <canvas aria-label="What the camera sees"></canvas>
+      <p class="seen" aria-live="polite">Hold something up for Reverie</p>
+      <div>
+        <button type="button" data-id="close" aria-label="Close the camera">✕</button>
+        <button type="button" data-id="flip" aria-label="Switch camera">⟲</button>
+        <button type="button" data-id="copy">Make a copy</button>
+        <button type="button" data-id="show">Show</button>
+      </div>
+    </div>
   </div>
   <p id="status" role="status"></p>
   <p id="timing"></p>
@@ -32,6 +42,9 @@
     </button>
     <button id="draw" type="button" aria-label="Draw something for Reverie to make">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25Zm17.71-10.21a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83Z"/></svg>
+    </button>
+    <button id="look" type="button" aria-label="Show Reverie something with the camera">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4 7.2 6H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-3.2L15 4H9Zm3 4.5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9Zm0 2a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5Z"/></svg>
     </button>
     <input id="say" type="text" placeholder="Say something, or type…" enterkeyhint="send" aria-label="Say something">
     <button id="send" type="submit" aria-label="Send">
