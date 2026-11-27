@@ -17,9 +17,13 @@ const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 
 let v, light, creature, fx, world, room, embers, motes, body;
 // the room's recolourable parts: the meshes made of each, and the recipe they are made from
-const ROOM_LOOK = { walls: ['brick', [4, 2]], floor: ['planks', [6, 6]], rug: ['fabric', [3, 3]], wood: ['wood', [1, 2]] };
+const ROOM_LOOK = { walls: null, floor: ['wood', [8, 8]], rug: null, wood: ['wood', [1, 1]] };
 const roomParts = { walls: [], floor: [], rug: [], wood: [] }, relight = [];
-const roomMat = (part, colour) => gs.models.material(ROOM_LOOK[part][0], { colour, repeat: ROOM_LOOK[part][1] });
+// soft felt, with a sheen like Reverie's own plush (for the rug and the pouf)
+const felt = colour => { const c = new gs.hd.THREE.Color(colour); return gs.hd.pbr(colour, { rough: .95, sheen: .7, sheenColor: '#' + c.clone().lerp(new gs.hd.THREE.Color('#ffffff'), .55).getHexString(), sheenRoughness: .6 }); };
+// (the walls are smooth matte paint and the rug felt, made here: the recipes' textures read as blotchy plaster and a
+// straw mat up close)
+const roomMat = (part, colour) => ROOM_LOOK[part] ? gs.models.material(ROOM_LOOK[part][0], { colour, repeat: ROOM_LOOK[part][1] }) : Object.assign(part === 'rug' ? felt(colour) : gs.hd.pbr(colour, { rough: .9 }), { name: 'room:' + part });
 
 function setup() {
   const { HDView, pbr, rbox, THREE } = gs.hd, { material, prop } = gs.models;
@@ -28,53 +32,63 @@ function setup() {
   v = new HDView({ bg: '#2a1d16', fog: 0, fov: 36 });   // (its light, mood and finish: light.js)
   room = new THREE.Group(); v.scene.add(room);
   const shade = o => { o.traverse(m => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } }); return o; };
-  // floor, a round rug, two walls, a window: in the colours you chose for them (room.js), kept on this device
+  // A calm modern room in Reverie's own style: soft rounded shapes, matte warm-white walls, pale oak, one soft rug and
+  // a plant, lit by daylight from a big window. Floor, walls, rug and woodwork are in the colours you chose (room.js).
   const rc = roomColours(), part = (k, m) => { roomParts[k].push(m); return m; };
+  const add = (m, shadow = true) => { if (shadow) shade(m); else m.receiveShadow = true; room.add(m); return m; };
   const floor = part('floor', new THREE.Mesh(new THREE.PlaneGeometry(10, 10), roomMat('floor', rc.floor)));
-  floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; room.add(floor);
-  const rug = part('rug', new THREE.Mesh(new THREE.CylinderGeometry(1.05, 1.05, .012, 64), roomMat('rug', rc.rug)));
-  rug.position.y = .006; rug.receiveShadow = true; room.add(rug);
+  floor.rotation.x = -Math.PI / 2; add(floor, false);
+  // the rug: thick and soft, its edge rounded over (a lathe), not a flat disc
+  const rugShape = [[0, 0], [1.02, 0], [1.05, .006], [1.06, .014], [1.05, .021], [1.02, .024], [0, .024]].map(([x, y]) => new THREE.Vector2(x, y));
+  const rug = part('rug', new THREE.Mesh(new THREE.LatheGeometry(rugShape, 96), roomMat('rug', rc.rug))); add(rug, false);
   const wallMat = roomMat('walls', rc.walls);
-  const back = part('walls', new THREE.Mesh(rbox(6, 3, .2, .02), wallMat)); back.position.set(0, 1.5, -1.7); shade(back); room.add(back);
-  // the left wall, with a window the low sun comes in through (the wall in four pieces round the opening, a wooden
-  // frame and a cross of glazing bars whose shadow falls on the rug), and the bright afternoon outside it
-  const W0 = WINDOW, wall = (y0, y1, z0, z1) => { const m = part('walls', new THREE.Mesh(rbox(.2, y1 - y0, z1 - z0, .02), wallMat)); m.position.set(W0.x, (y0 + y1) / 2, (z0 + z1) / 2); shade(m); room.add(m); };
-  wall(0, W0.y0, -1.9, 4.2); wall(W0.y1, 3, -1.9, 4.2); wall(W0.y0, W0.y1, -1.9, W0.z0); wall(W0.y0, W0.y1, W0.z1, 4.2);   // (past the camera, so the low sun comes in only by the window)
-  const frameMat = roomMat('wood', rc.wood), wz = (W0.z0 + W0.z1) / 2, wy = (W0.y0 + W0.y1) / 2;
-  const bar = (h, d, y, z) => { const m = part('wood', new THREE.Mesh(rbox(.24, h, d, .01), frameMat)); m.position.set(W0.x + .01, y, z); shade(m); room.add(m); return m; };
-  bar(.07, W0.z1 - W0.z0 + .14, W0.y0 - .035, wz); bar(.07, W0.z1 - W0.z0 + .14, W0.y1 + .035, wz);
-  bar(W0.y1 - W0.y0, .07, wy, W0.z0 - .035); bar(W0.y1 - W0.y0, .07, wy, W0.z1 + .035);
-  const ledge = part('wood', new THREE.Mesh(rbox(.34, .04, W0.z1 - W0.z0 + .24, .01), frameMat)); ledge.position.set(W0.x + .08, W0.y0 - .07, wz); shade(ledge); room.add(ledge);
-  const glazing = part('wood', new THREE.Mesh(rbox(.05, W0.y1 - W0.y0, .05, .005), frameMat)); glazing.position.set(W0.x, wy, wz); shade(glazing); room.add(glazing);
-  const glazing2 = part('wood', new THREE.Mesh(rbox(.05, .05, W0.z1 - W0.z0, .005), frameMat)); glazing2.position.set(W0.x, wy + .12, wz); shade(glazing2); room.add(glazing2);
-  // a ceiling of dark boards (out of the camera's view): it keeps the sun to the window, and closes the room for its bounce light
-  const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(6.4, 6.4), material('planks', { colour: '#4e3422', repeat: [4, 4] }));
-  ceiling.rotation.x = Math.PI / 2; ceiling.position.set(.9, 3, 1.1); shade(ceiling); room.add(ceiling);
-  // (the outside: a warm bright sky seen through it, which the room's reflections and bounce light pick up too; it
-  // throws no shadow, so the sun still comes in)
-  const outside = new THREE.Mesh(new THREE.PlaneGeometry(4, 3), pbr('#ffe2b8', { glow: 1.2, glowCol: '#ffd9a8', rough: 1 }));
-  outside.position.set(W0.x - .6, 1.6, wz); outside.rotation.y = Math.PI / 2; room.add(outside);
-  // a workbench and a few things a maker keeps about
+  const back = part('walls', new THREE.Mesh(rbox(6, 3, .2, .02), wallMat)); back.position.set(0, 1.5, -1.7); add(back);
+  // the left wall, round a big window the daylight comes in by (the wall in four pieces round the opening)
+  const W0 = WINDOW, wz = (W0.z0 + W0.z1) / 2, wy = (W0.y0 + W0.y1) / 2;
+  const wall = (y0, y1, z0, z1) => { const m = part('walls', new THREE.Mesh(rbox(.2, y1 - y0, z1 - z0, .02), wallMat)); m.position.set(W0.x, (y0 + y1) / 2, (z0 + z1) / 2); add(m); };
+  wall(0, W0.y0, -1.9, 4.2); wall(W0.y1, 3, -1.9, 4.2); wall(W0.y0, W0.y1, -1.9, W0.z0); wall(W0.y0, W0.y1, W0.z1, 4.2);
+  // its slim frame, one bar across, and a deep sill to sit things on
   const wood = roomMat('wood', rc.wood);
-  const top = part('wood', new THREE.Mesh(rbox(1.3, .07, .55, .02), wood)); top.position.set(1.15, .78, -1.25); shade(top); room.add(top);
-  for (const [x, z] of [[.55, -1.05], [1.75, -1.05], [.55, -1.45], [1.75, -1.45]]) { const leg = part('wood', new THREE.Mesh(rbox(.06, .76, .06, .01), wood)); leg.position.set(x, .38, z); shade(leg); room.add(leg); }
-  const shelf = part('wood', new THREE.Mesh(rbox(1.1, .05, .28, .01), wood)); shelf.position.set(-1.35, 1.45, -1.5); shade(shelf); room.add(shelf);
-  // a little window in the back wall, the evening outside it (painted on, it casts no light of its own), and its sill
-  const glass = new THREE.Mesh(new THREE.PlaneGeometry(.74, .66), pbr('#ffd9a8', { rough: .2, glow: .55, glowCol: '#ffcf96' }));
-  glass.position.set(-.3, 1.5, -1.598); room.add(glass);
-  for (const [w, h, x, y] of [[.82, .05, -.3, 1.855], [.05, .74, -.69, 1.5], [.05, .74, .09, 1.5], [.03, .66, -.3, 1.5], [.74, .03, -.3, 1.5]]) {
-    const bar = part('wood', new THREE.Mesh(rbox(w, h, .05, .008), wood)); bar.position.set(x, y, -1.575); shade(bar); room.add(bar);
-  }
-  const sill = part('wood', new THREE.Mesh(rbox(.9, .05, .14, .01), wood)); sill.position.set(-.3, 1.12, -1.53); shade(sill); room.add(sill);
-  const keep = (o, size, x, y, z, ry = 0) => { fitTo(o, size); standAt(o, x, y, z); o.rotation.y = ry; shade(o); room.add(o); };
-  keep(prop('crate', { seed: 5 }), .45, -1.45, 0, -1.2, .4);
-  keep(prop('barrel', { seed: 3 }), .55, 1.85, 0, -.6, .3);
-  keep(prop('bucket', { seed: 4 }), .22, .95, .815, -1.25);
-  keep(prop('lamp', { seed: 2 }), .32, 1.55, .815, -1.3);
-  // dust drifting in the low sun, lit as it passes through the light
+  const frame = (h, d, y, z) => add(part('wood', new THREE.Mesh(rbox(.2, h, d, .012), wood))).position.set(W0.x + .02, y, z);
+  frame(.035, W0.z1 - W0.z0 + .07, W0.y0, wz); frame(.035, W0.z1 - W0.z0 + .07, W0.y1, wz);
+  frame(W0.y1 - W0.y0, .035, wy, W0.z0); frame(W0.y1 - W0.y0, .035, wy, W0.z1); frame(W0.y1 - W0.y0, .03, wy, wz);
+  const ledge = part('wood', new THREE.Mesh(rbox(.3, .035, W0.z1 - W0.z0 + .14, .012), wood)); ledge.position.set(W0.x + .1, W0.y0 - .02, wz); add(ledge);
+  // (the day outside: a soft bright sky the room's reflections and bounce light pick up; it throws no shadow)
+  const sky = new THREE.Mesh(new THREE.PlaneGeometry(5, 3.4), pbr('#eef0ec', { glow: 1.05, glowCol: '#f4f2ea', rough: 1 }));
+  sky.position.set(W0.x - .8, 1.6, wz); sky.rotation.y = Math.PI / 2; room.add(sky);
+  // a white ceiling (out of view): it closes the room, so daylight comes in only by the windows and bounces about
+  const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(6.4, 6.4), pbr('#f1ece5', { rough: .95 }));
+  ceiling.rotation.x = Math.PI / 2; ceiling.position.set(.9, 3, 1.1); add(ceiling);
+  // skirting along both walls: a small thing that makes a room read as real
+  const skirt = (w, d, x, z) => { const m = part('wood', new THREE.Mesh(rbox(w, .07, d, .01), wood)); m.position.set(x, .035, z); add(m); };
+  skirt(6, .02, 0, -1.59); skirt(.02, 6, -1.99, 1.2);
+  // a round window in the back wall, the day outside it, a deep reveal and a sill
+  const glass = new THREE.Mesh(new THREE.CircleGeometry(.31, 64), pbr('#eef0ec', { rough: .2, glow: .9, glowCol: '#f2f0e8' }));
+  glass.position.set(-.3, 1.5, -1.6); room.add(glass);
+  const reveal = part('wood', new THREE.Mesh(new THREE.TorusGeometry(.33, .025, 16, 72), wood)); reveal.position.set(-.3, 1.5, -1.585); add(reveal);
+  const sill = part('wood', new THREE.Mesh(rbox(.86, .04, .14, .012), wood)); sill.position.set(-.3, 1.125, -1.53); add(sill);
+  // the desk (where it makes things): a pale oak top on slim rounded legs, and a globe lamp
+  const pale = pbr('#ece6dd', { rough: .55 });   // (powder-coated legs and lamp, a soft warm white)
+  const top = part('wood', new THREE.Mesh(rbox(1.3, .04, .55, .015), wood)); top.position.set(1.15, .795, -1.25); add(top);
+  for (const [x, z] of [[.58, -1.05], [1.72, -1.05], [.58, -1.45], [1.72, -1.45]]) { const leg = new THREE.Mesh(new THREE.CylinderGeometry(.016, .012, .775, 16), pale); leg.position.set(x, .388, z); add(leg); }
+  const lampBase = new THREE.Mesh(new THREE.CylinderGeometry(.06, .068, .018, 40), pale); lampBase.position.set(1.55, .824, -1.32); add(lampBase);
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(.006, .006, .2, 12), pale); stem.position.set(1.55, .93, -1.32); add(stem);
+  const globe = new THREE.Mesh(new THREE.SphereGeometry(.075, 40, 24), pbr('#fff6e8', { rough: .35, glow: 1.6, glowCol: '#ffe2b8' })); globe.position.set(1.55, 1.1, -1.32); room.add(globe);
+  // a floating shelf, with a small vase
+  const shelf = part('wood', new THREE.Mesh(rbox(1.1, .04, .26, .012), wood)); shelf.position.set(-1.35, 1.45, -1.5); add(shelf);
+  const vaseShape = [[0, 0], [.045, 0], [.055, .03], [.05, .09], [.03, .13], [.026, .16], [.032, .17], [0, .17]].map(([x, y]) => new THREE.Vector2(x, y));
+  const vase = new THREE.Mesh(new THREE.LatheGeometry(vaseShape, 40), pbr('#d9b8a4', { rough: .45, clear: .4 })); vase.position.set(-1.7, 1.47, -1.52); add(vase);
+  // a round pouf in the back left corner, soft like Reverie
+  const pouf = new THREE.Mesh(new THREE.SphereGeometry(.26, 48, 24), felt('#b4bfa8'));
+  pouf.scale.set(1, .62, 1); pouf.position.set(-1.45, .16, -1.15); add(pouf);
+  // a plant on the right, in a tall matte pot
+  const potShape = [[0, 0], [.13, 0], [.16, .04], [.17, .38], [.165, .4], [0, .4]].map(([x, y]) => new THREE.Vector2(x, y));
+  const pot = new THREE.Mesh(new THREE.LatheGeometry(potShape, 48), pbr('#efeae3', { rough: .8 })); pot.position.set(1.85, 0, -.6); add(pot);
+  const plant = gs.models.tree('fan', { seed: 7 }); fitTo(plant, 1.05); standAt(plant, 1.85, .37, -.6); shade(plant); room.add(plant);
+  // a little dust drifting in the daylight
   motes = new gs.fx3d.Particles3D(v.scene);
   // (where the sun's beams cross the room, between the window and the creature)
-  motes.make({ x: -.9, y: 1.1, z: .2 }, { loop: true, rate: 7, life: [6, 10], speed: [.01, .04], size: [.004, .008], colors: ['#ffe6c0', '#ffd09a'], radius: 1.2, gravity: -.004, glow: false, shrink: false });
+  motes.make({ x: -.9, y: 1.1, z: .2 }, { loop: true, rate: 3, life: [6, 10], speed: [.01, .04], size: [.004, .008], colors: ['#ffe6c0', '#ffd09a'], radius: 1.2, gravity: -.004, glow: false, shrink: false });
   creature = makeCreature(); v.scene.add(creature.root);
   creature.setColours(colours());   // (the colours it was asked for last time, kept on this device)
   // the light: the sun through the window, the bench lamp, its core, bounce light and the room's own reflections
@@ -89,8 +103,8 @@ function setup() {
   world.box(null, 6, 3, .2, { fixed: true, at: { x: 0, y: 1.5, z: -1.7 } });
   world.box(null, .2, 3, 5, { fixed: true, at: { x: -2.1, y: 1.5, z: .6 } });
   body = world.box(null, .48, .66, .42, { moving: true, at: { x: 0, y: .33, z: 0 } });   // (the creature: props bounce off it, not through, and it goes where it walks)
-  world.box(null, 1.3, .07, .55, { fixed: true, at: { x: 1.15, y: .78, z: -1.25 } });   // (the bench top and the shelf: things thrown land on them)
-  world.box(null, 1.1, .05, .28, { fixed: true, at: { x: -1.35, y: 1.45, z: -1.5 } });
+  world.box(null, 1.3, .04, .55, { fixed: true, at: { x: 1.15, y: .795, z: -1.25 } });   // (the desk top and the shelf: things thrown land on them)
+  world.box(null, 1.1, .04, .26, { fixed: true, at: { x: -1.35, y: 1.45, z: -1.5 } });
   // the camera: just above eye level with it, close enough to see its face
   v.cam.position.set(0, .78, 1.95); v.cam.lookAt(0, .4, 0);
   gs.models.generate.load().catch(() => {});   // (the generator's workers warmed up while it wakes)

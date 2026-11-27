@@ -23,7 +23,7 @@ Your magic: you can make almost anything appear as a 3D prop in your hands, usin
 - toss throws the held prop onto the floor, where it tumbles with real weight.
 - clear makes the props in your hands and on the floor vanish. Things kept in the room stay, unless they ask to empty the room too.
 - Your room is theirs to decorate. place carries a thing to a spot in the room and puts it down, where it stays (it is remembered next time): the prop you are holding, something already in the room (to move it, or bring it back to your hands), or something new you make on the way ("make a lamp and put it by the window" is one place call with item "a lamp"). You walk over and set it down yourself, so say a short line first. The line at the top of each message lists what is in the room and where. If they don't say where, pick a spot that suits the thing.
-- room_colours paints the room: its walls, floor, rug and woodwork (the bench, shelf and window frame). Remembered too.
+- room_colours paints the room: its walls, floor, rug and woodwork (the desk, shelf and window frames). Remembered too.
 - roll throws real dice onto the rug in front of you ("2d6", "d20", "3d6+2"; a d6 or up to six of them tumble for real) and tells you what came up. Use it whenever they want a roll, a dice game, or help deciding something. Say the number like it matters.
 - doodle opens a drawing pad on their screen: they draw something and you turn their drawing into a real prop, guessed by a little drawing reader. Use it when they want to draw, or for a game of "draw it and I'll make it". You hear what they drew in a message starting [doodle].
 - weather gives the weather now and for the next few days, where they are or in a town they name. Say it the way a friend would, in a sentence or two, not every number.
@@ -66,7 +66,7 @@ export const TOOLS = [
       item: { type: 'string', description: 'What to place: "it" for what you are holding, the name of a thing already in the room ("the lamp"), or 1 to 8 plain words for something new to make first ("a tall green plant").' },
       spot: { type: 'string', enum: [...SPOT_NAMES, 'your hands', 'away'] },
       near: { type: 'string', description: 'Optional: a thing in the room to stand it next to ("the teapot").' },
-      size: { type: 'string', enum: ['small', 'medium', 'large', 'huge'], description: 'Optional: how big it is in the room. Things on the shelf, sill and bench are kept small.' },
+      size: { type: 'string', enum: ['small', 'medium', 'large', 'huge'], description: 'Optional: how big it is in the room. Things on the shelf, sill and desk are kept small.' },
     }, ['item', 'spot']),
   },
   {
@@ -76,7 +76,7 @@ export const TOOLS = [
       walls: { type: 'string', description: 'The brick walls.' },
       floor: { type: 'string', description: 'The floorboards.' },
       rug: { type: 'string', description: 'The round rug.' },
-      wood: { type: 'string', description: 'The workbench, shelf and window frame.' },
+      wood: { type: 'string', description: 'The desk top, shelf, skirting and window frames.' },
       reset: { type: 'boolean', description: 'True to put every colour back as it was.' },
     }, []),
   },

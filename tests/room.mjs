@@ -89,7 +89,7 @@ await page.waitForFunction(() => window.__reverie, null, { timeout: 180000 });
 await page.waitForFunction(() => window.__reverie.world.room.length === 2, null, { timeout: 120000 }).catch(() => fail('the room did not come back after a reload'));
 await page.waitForTimeout(1500);
 await shot('4-after-reload');
-const walls = await R(() => { let m = null; window.__reverie.world.view.scene.traverse(o => { if (o.isMesh && o.material?.name === 'models:brick') m = o.material; }); return m?.userData?.recipe?.look?.colour; });
+const walls = await R(() => { let m = null; window.__reverie.world.view.scene.traverse(o => { if (o.isMesh && o.material?.name === 'room:walls') m = o.material; }); return m && '#' + m.color.getHexString(); });
 console.log('walls after reload:', walls);
 if (!/87ceeb/i.test(String(walls))) fail('the wall colour did not come back');
 
