@@ -160,6 +160,8 @@ function checkInput(name, input) {
   if (name === 'smash' && input.how != null && !['smash', 'slice'].includes(input.how)) return 'how must be smash or slice';
   if (name === 'game_move' && (typeof input.move !== 'string' || !input.move.trim())) return 'move must be text';
   if (name === 'music' && (typeof input.action !== 'string' || (input.query != null && typeof input.query !== 'string') || (input.level != null && typeof input.level !== 'number'))) return 'action must be text, query text and level a number';
+  if (name === 'calendar' && (!['list', 'add'].includes(input.action) || ['day', 'title', 'start', 'end', 'where', 'notes'].some(k => input[k] != null && typeof input[k] !== 'string') || ['days', 'minutes'].some(k => input[k] != null && typeof input[k] !== 'number'))) return 'action must be list or add, days and minutes numbers, the rest text';
+  if (name === 'email' && (!['inbox', 'search', 'read', 'draft', 'send'].includes(input.action) || ['q', 'id', 'reply_to', 'to', 'subject', 'body', 'draft'].some(k => input[k] != null && typeof input[k] !== 'string') || input.max != null && typeof input.max !== 'number')) return 'action must be inbox, search, read, draft or send, max a number, the rest text';
   if (name === 'pet' && (!['make', 'trick', 'rename', 'away'].includes(input.action) || ['animal', 'name', 'colour', 'trick'].some(k => input[k] != null && typeof input[k] !== 'string'))) return 'action must be make, trick, rename or away, and the rest text';
   return null;
 }
@@ -276,7 +278,7 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
    * in the middle of a sentence is one question, not two.
    */
   async function hear(text, o = {}) {
-    text = String(text || '').trim().slice(0, 1000); if (!text) return;
+    text = String(text || '').trim().slice(0, o.news ? 2500 : 1000); if (!text) return;
     // the rest of a phrase whose first part has already been answered in full: nothing new, or a turn of its own
     if (o.more && ask && ask.my === turn && ask.done) {
       const before = new Set(wordsOf(ask.said));

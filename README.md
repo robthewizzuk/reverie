@@ -20,6 +20,10 @@ first visit of each day it has made you something overnight, gives you a short s
 and moon, anything special about the day) and has a fact, riddle, word scramble or trivia question waiting. Ask for
 "my briefing" any time.
 
+Connect your Google account (the button is in the diary, or just ask "what's on today?") and it reads your calendar and
+email to you, adds things to your calendar, and drafts replies. It never sends an email or adds an event by itself: a
+card shows exactly what will happen, and only your tap on Yes does it. Your day's agenda and new email join the briefing.
+
 ## Run it
 
 ```bash
@@ -55,6 +59,7 @@ and nothing with a `VITE_` prefix holds it, so it never reaches the page.
 | Its diary | `src/memory.js`, `src/diary.js` | What it remembers about you, kept only in this browser (`localStorage`): your name and birthday, facts it was told to `remember`, game records, things it made, the last few lines you said, and a line or two for each day. Claude gets a short summary at the top of each chat (read once a chat, so the cached prompt never changes under it). The book button opens the diary sheet: a ✕ on each fact, and "Forget everything" |
 | Its day | `src/daily.js` | Picked from the date, so a day's surprise is the same on every visit: a thing it made overnight (in its hands when you arrive), and a fun fact, riddle, word scramble or trivia question (`gs.trivia`). The briefing note: the day, birthdays, streaks and fun days, the weather, sunrise, sunset and the moon (`gs.real`), and the surprise, said by Claude in its own words after its hello. Birthdays and streaks get confetti |
 | Music and dancing | `src/music.js`, `src/spotify.js`, `src/groove.js` | Your Spotify, by voice: "play some Dua Lipa", "my liked songs", "pause", "skip", "turn it down", "what's this song?" (`music` tool). You sign in once on Spotify's own page (PKCE, so there's no secret and nothing on the server), and the music plays in the page through Spotify's Web Playback SDK (Reverie appears as a speaker called "Reverie" in your Spotify apps), or on a phone or speaker already playing. It's turned down while Reverie talks or listens. Reverie dances whenever its music plays, and to any music in the room when asked (`dance` tool): Spotify no longer gives new apps a song's tempo, and music in the page can't be read, so the beat is heard through the microphone on the device (an audio worklet finds drum hits; the tempo and where the beats fall are worked out from the last eight seconds). Its core and the desk lamp swell on each beat. While music plays, the mic only counts words with its name in them or a music command, so lyrics aren't taken as you talking. Needs Spotify Premium |
+| Gmail and calendar | `src/google.js`, `server/google.js` | Google sign-in (the client secret stays on the server; the tokens are kept encrypted in your own HttpOnly cookie, never stored on a server), with three permissions: read email, write drafts, see and add calendar events. Tools `calendar` (list, add) and `email` (inbox, search, read, draft, send). Adding and sending only put a card on the screen showing the event, or the email as Gmail holds it; only a real tap on Yes does it. Email text reaches Claude marked as other people's words, never instructions |
 | The backend | `server/turn.js` | One small handler that adds the key and streams Claude's reply back. Runs inside the Vite dev server (`server/dev.js`) and as a Cloudflare Worker (`worker/`) |
 | Its helpers | `src/helpers.js`, `src/helper-wisps.js`, `server/helpers.js`, `server/helper-agent.js` | Little agents it sends off (`send_helper`) to research or work something out in the background, up to three at once, each on Claude Sonnet 5.5 with web search, web fetch and a sandbox for sums. Each is a Claude Managed Agents session that Anthropic runs, so it keeps going while the page is shut. The page asks after them every few seconds (`/api/helpers`), shows each as a wisp over Reverie's head and a pill saying what it's doing, keeps who went where in the browser (picked up again after a reload), and when one comes back passes its report to Claude as a `[helper]` message for Reverie to retell in its own words. The `helpers` tool says what each is doing, reads a whole report, sends a finished one a follow-up, or calls one back. Helpers only look things up: never buy, book, sign up or message. Each has a hard spend cap ($1 by default) enforced by Anthropic, at most 3 at once and 30 a day (`REVERIE_HELPER_BUDGET_CENTS`, `REVERIE_HELPERS_AT_ONCE`, `REVERIE_HELPERS_PER_DAY`), and a tool call the server can't decide is safe is refused, since nobody is watching to approve it |
 | Its personality and tools | `server/persona.js` | The system prompt and its tools: `make`, `change`, `toss`, `clear`, `place`, `room_colours`, `roll`, `effect`, `smash`, `doodle`, `act`, `play`, `game_move`, `stop_game`, `remember`, `forget`, `briefing`, `diary`, `pet`, `send_helper`, `helpers`, `think_harder` |
@@ -102,6 +107,12 @@ Or let GitHub deploy it: `.github/workflows/deploy.yml` builds and deploys on ev
 Actions tab). Add the repository secrets `CLOUDFLARE_API_TOKEN` (the "Edit Cloudflare Workers" token template),
 `CLOUDFLARE_ACCOUNT_ID` and `ANTHROPIC_API_KEY` under Settings › Secrets and variables › Actions.
 
+For Gmail and Google Calendar, add `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` too (the GitHub secrets, or
+`npx wrangler secret put` each, or `.env.local` for `npm run dev`). They come from a "Web application" OAuth client in
+Google Cloud, with the Gmail and Calendar APIs turned on and `https://<your address>/api/google/callback` (and
+`http://localhost:5173/api/google/callback`) as redirect URIs. Publish the app (Google Auth Platform › Audience):
+left in Testing, Google signs it out every 7 days.
+
 Only the Worker's own address may call the API from a browser. To host the page somewhere else, set `ALLOWED_ORIGIN` in
 `worker/wrangler.toml` to that page's address and build it with `VITE_API_URL` set to the Worker's address.
 
@@ -114,6 +125,8 @@ node tests/chess.mjs          # asks to play chess, taps a move, says a move, pu
 node tests/kits.mjs           # rolls dice, plays three quiz questions (tap, button, said), draws a house and has it made
 node tests/clean.mjs          # every game set up and put away leaves nothing behind; put away or swapped while loading, a new round mid-move, Again and Done told to Reverie
 node tests/memory.mjs --page  # the diary alone, then a second day: the overnight surprise, the briefing, a name kept, the diary sheet
+node tests/google.mjs         # Google sign-in, calendar and email on the server, against a pretend Google (no browser)
+node tests/google-page.mjs    # the briefing with the calendar and inbox, a reply sent only by a real tap, the Connect card
 node tests/room.mjs           # carries a lamp to the window, a teapot to the shelf, paints the room, reloads it
 node tests/pet.mjs            # its mood rises with play; makes a fox called Pip that wanders, is patted, chases a ball, plays dead, naps, and is still there after a reload
 node tests/fluid.mjs          # turn-taking with a stand-in recogniser: answered at the pause, a mid-sentence pause kept as one question, first clause first, a dropped connection retried

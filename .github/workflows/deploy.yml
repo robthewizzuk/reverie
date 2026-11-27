@@ -6,6 +6,8 @@
 #   CLOUDFLARE_ACCOUNT_ID  the account id shown on the Workers & Pages overview page
 #   ANTHROPIC_API_KEY      the Claude key; uploaded to the Worker as an encrypted secret with each deploy.
 #                          Optional: leave it out if you set it once with `npx wrangler secret put ANTHROPIC_API_KEY`.
+#   GOOGLE_CLIENT_ID       Optional: Gmail and Google Calendar (the "Web application" OAuth client from Google Cloud).
+#   GOOGLE_CLIENT_SECRET   Its secret. Both uploaded to the Worker as encrypted secrets with each deploy, like the key.
 name: Deploy
 
 on:
@@ -69,13 +71,15 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           HELPER_AGENT: ${{ steps.helpers.outputs.agent_id }}
           HELPER_ENV: ${{ steps.helpers.outputs.env_id }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
         run: |
           args=()
           if [ -n "$HELPER_AGENT" ] && [ -n "$HELPER_ENV" ]; then args+=(--var "REVERIE_HELPER_AGENT_ID:$HELPER_AGENT" --var "REVERIE_HELPER_ENV_ID:$HELPER_ENV"); fi
-          if [ -n "$ANTHROPIC_API_KEY" ]; then
-            # Written as JSON outside the repo, read by wrangler, then removed. Never printed.
+          if [ -n "$ANTHROPIC_API_KEY$GOOGLE_CLIENT_ID$GOOGLE_CLIENT_SECRET" ]; then
+            # Written as JSON outside the repo, read by wrangler, then removed. Never printed. (Only the ones that are set.)
             trap 'rm -f "$RUNNER_TEMP/secrets.json"' EXIT
-            node -e 'require("fs").writeFileSync(process.argv[1], JSON.stringify({ ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY }), { mode: 0o600 })' "$RUNNER_TEMP/secrets.json"
+            node -e 'const e = process.env, s = {}; for (const k of ["ANTHROPIC_API_KEY", "GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"]) if (e[k]) s[k] = e[k]; require("fs").writeFileSync(process.argv[1], JSON.stringify(s), { mode: 0o600 })' "$RUNNER_TEMP/secrets.json"
             args+=(--secrets-file "$RUNNER_TEMP/secrets.json")
           fi
           npx wrangler deploy "${args[@]}"
