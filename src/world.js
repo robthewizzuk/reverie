@@ -12,6 +12,7 @@ import { makeSleepy } from './sleepy.js';
 import { makeDice } from './dice.js';
 import { makePet } from './pet.js';
 import { makeFloaties } from './floaties.js';
+import { breakApart, makeShows } from './fun.js';
 import { SPOTS, SPOT_NAMES, spotOf, roomColours, roomItems, tidyRoomColours, keepRoomColours, keepItem, forgetItem, forgetAll, freePlace, findItem, roomLine, inRoom, MAX_ITEMS } from './room.js';
 
 const HOLD_SIZE = .4;            // metres: the longest side of a prop in its hands
@@ -145,6 +146,8 @@ export function makeWorld() {
   let keeper = null, mood = null;
   // looking around (look.js, set by the page): drags and pinches swing the camera off its seat
   let look = null;
+  // broken bits on the floor (gs.destruction's Rubble: they fade away after a while) and little shows (fun.js)
+  let rubble = null, shows = null;
   const lines = [];
   const games = {}, HOME = { pos: [0, .78, 1.95], look: [0, .4, 0] }, camAt = { pos: [...HOME.pos], look: [...HOME.look] };
   const stage = {
@@ -357,6 +360,7 @@ export function makeWorld() {
     scene() {
       const floor = loose.map(e => e.short).slice(-6);
       if (dice?.onFloor) floor.push(dice.onFloor);
+      if (rubble?.count) floor.push('some broken bits');
       const out = daylight?.line();
       return `In your hands: ${held ? held.short : 'nothing'}.${floor.length ? ` On the floor: ${floor.join(', ')}.` : ''}${roomLine(placed)}${out ? ` Outside: ${out}.` : ''}${keeper?.line() || ''}${lines.map(f => { try { return f() || ''; } catch { return ''; } }).join('')}`;
     },
@@ -366,6 +370,8 @@ export function makeWorld() {
       if (!restored) { restored = true; restoreRoom(); keeper.restore(); }
       for (const e of loose) remove(e); loose = []; if (held) remove(held); held = null; creature.holding = false;
       fx.clear(); embers = makeEmbers(); creature.mood('calm');
+      rubble ||= new gs.destruction.Rubble(v.scene, { max: 60, life: 9, shrink: .8 }); rubble.clear();
+      shows ||= makeShows({ fx, creature, floaties }); shows.clear();
       dice ||= makeDice({ THREE, scene: v.scene, physics: world, creature, sparks: stage.sparks }); dice.clear();
       if (game) { game.stop(); game = null; }
     },
@@ -400,6 +406,7 @@ export function makeWorld() {
       loose = loose.filter(e => e.pivot.position.y >= -4);
       while (loose.length > 14) remove(loose.shift());
       keeper?.update(dt);
+      rubble?.update(dt); shows?.update(dt);
       fx.update(dt); motes.update(dt); floaties.update(dt);
     },
     draw(c) { v.render(c, W, H); },
@@ -461,7 +468,9 @@ export function makeWorld() {
     async clear(o = {}) {
       const n = loose.length + (held ? 1 : 0) + (dice?.clear() || 0), m = o.room ? placed.length : 0;
       for (const e of [...loose, ...(held ? [held] : []), ...(o.room ? placed : [])]) { poof(e.pivot, '#ffffff'); remove(e); }
+      const bits = rubble?.count || 0; rubble?.clear();
       loose = []; held = null; creature.holding = false; gs.sound.sounds.pop();
+      if (!n && bits && !o.room) return 'Swept up the broken bits.';
       if (o.room) { placed = []; forgetAll(); }
       const kept = placed.length ? ` The ${placed.length} thing${placed.length > 1 ? 's' : ''} kept in the room stayed.` : '';
       return n + m ? `Cleared ${n + m} prop${n + m > 1 ? 's' : ''}.${kept}` : `There was nothing to clear.${kept}`;
@@ -499,6 +508,28 @@ export function makeWorld() {
       creature.gesture('tada'); gs.sound.sounds.pop();
       return { text: `The room's ${r.changed.join(', ')} ${r.changed.length > 1 ? 'are' : 'is'} now ${r.changed.map(k => r.colours[k]).join(', ')}. It is remembered next time.` };
     },
+    /** Breaks the prop it holds (or the last one thrown on the floor): how 'smash' into real pieces that tumble, or
+     *  'slice' in two. Resolves a sentence. */
+    async smash(how = 'smash') {
+      const e = held || loose[loose.length - 1];
+      if (!e) return { text: 'Not done: there is nothing in your hands or on the floor to break. Make something first.', error: true };
+      how = how === 'slice' ? 'slice' : 'smash';
+      if (e === held) { held = null; creature.holding = false; } else loose = loose.filter(x => x !== e);
+      if (e.body) { e.body.remove(); e.body = null; }
+      creature.gesture(how === 'slice' ? 'point' : 'bounce'); creature.mood('excited');
+      let r = null;
+      try { r = breakApart(e.pivot, { how, world, rubble, scene: v.scene, density: e.density }); } catch (err) { console.warn('[reverie] smash', err); }
+      if (!r) { poof(e.pivot, '#ffffff'); remove(e); gs.sound.sounds.pop(); return `${e.short || e.words} went up in a puff instead: it would not break.`; }
+      fx.sparks(r.at, { color: how === 'slice' ? '#e8f4ff' : '#f2e6d8', count: how === 'slice' ? 20 : 30, power: .9, light: false });
+      if (how === 'slice') gs.sound.sounds.slash?.(); else { gs.sound.sounds.shatter?.(); setTimeout(() => gs.sound.sounds.crumble?.(), 180); }
+      return how === 'slice' ? `Sliced ${e.short || e.words} clean in two: both halves fell on the rug.` : `Smashed ${e.short || e.words} into ${r.pieces} pieces that went tumbling across the rug. They fade away in a little while.`;
+    },
+    /** A little show (fun.js): fireworks, confetti, magic, bubbles, snow or hearts. Resolves a sentence. */
+    async show(kind) { return shows ? shows.play(kind) : 'Not done: the room is not ready yet.'; },
+    /** The stage's physics (a gs.physics3d World3D), for the phone's tilt and shakes. */
+    get physics() { return world; },
+    /** The bodies of everything loose on the floor: props thrown down and broken bits. */
+    floorBodies: () => [...loose.map(e => e.body), ...(rubble?.list || []).map(m => m.body)].filter(b => b && !b.dead),
     /** A burst of confetti round it, and a little hop (a birthday, a streak). */
     celebrate() {
       creature.gesture('tada'); creature.mood('excited');

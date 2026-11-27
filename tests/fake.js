@@ -38,6 +38,8 @@ function plan(body) {
     if (/^Forgot /.test(r)) return { text: 'Poof, forgotten.', tools: [] };
     if (/^\[Their daily briefing/.test(r)) return { text: 'Here is your briefing: it is a lovely day for making things.', tools: [] };
     if (/diary is open/i.test(r)) return { text: 'There it is, my diary.', tools: [] };
+    if (/^(Smashed|Sliced) /.test(r)) return { text: 'Oops! Well, that was fun.', tools: [] };
+    if (/^(Six little fireworks|Confetti|Magic|Bubbles|It snowed|Hearts)/.test(r)) return { text: 'Pretty!', tools: [] };
     if (/^Answered /.test(r)) return { text: 'Ooh.', tools: [] };
     if (/noughts and crosses board is set up/i.test(r)) return { text: 'Crosses, your move.', tools: [] };
     if (/Twenty Questions is set up/.test(r)) return { text: "I'm thinking of something. Twenty questions, go!", tools: [] };
@@ -66,6 +68,9 @@ function plan(body) {
   if ((m0 = /my name is (\w+)/.exec(said))) return { text: `Lovely to meet you, ${m0[1]}!`, tools: [['remember', { name: m0[1][0].toUpperCase() + m0[1].slice(1) }]] };
   if ((m0 = /^remember (?:that )?i (.+)/.exec(said))) return { text: 'Ooh, noted.', tools: [['remember', { fact: m0[1] }]] };
   if ((m0 = /^forget (?:about )?(.+)/.exec(said))) return { text: 'Okay.', tools: [['forget', { what: m0[1].replace(/^(that|my|the) /, s => s === 'my ' ? 'my ' : '') }]] };
+  if (/^\[phone\]/.test(said)) return { text: 'Whoa, whoa! Everything is spinning!', tools: [] };
+  if ((m0 = /^(smash|slice) it/.exec(said))) return { text: m0[1] === 'slice' ? 'Hi-yah!' : 'Stand back!', tools: [['smash', { how: m0[1] }]] };
+  if ((m0 = /^(fireworks|confetti|bubbles|magic|hearts|indoor snow)\b/.exec(said))) return { text: 'Ooh, watch this!', tools: [['effect', { kind: m0[1].replace('indoor ', '') }]] };
   if (/briefing/.test(said)) return { text: 'Ooh, briefing time.', tools: [['briefing', {}]] };
   if (/diary/.test(said)) return { text: 'Here you go.', tools: [['diary', {}]] };
   if (/was set up straight away/.test(said)) return { text: 'Oh, you are on!', tools: [] };
