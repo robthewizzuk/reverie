@@ -43,18 +43,31 @@ function near(a, b) {
 // (and it comes back if anything reset the mixer)
 const roomEcho = () => { try { gs.sound.mixer.place(echoNow(), .3); } catch { /* no audio yet */ } };
 
-/** Cuts the whole sentences off the front of text as it streams in, giving each to take(line); returns what is left. */
-function cut(buf, take) {
+/**
+ * Cuts the whole sentences off the front of text as it streams in, giving each to take(line); returns what is left.
+ * quiet(): nothing is being said or waiting, so a first clause may go to the voice at once.
+ */
+function cut(buf, take, quiet) {
   for (;;) {
     const m = /^([\s\S]*?[.!?…]+["')\]]*)\s+/.exec(buf);
     if (m && m[1].trim().length >= 2) { take(m[1]); buf = buf.slice(m[0].length); continue; }
+    // quiet until now: a first clause goes to the voice at once (the rest of its sentence follows on)
+    if (quiet()) {
+      const c = FIRST_CUT.exec(buf);
+      if (c && c[1].trim().split(/\s+/).length >= 4) { take(c[1]); buf = buf.slice(c[0].length); continue; }
+    }
     // a long run with no full stop yet: say up to its last comma
     if (buf.length > 160) { const i = buf.lastIndexOf(', '); if (i > 40) { take(buf.slice(0, i + 1)); buf = buf.slice(i + 2); continue; } }
     return buf;
   }
 }
-/** The lines a whole text is said as (as speak() cuts it), each as the voice gets it. */
-const linesOf = text => { const out = [], rest = cut(text + ' ', l => out.push(spoken(l))); if (rest.trim()) out.push(spoken(rest)); return out.filter(Boolean); };
+/** The lines a whole text is said as when it starts from quiet (as speak() cuts it), each as the voice gets it. */
+function linesOf(text) {
+  const out = [], take = t => { for (const p of splitCues(t)) if (typeof p === 'string' && spoken(p)) out.push(spoken(p)); };
+  const rest = cut(text + ' ', take, () => !out.length);
+  if (rest.trim()) take(rest);
+  return out;
+}
 
 /** Says sentences in order, one after another, with the mouth moving; the next is written while one is said.
  * A sound cue in the words ("[drumroll]", cues.js) plays in its place, between the words before and after it. */
@@ -94,21 +107,7 @@ export function makeSpeaker(creature, onCaption) {
   const words = () => [...queue.filter(x => typeof x === 'string'), buf].join(' ').trim();
   return {
     /** Text as it streams in: each whole sentence goes to the voice straight away. */
-    feed(text) {
-      buf += text;
-      for (;;) {
-        const m = /^([\s\S]*?[.!?…]+["')\]]*)\s+/.exec(buf);
-        if (m && m[1].trim().length >= 2) { push(m[1]); buf = buf.slice(m[0].length); continue; }
-        // quiet until now: a first clause goes to the voice at once (the rest of its sentence follows on)
-        if (!busy && !queue.length) {
-          const c = FIRST_CUT.exec(buf);
-          if (c && c[1].trim().split(/\s+/).length >= 4) { push(c[1]); buf = buf.slice(c[0].length); continue; }
-        }
-        // a long run with no full stop yet: say up to its last comma
-        if (buf.length > 160) { const i = buf.lastIndexOf(', '); if (i > 40) { push(buf.slice(0, i + 1)); buf = buf.slice(i + 2); continue; } }
-        break;
-      }
-    },
+    feed(text) { buf += text; buf = cut(buf, push, () => !busy && !queue.length); },
     flush() { if (buf.trim()) push(buf); buf = ''; },
     /** Everything said so far in this reply that is still to come, for "you were interrupted". */
     get pending() { return words(); },

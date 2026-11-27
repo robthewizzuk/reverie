@@ -386,14 +386,11 @@ function wakeUp() {
   if (visit.newDay && !visit.first) dailyBriefing(visit, asked).catch(e => console.warn('[reverie] briefing', e));
 }
 
-
 /**
- * While it wakes, everything the first exchange needs is got ready, so the first hello and the first answer don't wait:
- * Claude's prompt read into the API's cache (the first turn then reads it instead); the voice and the hello are got
- * ready in boot.
+ * While it wakes, Claude's prompt is read into the API's cache, so the first answer doesn't wait (the first turn then
+ * reads it instead). Its voice and the hello are got ready in boot, once the brain is made.
  */
 function warmUp() {
-  // (its voice and its hello are written ahead in boot: brain.prepare(helloFor(...)))
   fetch(API_WARM, { method: 'POST' }).then(r => r.json()).then(r => console.info(`[reverie] warmed the prompt cache: ${r.ms ?? '?'} ms${r.error ? ', ' + r.error : ''}`)).catch(() => {});
 }
 const API_WARM = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '') + '/api/warm';
