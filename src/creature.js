@@ -252,6 +252,8 @@ export function makeCreature() {
 
   return {
     root, hold, face, core, face3d,
+    /** What clothes hang on (outfits.js): its body blob, the sprout on its head, its arms' shoulder pivots (-x, +x), its plush. */
+    rig: { body, sprout, arms: arms.map(a => a.pivot), plush },
     setColours, glowed,
     state,
     get coreGlow() { return coreGlow; },

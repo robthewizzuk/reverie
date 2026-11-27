@@ -3,6 +3,7 @@
 // game is (make, reset, update, draw), so the engine's kits load and run as they do in the app.
 import gs from '../engine/src/gamescroll.js';
 import { makeCreature } from './creature.js';
+import { makeOutfits } from './outfits.js';
 import { colours, tidyColours, keepColours } from './looks.js';
 import { describe } from './describe.js';
 import { GAMES } from './games/index.js';
@@ -19,7 +20,7 @@ const SIZE_WORDS = [[/\b(giant|huge|enormous)\b/, 1.8], [/\b(bigger|big|large)\b
 const article = w => w.replace(/^(a|an|the|some)\s+/i, '');
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 
-let v, light, creature, fx, world, room, embers, motes, body, daylight, sleepy, floaties;
+let v, light, creature, outfits, fx, world, room, embers, motes, body, daylight, sleepy, floaties;
 // the room's recolourable parts: the meshes made of each, and the recipe they are made from
 const ROOM_LOOK = { walls: null, floor: ['wood', [8, 8]], rug: null, wood: ['wood', [1, 1]] };
 const roomParts = { walls: [], floor: [], rug: [], wood: [] }, relight = [];
@@ -100,6 +101,7 @@ function setup() {
   const dust = motes.make({ x: -.9, y: 1.1, z: .2 }, { loop: true, rate: 3, life: [6, 10], speed: [.01, .04], size: [.004, .008], colors: ['#ffe6c0', '#ffd09a'], radius: 1.2, gravity: -.004, glow: false, shrink: false });
   creature = makeCreature(); v.scene.add(creature.root);
   creature.setColours(colours());   // (the colours it was asked for last time, kept on this device)
+  outfits = makeOutfits({ rig: creature.rig });   // (what it wore last time, and the season's hat)
   // the light: the sun through the window, the bench lamp, its core, bounce light and the room's own reflections
   // (made once the creature is in the room, so the reflections reach its eyes and glass dome)
   light = lightRoom(v, creature, { min: [-2.0, 0, -1.6], max: [2.2, 3, 2.2] });
@@ -143,7 +145,7 @@ export function makeWorld() {
   let game = null, onNews = () => {}, onSay = () => false, pad = null, dice = null;
   // its pet (pet.js), made once the room is; its mood (mood.js, set by the page); more lines for Claude's scene line
   let keeper = null, mood = null;
-  const lines = [];
+  const lines = [() => outfits?.line() || ''];
   const games = {}, HOME = { pos: [0, .78, 1.95], look: [0, .4, 0] }, camAt = { pos: [...HOME.pos], look: [...HOME.look] };
   const stage = {
     THREE, get scene() { return v.scene; }, get creature() { return creature; }, get physics() { return world; },
@@ -379,7 +381,7 @@ export function makeWorld() {
       v.cam.position.set(...camAt.pos); v.cam.lookAt(...camAt.look);
       game?.update(dt);
       if (acts.length) { if (acts[0](dt)) acts.shift(); body.place(creature.root.position.x, .33, creature.root.position.z); }
-      creature.update(dt, v.cam);
+      creature.update(dt, v.cam); outfits.update(dt);
       daylight.update(dt); sleepy.update(dt);
       light.update(dt, t);
       creature.coreAt(at);
@@ -469,6 +471,20 @@ export function makeWorld() {
       embers.remove(); embers = makeEmbers();
       creature.gesture('tada'); poof(creature.core, creature.glowed('#ffd27a')); gs.sound.sounds.pop();
       return { text: `Your body is now ${r.colours.body} and your glow ${r.colours.glow}. It is remembered next time.` };
+    },
+    /** What it wears (outfits.js). */
+    get outfits() { return outfits; },
+    /** The wear tool ({ put_on, take_off, colour }): puts clothes on or takes them off, kept for next time. */
+    async wear(input) {
+      const r = outfits.wear(input);
+      if (r.changed) { creature.gesture('tada'); creature.mood('happy'); poof(creature.face3d, '#fff0c8'); gs.sound.sounds.pop(); v.precompile?.(); }
+      return r;
+    },
+    /** Dresses it for the voice it has now (a character voice puts on its outfit): a sentence for Claude, or ''. */
+    dressFor(name) {
+      const text = outfits.forVoice(name);
+      if (text) { poof(creature.face3d, '#fff0c8'); v.precompile?.(); }
+      return text;
     },
     /** Rolls dice ("2d6", "d20"): real ones thrown onto the rug where it can. Resolves a sentence for Claude. */
     roll: text => dice.roll(text),

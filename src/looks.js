@@ -86,6 +86,9 @@ export function setVoice(input = {}) {
   return { text: `Your voice is now ${told(now.voice)}. Everything you say from here on uses it, and it is remembered next time.` };
 }
 
+/** The voice it has now: { name ('' its own), size, lively, effect }. */
+export const voiceNow = () => ({ ...now.voice });
+
 /** The colours it has now: { body, glow } as '#rrggbb'. */
 export const colours = () => ({ ...now.colours });
 

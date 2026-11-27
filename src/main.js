@@ -29,7 +29,7 @@ const memory = makeMemory();
 const today = { surprise: null, holding: null, funDay: funDay() };
 let overnight = Promise.resolve();
 // which kind of fun each of Claude's tools is, for its mood (mood.js FUN)
-const FUN_OF = { make: 'make', change: 'change', toss: 'toss', place: 'place', room_colours: 'room', colours: 'colours', roll: 'roll', doodle: 'doodle', play: 'game', game_move: 'move', voice: 'voice', show: 'show' };
+const FUN_OF = { make: 'make', change: 'change', toss: 'toss', place: 'place', room_colours: 'room', colours: 'colours', roll: 'roll', doodle: 'doodle', play: 'game', game_move: 'move', voice: 'voice', show: 'show', wear: 'wear' };
 
 // What the engine's speed kit is told is being played, so the 3D view paces and tunes itself as it does for a Next Gen
 // game in the app: 60 frames a second on a phone or a laptop's browser (not every refresh of a 120 Hz screen, which is

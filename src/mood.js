@@ -18,7 +18,7 @@ export const LEVELS = [
 export const FUN = {
   chat: [.008, .12], make: [.03, .5], change: [.015, .3], toss: [.012, .35], place: [.02, .3], colours: [.015, .3],
   room: [.015, .3], roll: [.02, .45], doodle: [.04, .6], game: [.04, .5], win: [.06, .8], move: [.006, .15],
-  show: [.03, .5], poke: [.012, .35], pet: [.025, .5], newpet: [.08, 1], trick: [.015, .4], voice: [.01, .3],
+  show: [.03, .5], poke: [.012, .35], pet: [.025, .5], newpet: [.08, 1], trick: [.015, .4], voice: [.01, .3], wear: [.015, .35],
 };
 const REST = .42;               // where joy settles back to on its own
 const SETTLE_HOURS = 30;        // about how long it takes to drift most of the way back

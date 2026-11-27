@@ -23,6 +23,7 @@ function plan(body) {
   if (results.length) {
     const r = String(results[0].content ?? '');
     if (/^weather in|location is not shared|did not answer/i.test(r)) return { text: 'Looks like a cosy day for staying in with me.', tools: [] };
+    if (/^You (are now wearing|took off)/.test(r)) return { text: 'How do I look?', tools: [] };
     if (/^your voice is now/i.test(r)) return { text: 'How do I sound now?', tools: [] };
     if (/^your body is now/i.test(r)) return { text: 'Do you like it?', tools: [] };
     if (/^(Carried|Fetched|Took)/.test(r)) return { text: 'There we go.', tools: [] };
@@ -89,6 +90,8 @@ function plan(body) {
   if (/real sky/.test(said)) return { text: 'Back to the real sky.', tools: [['window', { time: 'live', weather: 'live' }]] };
   if ((m = /make it (.+)/.exec(said))) return { text: 'Watch this.', tools: [['change', { words: m[1] }]] };
   if ((m = /make (?:me )?(an? .+|some .+)/.exec(said))) return { text: 'Ooh, one coming right up!', tools: [['act', { gesture: 'tada', mood: 'excited' }], ['make', { words: m[1] }]] };
+  if ((m = /^(?:wear|put on|dress up as) (?:a |an |the |your )?(.+?)(?: in (#?\w+))?$/.exec(said))) return { text: 'Ooh, dressing up!', tools: [['wear', { put_on: [m[1]], ...(m[2] ? { colour: m[2] } : {}) }]] };
+  if ((m = /^take (?:off )?(?:your |the )?(.+?)(?: off)?$/.exec(said)) && !/^(it|a|the) /.test(m[1])) return { text: 'Okay, off it comes.', tools: [['wear', { take_off: [m[1]] }]] };
   if (/pirate/.test(said)) return { text: 'Arr, give me a moment.', tools: [['voice', { name: 'captain_silas_blackwater' }]] };
   if (/normal voice/.test(said)) return { text: 'Back to me.', tools: [['voice', { reset: true }]] };
   if (/purple|colou?r/.test(said)) return { text: 'Ooh, a new look.', tools: [['colours', { body: '#c8b4ee', glow: '#30a0ff' }]] };
