@@ -6,7 +6,8 @@ import { makeCreature } from './creature.js';
 import { colours, tidyColours, keepColours } from './looks.js';
 import { describe } from './describe.js';
 import { GAMES } from './games/index.js';
-import { lightRoom, WINDOW } from './light.js';
+import { lightRoom, WINDOW, LAMP } from './light.js';
+import { SHELL, shellR, backZ, wallNormal, buildShell, roundRect, circle } from './shell.js';
 import { makeDaylight } from './daylight.js';
 import { makeSleepy } from './sleepy.js';
 import { makeDice } from './dice.js';
@@ -14,7 +15,7 @@ import { makePet } from './pet.js';
 import { makeFloaties } from './floaties.js';
 import { breakApart, makeShows } from './fun.js';
 import { makeMotion, flexFor } from './motion.js';
-import { SPOTS, SPOT_NAMES, spotOf, roomColours, roomItems, tidyRoomColours, keepRoomColours, keepItem, forgetItem, forgetAll, freePlace, findItem, roomLine, inRoom, MAX_ITEMS } from './room.js';
+import { DESK, SHELF, SILL, LEDGE, onBoard, SPOTS, SPOT_NAMES, spotOf, roomColours, roomItems, tidyRoomColours, keepRoomColours, keepItem, forgetItem, forgetAll, freePlace, findItem, roomLine, inRoom, MAX_ITEMS } from './room.js';
 
 const HOLD_SIZE = .4;            // metres: the longest side of a prop in its hands
 const SIZE_WORDS = [[/\b(giant|huge|enormous)\b/, 1.8], [/\b(bigger|big|large)\b/, 1.4], [/\b(smaller|small|little)\b/, .7], [/\b(tiny|teeny)\b/, .5]];
@@ -47,51 +48,71 @@ function setup() {
   // the rug: thick and soft, its edge rounded over (a lathe), not a flat disc
   const rugShape = [[0, 0], [1.02, 0], [1.05, .006], [1.06, .014], [1.05, .021], [1.02, .024], [0, .024]].map(([x, y]) => new THREE.Vector2(x, y));
   const rug = part('rug', new THREE.Mesh(new THREE.LatheGeometry(rugShape, 96), roomMat('rug', rc.rug))); add(rug, false);
-  const wallMat = roomMat('walls', rc.walls);
-  const back = part('walls', new THREE.Mesh(rbox(6, 3, .2, .02), wallMat)); back.position.set(0, 1.5, -1.7); add(back);
-  // the left wall, round a big window the daylight comes in by (the wall in four pieces round the opening)
+  const wallMat = roomMat('walls', rc.walls), wood = roomMat('wood', rc.wood);
+  // The room is a round capsule, like the inside of a ball: one smooth shell, the floor curving up into the walls,
+  // the walls curving over into a dome above a soft seam round the middle, and no corners anywhere (shell.js). Its
+  // two windows are cut cleanly into the curve: a long rounded one in the left wall (the daylight) and a round one in
+  // the back wall, each with a deep reveal out to the glass, as in a thick moulded wall.
   const W0 = WINDOW, wz = (W0.z0 + W0.z1) / 2, wy = (W0.y0 + W0.y1) / 2;
-  const wall = (y0, y1, z0, z1) => { const m = part('walls', new THREE.Mesh(rbox(.2, y1 - y0, z1 - z0, .02), wallMat)); m.position.set(W0.x, (y0 + y1) / 2, (z0 + z1) / 2); add(m); };
-  wall(0, W0.y0, -1.9, 4.2); wall(W0.y1, 3, -1.9, 4.2); wall(W0.y0, W0.y1, -1.9, W0.z0); wall(W0.y0, W0.y1, W0.z1, 4.2);
-  // its slim frame, one bar across, and a deep sill to sit things on
-  const wood = roomMat('wood', rc.wood);
-  const frame = (h, d, y, z) => add(part('wood', new THREE.Mesh(rbox(.2, h, d, .012), wood))).position.set(W0.x + .02, y, z);
-  frame(.035, W0.z1 - W0.z0 + .07, W0.y0, wz); frame(.035, W0.z1 - W0.z0 + .07, W0.y1, wz);
-  frame(W0.y1 - W0.y0, .035, wy, W0.z0); frame(W0.y1 - W0.y0, .035, wy, W0.z1); frame(W0.y1 - W0.y0, .03, wy, wz);
-  const ledge = part('wood', new THREE.Mesh(rbox(.3, .035, W0.z1 - W0.z0 + .14, .012), wood)); ledge.position.set(W0.x + .1, W0.y0 - .02, wz); add(ledge);
-  // (the day outside: a soft bright sky the room's reflections and bounce light pick up; it throws no shadow)
-  // (daylight.js paints it with the real sky outside: day, dusk, night with stars, cloud, fog)
+  const PORT = { x: -.3, y: 1.55, r: .3 }, portOut = backZ(PORT.x, PORT.y) - .05;
+  const cut = buildShell(THREE, [
+    { wall: 'side', sdf: roundRect(wz, wy, (W0.z1 - W0.z0) / 2, (W0.y1 - W0.y0) / 2, W0.r), at: [wz, wy], out: W0.x },
+    { wall: 'back', sdf: circle(PORT.x, PORT.y, PORT.r), at: [PORT.x, PORT.y], out: portOut },
+  ]);
+  add(part('walls', new THREE.Mesh(cut.shell, wallMat)));
+  for (const g of cut.reveals) add(part('walls', new THREE.Mesh(g, wallMat)));
+  // a slim rounded frame where each window meets the wall, and one at the side window's glass
+  const rimTube = (pts, r, push = .006) => {
+    const at = pts.map(p => { const n = wallNormal(...p); return new THREE.Vector3(p[0] + n[0] * push, p[1] + n[1] * push, p[2] + n[2] * push); });
+    return add(part('wood', new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(at, true), at.length * 2, r, 10, true), wood)));
+  };
+  cut.outlines.forEach(rim => rimTube(rim, .02));
+  const glassRim = (pts, toOut) => add(part('wood', new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(...toOut(p))), true), pts.length * 2, .016, 8, true), wood)));
+  glassRim(cut.outlines[0], p => [W0.x + .02, p[1], p[2]]);
+  // the seam round the middle, where the dome meets the wall: a soft bead in the same paint (broken by the window)
+  {
+    const pts = [], N = 240, y = SHELL.seam;
+    // (round from the window and back to it, so the window is the one break)
+    for (let i = 0; i <= N; i++) {
+      const phi = Math.PI + i / N * Math.PI * 2, r = shellR(phi, y) - .004, x = SHELL.cx + Math.cos(phi) * r, z = SHELL.cz + Math.sin(phi) * r;
+      if (!(x < SHELL.cx - .5 && z > W0.z0 - .06 && z < W0.z1 + .06)) pts.push(new THREE.Vector3(x, y, z));
+    }
+    add(part('walls', new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), pts.length * 2, .011, 8, false), wallMat)));
+  }
+  // (the day outside the side window: a soft bright sky the room's reflections and bounce light pick up; it throws
+  // no shadow. daylight.js paints it with the real sky outside: day, dusk, night with stars, cloud, fog)
   const sky = new THREE.Mesh(new THREE.PlaneGeometry(5, 3.4), pbr('#eef0ec', { glow: 1.05, glowCol: '#f4f2ea', rough: 1 }));
   sky.position.set(W0.x - .8, 1.6, wz); sky.rotation.y = Math.PI / 2; room.add(sky);
-  // a white ceiling (out of view): it closes the room, so daylight comes in only by the windows and bounces about
-  const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(6.4, 6.4), pbr('#f1ece5', { rough: .95 }));
-  ceiling.rotation.x = Math.PI / 2; ceiling.position.set(.9, 3, 1.1); add(ceiling);
-  // skirting along both walls: a small thing that makes a room read as real
-  const skirt = (w, d, x, z) => { const m = part('wood', new THREE.Mesh(rbox(w, .07, d, .01), wood)); m.position.set(x, .035, z); add(m); };
-  skirt(6, .02, 0, -1.59); skirt(.02, 6, -1.99, 1.2);
-  // a round window in the back wall, the day outside it, a deep reveal and a sill
-  // (just off the wall's face, not in it: in it, the two flickered in wedges. Matte, so the sky painted in it by
-  // daylight.js reads: the stars and moon at night, not the room mirrored over them)
-  const glass = new THREE.Mesh(new THREE.CircleGeometry(.31, 64), pbr('#eef0ec', { rough: 1, glow: .9, glowCol: '#f2f0e8' }));
-  glass.position.set(-.3, 1.5, -1.597); room.add(glass);
-  const GLASS = { x: -.3, y: 1.5, z: -1.597, r: .31 };
-  const reveal = part('wood', new THREE.Mesh(new THREE.TorusGeometry(.33, .025, 16, 72), wood)); reveal.position.set(-.3, 1.5, -1.585); add(reveal);
-  const sill = part('wood', new THREE.Mesh(rbox(.86, .04, .14, .012), wood)); sill.position.set(-.3, 1.125, -1.53); add(sill);
-  // the desk (where it makes things): a pale oak top on slim rounded legs, and a globe lamp
-  const pale = pbr('#ece6dd', { rough: .55 });   // (powder-coated legs and lamp, a soft warm white)
-  const top = part('wood', new THREE.Mesh(rbox(1.3, .04, .55, .015), wood)); top.position.set(1.15, .795, -1.25); add(top);
-  for (const [x, z] of [[.58, -1.05], [1.72, -1.05], [.58, -1.45], [1.72, -1.45]]) { const leg = new THREE.Mesh(new THREE.CylinderGeometry(.016, .012, .775, 16), pale); leg.position.set(x, .388, z); add(leg); }
-  const lampBase = new THREE.Mesh(new THREE.CylinderGeometry(.06, .068, .018, 40), pale); lampBase.position.set(1.55, .824, -1.32); add(lampBase);
-  const stem = new THREE.Mesh(new THREE.CylinderGeometry(.006, .006, .2, 12), pale); stem.position.set(1.55, .93, -1.32); add(stem);
+  // the round window's glass at the end of its reveal (matte, so the sky painted in it by daylight.js reads: the stars
+  // and moon at night, not the room mirrored over them), and a sill under it
+  const glass = new THREE.Mesh(new THREE.CircleGeometry(PORT.r + .02, 64), pbr('#eef0ec', { rough: 1, glow: .9, glowCol: '#f2f0e8' }));
+  glass.position.set(PORT.x, PORT.y, portOut + .002); room.add(glass);
+  const GLASS = { x: PORT.x, y: PORT.y, z: portOut + .002, r: PORT.r };
+  // boards that follow the curve of the back wall: the sill under the round window, the desk (where it makes things)
+  // and a floating shelf, all pale oak, softly rounded
+  const board = (B, thick) => {
+    const sh = new THREE.Shape(), xs = [], N = 28, y = B.y - thick / 2;
+    for (let i = 0; i <= N; i++) xs.push(B.x0 + (B.x1 - B.x0) * i / N);
+    xs.forEach((x, i) => { const z = backZ(x, y) + .012; i ? sh.lineTo(x, -z) : sh.moveTo(x, -z); });
+    for (let i = N; i >= 0; i--) sh.lineTo(xs[i], -(backZ(xs[i], y) + .012 + B.d));
+    const g = new THREE.ExtrudeGeometry(sh, { depth: thick - .012, bevelEnabled: true, bevelThickness: .006, bevelSize: .008, bevelSegments: 3, curveSegments: 4 });
+    g.rotateX(-Math.PI / 2);
+    const m = part('wood', new THREE.Mesh(g, wood)); m.position.y = B.y - thick + .006; return add(m);
+  };
+  board(SILL, .04); board(DESK, .045); board(SHELF, .04);
+  // a ledge along the bottom of the big window, out over the curve, to sit things on
+  { const m = part('wood', new THREE.Mesh(rbox(LEDGE.x1 - LEDGE.x0, .035, LEDGE.z1 - LEDGE.z0, .012), wood)); m.position.set((LEDGE.x0 + LEDGE.x1) / 2, LEDGE.y - .0175, (LEDGE.z0 + LEDGE.z1) / 2); add(m); }
+  // the desk lamp: a globe on a slim stem, powder-coated a soft warm white
+  const pale = pbr('#ece6dd', { rough: .55 });
+  const L = LAMP, lampBase = new THREE.Mesh(new THREE.CylinderGeometry(.06, .068, .018, 40), pale); lampBase.position.set(L.x, DESK.y + .009, L.z); add(lampBase);
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(.006, .006, L.y - DESK.y - .07, 12), pale); stem.position.set(L.x, (DESK.y + L.y - .07) / 2, L.z); add(stem);
   const globeMat = pbr('#fff6e8', { rough: .35, glow: 1.6, glowCol: '#ffe2b8' });
-  const globe = new THREE.Mesh(new THREE.SphereGeometry(.075, 40, 24), globeMat); globe.position.set(1.55, 1.1, -1.32); room.add(globe);
-  // a floating shelf, with a small vase
-  const shelf = part('wood', new THREE.Mesh(rbox(1.1, .04, .26, .012), wood)); shelf.position.set(-1.35, 1.45, -1.5); add(shelf);
+  const globe = new THREE.Mesh(new THREE.SphereGeometry(.075, 40, 24), globeMat); globe.position.set(L.x, L.y, L.z); room.add(globe);
   const vaseShape = [[0, 0], [.045, 0], [.055, .03], [.05, .09], [.03, .13], [.026, .16], [.032, .17], [0, .17]].map(([x, y]) => new THREE.Vector2(x, y));
-  const vase = new THREE.Mesh(new THREE.LatheGeometry(vaseShape, 40), pbr('#d9b8a4', { rough: .45, clear: .4 })); vase.position.set(-1.7, 1.47, -1.52); add(vase);
+  const vase = new THREE.Mesh(new THREE.LatheGeometry(vaseShape, 40), pbr('#d9b8a4', { rough: .45, clear: .4 })); vase.position.set(...onBoard(SHELF, -1.5)); add(vase);
   // a round pouf in the back left corner, soft like Reverie
   const pouf = new THREE.Mesh(new THREE.SphereGeometry(.26, 48, 24), felt('#b4bfa8'));
-  pouf.scale.set(1, .62, 1); pouf.position.set(-1.45, .16, -1.15); add(pouf);
+  pouf.scale.set(1, .62, 1); pouf.position.set(-1.15, .16, -.85); add(pouf);
   // a plant on the right, in a tall matte pot
   const potShape = [[0, 0], [.13, 0], [.16, .04], [.17, .38], [.165, .4], [0, .4]].map(([x, y]) => new THREE.Vector2(x, y));
   const pot = new THREE.Mesh(new THREE.LatheGeometry(potShape, 48), pbr('#efeae3', { rough: .8 })); pot.position.set(1.85, 0, -.6); add(pot);
@@ -104,7 +125,7 @@ function setup() {
   creature.setColours(colours());   // (the colours it was asked for last time, kept on this device)
   // the light: the sun through the window, the bench lamp, its core, bounce light and the room's own reflections
   // (made once the creature is in the room, so the reflections reach its eyes and glass dome)
-  light = lightRoom(v, creature, { min: [-2.0, 0, -1.6], max: [2.2, 3, 2.2] });
+  light = lightRoom(v, creature, { min: [SHELL.cx - SHELL.a, 0, SHELL.cz - SHELL.b], max: [SHELL.cx + SHELL.a, SHELL.top, SHELL.cz + SHELL.b] });
   relight.push(light.bounce, light.room);   // (both baked again when the room is repainted)
   // the real day outside: the sun, the sky in the windows, the lamp, rain on the glass (daylight.js)
   daylight = makeDaylight({ v, light, outside: { side: sky.material, round: glass.material }, glass: GLASS, side: W0, globe: globeMat, motes: dust });
@@ -115,11 +136,14 @@ function setup() {
   embers = makeEmbers();
   world = w3;
   world.floor(0, { friction: .8 });
-  world.box(null, 6, 3, .2, { fixed: true, at: { x: 0, y: 1.5, z: -1.7 } });
-  world.box(null, .2, 3, 5, { fixed: true, at: { x: -2.1, y: 1.5, z: .6 } });
+  // (the walls, as four flat sides just behind the curve: things thrown roll up the cove and back)
+  world.box(null, 6, 3, .2, { fixed: true, at: { x: 0, y: 1.5, z: SHELL.cz - SHELL.b - .1 } });
+  world.box(null, 6, 3, .2, { fixed: true, at: { x: 0, y: 1.5, z: SHELL.cz + SHELL.b + .1 } });
+  world.box(null, .2, 3, 6, { fixed: true, at: { x: SHELL.cx - SHELL.a - .1, y: 1.5, z: .6 } });
+  world.box(null, .2, 3, 6, { fixed: true, at: { x: SHELL.cx + SHELL.a + .1, y: 1.5, z: .6 } });
   body = world.box(null, .48, .66, .42, { moving: true, at: { x: 0, y: .33, z: 0 } });   // (the creature: props bounce off it, not through, and it goes where it walks)
-  world.box(null, 1.3, .04, .55, { fixed: true, at: { x: 1.15, y: .795, z: -1.25 } });   // (the desk top and the shelf: things thrown land on them)
-  world.box(null, 1.1, .04, .26, { fixed: true, at: { x: -1.35, y: 1.45, z: -1.5 } });
+  // (the desk and the shelf, near enough as boxes: things thrown land on them)
+  for (const B of [DESK, SHELF]) { const [x, , z] = onBoard(B, (B.x0 + B.x1) / 2); world.box(null, B.x1 - B.x0, .04, B.d, { fixed: true, at: { x, y: B.y - .02, z } }); }
   // the camera: just above eye level with it, close enough to see its face
   v.cam.position.set(0, .78, 1.95); v.cam.lookAt(0, .4, 0);
   gs.models.generate.load().catch(() => {});   // (the generator's workers warmed up while it wakes)
@@ -310,7 +334,7 @@ export function makeWorld() {
     if (d < back + .15) return [0, 0];
     let sx = x - x / d * back, sz = z - z / d * back;
     sx = clamp(sx, -1.7, 1.9); sz = clamp(sz, -.95, 1.1);
-    if (sx > .3 && sz < -.85) sz = -.85;   // (not under the bench)
+    if (sx > DESK.x0 - .1 && sz < -.85) sz = -.85;   // (not under the desk)
     return [sx, sz];
   }
   function toWorld(o) { o.getWorldPosition(at); const q = o.getWorldQuaternion(new THREE.Quaternion()); v.scene.add(o); o.position.copy(at); o.quaternion.copy(q); }

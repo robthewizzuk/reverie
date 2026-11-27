@@ -2,6 +2,7 @@
 // keep in the room (made by the generator, then carried by Reverie to a spot you named). Kept on this device, so the
 // room is as you left it next time. No three.js in here: world.js builds what this describes, and tests can read it.
 import { colourOf } from './looks.js';
+import { inside, backZ, sideX, WINDOW } from './shell.js';
 
 const KEY = 'reverie.room.v1';
 export const MAX_ITEMS = 16;
@@ -9,24 +10,37 @@ export const MAX_ITEMS = 16;
 export const DEFAULT_ROOM = { walls: '#ebe4da', floor: '#c9a882', rug: '#d39a80', wood: '#c69c72' };
 export const PARTS = Object.keys(DEFAULT_ROOM);
 
+// The things fixed to the back wall, which curves round behind them (the room is a round capsule, shell.js): each a
+// board that follows the curve, from x0 to x1 at height y (its top), d deep. The desk floats on the wall like the shelf
+// (no legs: the floor curves up into the wall where they would stand).
+export const DESK = { x0: .25, x1: 1.6, y: .815, d: .5 };
+export const SHELF = { x0: -1.7, x1: -.6, y: 1.47, d: .24 };
+export const SILL = { x0: -.72, x1: .12, y: 1.22, d: .16 };
+// the ledge along the bottom of the big left window: from the glass (x0) to a little into the room (x1), its top at y,
+// along the straight part of the window's bottom edge (z0 to z1)
+export const LEDGE = { x0: WINDOW.x, x1: sideX((WINDOW.z0 + WINDOW.z1) / 2, WINDOW.y0) + .12, y: WINDOW.y0 + .012, z0: WINDOW.z0 + WINDOW.r - .06, z1: WINDOW.z1 - WINDOW.r + .06 };
+/** A point on a board on the wall: at x, its middle out from the wall [x, y, z]. */
+export const onBoard = (B, x) => [x, B.y, backZ(x, B.y - .02) + .012 + B.d / 2];
+
 /**
- * The places in the room it can put things, in metres (the creature stands at 0, 0 facing the camera at +z; the back
- * wall's face is at z = -1.6, the side wall's at x = -2). y is the surface it stands on; spread is the line further
- * things go along when the first place is taken.
+ * The places in the room it can put things, in metres (the creature stands at 0, 0 facing the camera at +z; the
+ * room is round, its back wall about z = -1.7 and its left wall x = -2.3: shell.js). y is the surface it stands on;
+ * spread is the line further things go along when the first place is taken; board: on a board on the wall (z then
+ * follows the curve).
  */
 export const SPOTS = {
   'left of you': { at: [-.6, 0, .1], spread: [-.4, -.25], about: 'on the floor just to your left' },
   'right of you': { at: [.6, 0, .1], spread: [.4, -.25], about: 'on the floor just to your right' },
   'in front of you': { at: [0, 0, .5], spread: [.35, 0], about: 'on the rug in front of you' },
   'on the rug': { at: [-.45, .012, .45], spread: [.3, .1], about: 'on the rug' },
-  'by the window': { at: [-.3, 0, -1.3], spread: [.38, 0], about: 'on the floor under the window' },
-  'on the windowsill': { at: [-.3, 1.145, -1.53], spread: [.22, 0], small: true, about: 'on the windowsill' },
-  'on the workbench': { at: [.8, .815, -1.2], spread: [.22, 0], small: true, about: 'on the desk' },
-  'on the shelf': { at: [-1.05, 1.475, -1.5], spread: [-.2, 0], small: true, about: 'on the shelf' },
-  'back left corner': { at: [-1.6, 0, -.6], spread: [.3, .35], about: 'in the back left corner, by the pouf' },
+  'by the window': { at: [-.3, 0, -1.15], spread: [.38, 0], about: 'on the floor under the round window' },
+  'on the windowsill': { at: onBoard(SILL, -.3), board: SILL, spread: [.2, 0], small: true, about: 'on the windowsill' },
+  'on the workbench': { at: onBoard(DESK, .7), board: DESK, spread: [.24, 0], small: true, about: 'on the desk' },
+  'on the shelf': { at: onBoard(SHELF, -1.05), board: SHELF, spread: [-.22, 0], small: true, about: 'on the shelf' },
+  'back left corner': { at: [-1.55, 0, -.55], spread: [.3, .35], about: 'in the back left corner, by the pouf' },
   'by the plant': { at: [1.75, 0, .05], spread: [0, .4], about: 'on the right, by the plant' },
-  'under the workbench': { at: [1.15, 0, -1.25], spread: [.35, 0], about: 'under the desk' },
-  'by the left wall': { at: [-1.7, 0, .35], spread: [0, .4], about: 'against the left wall' },
+  'under the workbench': { at: [.95, 0, -1.08], spread: [.35, 0], about: 'under the desk' },
+  'by the left wall': { at: [-1.6, 0, .35], spread: [0, .4], about: 'against the left wall, under the big window' },
   'front left': { at: [-1.05, 0, .75], spread: [-.35, -.2], about: 'at the front on the left' },
   'front right': { at: [1.05, 0, .75], spread: [.35, -.2], about: 'at the front on the right' },
 };
@@ -108,13 +122,14 @@ export function freePlace(spot, r, items, near = null) {
   for (let k = 0; k < 8; k++) {
     // 0, +1, -1, +2, -2... steps along the spread
     const n = k === 0 ? 0 : Math.ceil(k / 2) * (k % 2 ? 1 : -1);
-    const x = S.at[0] + sx * n, z = S.at[2] + sz * n;
-    if (inRoom(x, z, r) && clear(x, z)) return { x, y: S.at[1], z };
+    const x = S.at[0] + sx * n, z = S.board ? onBoard(S.board, x)[2] : S.at[2] + sz * n;
+    if (S.board && (x - r < S.board.x0 || x + r > S.board.x1)) continue;   // (off the end of the board)
+    if ((S.board || inRoom(x, z, r, S.at[1])) && clear(x, z)) return { x, y: S.at[1], z };
   }
   return { x: S.at[0], y: S.at[1], z: S.at[2] };   // (all taken: it goes at the spot anyway, a little crowded)
 }
-/** Inside the walls (and off the creature's own patch, for the floor). */
-export function inRoom(x, z, r = 0) { return x - r > -1.98 && x + r < 2.2 && z - r > -1.58 && z + r < 1.3 && Math.hypot(x, z) > .3 + r; }
+/** Inside the walls, clear of the curve (at height y), not too near the camera, and off the creature's own patch. */
+export function inRoom(x, z, r = 0, y = 0) { return inside(x, y + .03, z) > r + .02 && z + r < 1.3 && Math.hypot(x, z) > .3 + r; }
 
 /** The placed thing words like "the lamp" or "teapot" mean (the newest that fits), or null. */
 export function findItem(words, items) {
