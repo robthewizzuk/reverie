@@ -85,6 +85,8 @@ export function makeDice({ THREE, scene, physics, creature, sparks }) {
       const each = r.kept.flat();
       return `Rolled ${n} by magic (only six-sided dice can be thrown for real): ${each.length > 1 ? each.join(', ') + ', ' : ''}${r.total} in all. The number floats over your head.`;
     },
+    /** Throws count real d6 from its hands (for a game). Resolves the faces that came up. */
+    async throw(count = 1) { await loadParts(['dice']); creature.gesture('tada'); return throwCubes(Math.max(1, Math.min(MAX, count))); },
     /** The dice on the floor, in a few words for the scene line, or ''. */
     get onFloor() { return cubes && !rolling ? `${meshes.length === 1 ? 'a die showing' : meshes.length + ' dice showing'} ${cubes.values.join(', ')}` : ''; },
     /** Takes every die (and number) away. */
@@ -109,7 +111,8 @@ export function makeDice({ THREE, scene, physics, creature, sparks }) {
             r.res(cubes.values);
           }
         }
-        for (const m of meshes) if (m.position.y < -2) { clearCubes(); break; }
+        // a die that slipped out of the world: it's gone, and a roll still waiting gets a fair face for each die
+        for (const m of meshes) if (m.position.y < -2) { if (rolling) { const r = rolling; rolling = null; r.res(meshes.map(() => 1 + Math.floor(Math.random() * 6))); } clearCubes(); break; }
         if (cubes && !rolling && age > KEEP_FOR) clearCubes();
       }
       for (const s of shown) {

@@ -137,12 +137,24 @@ export function makeWorld() {
   let placed = [], acts = [], carrying = Promise.resolve(), restored = false;
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), at = new THREE.Vector3();
   // a game on the stage (./games): the one being played, the ones made so far, and where the camera is heading
-  let game = null, onNews = () => {}, dice = null;
+  let game = null, onNews = () => {}, onSay = () => false, pad = null, dice = null;
   const games = {}, HOME = { pos: [0, .78, 1.95], look: [0, .4, 0] }, camAt = { pos: [...HOME.pos], look: [...HOME.look] };
   const stage = {
     THREE, get scene() { return v.scene; }, get creature() { return creature; }, get physics() { return world; },
     sparks(p, color = '#ffd27a', count = 24) { fx.sparks({ x: p.x, y: p.y, z: p.z }, { color, count, power: .7, light: false }); },
     news: (text, loud) => onNews(text, loud),
+    /** Says a line straight away in its own voice (not from Claude); false when it is busy talking. */
+    say: line => onSay(line),
+    /** Makes a prop in its hands from words (as the make tool does). Resolves what was made. */
+    make: words => makeProp(words),
+    /** The drawing pad (../doodle.js), for games drawn on it. */
+    get pad() { return pad; },
+    /** Throws real six-sided dice from its hands. Resolves the faces that came up. */
+    throwDice: n => dice.throw(n),
+    /** Takes the dice away. */
+    clearDice: () => dice?.clear(),
+    /** A game putting itself away (its own Stop button). */
+    stopGame() { if (game) { game.stop(); game = null; creature.mood('calm'); } },
   };
 
   // a prop sits in a pivot whose middle is the prop's middle, so it can be held, spun and given a box body
@@ -391,6 +403,10 @@ export function makeWorld() {
     get game() { return game; },
     /** Who hears what a game says happened (the brain). */
     set onNews(fn) { onNews = fn; },
+    /** Who says a game's own lines out loud at once (the brain's speak), returning false when busy. */
+    set onSay(fn) { onSay = fn; },
+    /** The drawing pad, lent to games drawn on it. */
+    set pad(p) { pad = p; },
     /** Starts a game by name ('chess'), or a fresh round of the one on. Resolves a sentence for Claude. */
     async play(name, o = {}) {
       const def = GAMES[name];

@@ -159,6 +159,8 @@ async function boot() {
     } });
   body = makeBody({ creature: world.creature, world });
   world.onNews = (text, loud) => { gameNews(text); brain.notice(text, loud); };
+  world.onSay = line => { if (brain.busy || brain.speaking) return false; brain.speak(line); return true; };
+  world.pad = pad;
   voice = new Listener({ onProblem: () => listeningOff(), onNote: debug ? line => { timing.textContent = 'mic: ' + line; } : null });
   window.__reverie = { world, brain, body, gs, voice, pad, memory, diary, today, show };
   requestAnimationFrame(frame);

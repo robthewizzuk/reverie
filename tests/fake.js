@@ -8,6 +8,7 @@
 //   "play chess"      -> play;  "[chess] ..." (news from the board) -> a quip;  "move e4" -> game_move;  "stop playing" -> stop_game
 //   "show me something" / "show find a cup" -> show;  "[show] ..." -> a quip (a copy: place on the shelf)
 //   "roll ..."        -> roll;  "quiz me" -> play quiz;  "[quiz] ..." -> a quip;  "answer b" -> game_move;  "draw" -> doodle;  "[doodle] ..." -> a quip
+//   "square <x>"      -> game_move (noughts);  "[noughts|twenty|draw and guess] ..." -> a quip;  a counted question -> "Nope!"
 //   anything else     -> a friendly line with a wave
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const lastUser = messages => [...messages].reverse().find(m => m.role === 'user');
@@ -35,12 +36,22 @@ function plan(body) {
     if (/^\[Their daily briefing/.test(r)) return { text: 'Here is your briefing: it is a lovely day for making things.', tools: [] };
     if (/diary is open/i.test(r)) return { text: 'There it is, my diary.', tools: [] };
     if (/^Answered /.test(r)) return { text: 'Ooh.', tools: [] };
+    if (/noughts and crosses board is set up/i.test(r)) return { text: 'Crosses, your move.', tools: [] };
+    if (/Twenty Questions is set up/.test(r)) return { text: "I'm thinking of something. Twenty questions, go!", tools: [] };
+    if (/Draw and Guess is on/.test(r)) return { text: 'Draw, draw, draw!', tools: [] };
+    if (/Dice Quest is set up/.test(r)) return { text: 'Once upon a time, a brave little hero set off. Roll!', tools: [] };
+    if (/^Put their cross/.test(r)) return { text: 'Hmm.', tools: [] };
+    if (/^(They got it|You showed them)/.test(r)) return { text: 'Ta-da!', tools: [] };
     if (/^Played /.test(r)) return { text: 'Bold.', tools: [] };
     if (/handed over/i.test(r)) return { text: 'Right, I have thought about it properly. The answer is forty two, give or take.', tools: [] };
     return { text: /fail|could not|nothing/i.test(r) ? 'Hmm, that one fizzled.' : 'Ta-da!', tools: [] };
   }
   let m0;
-  const said = saidOf(u).replace(/^\[(chess|quiz),[^\]]*\]\s*/, '').toLowerCase();
+  const said = saidOf(u).replace(/^\[[a-z ]+[,:][^\]]*\]\s*/, '').toLowerCase();
+  if (/^\[(noughts|twenty|draw and guess|quest)\]/.test(said)) return { text: /they won/.test(said) ? 'No fair!' : /you won/.test(said) ? 'Three in a row!' : /round is over/.test(said) ? 'What a round of drawings!' : /treasure chest with/.test(said) ? 'And they lived happily ever after!' : /last heart/.test(said) ? 'And the owl flew them home.' : 'Hmm, interesting.', tools: [] };
+  if (/\(they guessed it|\(they gave up/.test(said)) return { text: 'Ta-da, there it is!', tools: [] };
+  if (/\(question \d+ of 20/.test(said)) return { text: 'Nope!', tools: [] };
+  if (/\(the die is being thrown/.test(said)) return { text: 'Here it goes...', tools: [] };
   if (/^\[chess\]/.test(said)) return { text: /taking your/.test(said) ? 'Hey! I needed that.' : /checkmate/.test(said) ? 'Good game!' : 'Hmm, interesting.', tools: [] };
   if (/^\[quiz\]/.test(said)) return { text: /: right!/.test(said) ? 'Correct, you clever thing!' : /last question/.test(said) ? 'What a round!' : 'Ooh, so close.', tools: [] };
   if (/^\[show\]/.test(said)) return /want a 3d copy/.test(said) ? { text: 'Ooh, one for the shelf!', tools: [['place', { item: 'a yellow rubber duck', spot: 'on the shelf' }]] }
@@ -59,6 +70,8 @@ function plan(body) {
   if (/stop playing|put it away/.test(said)) return { text: 'Fine, fine.', tools: [['stop_game', {}]] };
   let m;
   if ((m = /^answer (.+)/.exec(said))) return { text: 'Locking it in.', tools: [['game_move', { move: m[1] }]] };
+  if ((m = /^square (.+)/.exec(said))) return { text: 'Brave.', tools: [['game_move', { move: m[1] }]] };
+  if (/^i give up/.test(said)) return { text: 'Ha!', tools: [['game_move', { move: 'give up' }]] };
   if ((m = /^roll (.+)/.exec(said))) return { text: 'Rolling!', tools: [['roll', { dice: m[1].replace(/^(a|the) /, '') }]] };
   if (/^draw/.test(said)) return { text: 'Ooh, a drawing!', tools: [['doodle', {}]] };
   if ((m = /^move (?!the )(\S+)/.exec(said))) return { text: 'Ooh.', tools: [['game_move', { move: m[1] }]] };

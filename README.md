@@ -7,7 +7,7 @@ makes for you out of words.
 Ask it to make something ("make me a red teapot"), change it ("make it made of gold", "make it bigger"), throw it, or
 tidy up. Decorate its room: "make a lamp and put it by the window", "move the teapot onto the shelf", "paint the walls
 sky blue". It walks over and sets things down itself, and the room is kept as you left it. Tap it and it giggles. Talk over it and it stops to listen.
-Play chess or a quiz with it, ask it to roll some dice, or tap the pencil and draw something for it to make real.
+Play chess, a quiz, noughts and crosses, Twenty Questions, Draw and Guess or a Dice Quest with it, ask it to roll some dice, or tap the pencil and draw something for it to make real.
 
 It remembers you. Tell it your name, your birthday or that your dog is called Biscuit, and it brings it up next time, along
 with how your chess games went and what it made for you. Tap the book to see its diary and forget any of it. On the
@@ -26,7 +26,7 @@ npm run dev                   # opens on http://localhost:5173 (add ?debug to se
 No key yet? `REVERIE_FAKE=1 npm run dev` runs a scripted stand-in for Claude, so the page, speech, tools and props all
 work offline.
 
-`node tests/smoke.mjs` and `node tests/body.mjs` test the page against that stand-in (`REVERIE_FAKE=1 npm run dev -- --port 5179` first).
+`node tests/smoke.mjs`, `node tests/body.mjs`, `node tests/kits.mjs` and `node tests/games.mjs` test the page against that stand-in (`REVERIE_FAKE=1 npm run dev -- --port 5179` first).
 
 The key only ever lives on the server side: `.env.local` is gitignored, the Vite dev server reads it for `/api/turn`,
 and nothing with a `VITE_` prefix holds it, so it never reaches the page.
@@ -48,7 +48,7 @@ and nothing with a `VITE_` prefix holds it, so it never reaches the page.
 | Its day | `src/daily.js` | Picked from the date, so a day's surprise is the same on every visit: a thing it made overnight (in its hands when you arrive), and a fun fact, riddle, word scramble or trivia question (`gs.trivia`). The briefing note: the day, birthdays, streaks and fun days, the weather, sunrise, sunset and the moon (`gs.real`), and the surprise, said by Claude in its own words after its hello. Birthdays and streaks get confetti |
 | The backend | `server/turn.js` | One small handler that adds the key and streams Claude's reply back. Runs inside the Vite dev server (`server/dev.js`) and as a Cloudflare Worker (`worker/`) |
 | Its personality and tools | `server/persona.js` | The system prompt and its tools: `make`, `change`, `toss`, `clear`, `place`, `room_colours`, `roll`, `doodle`, `act`, `play`, `game_move`, `stop_game`, `remember`, `forget`, `briefing`, `diary`, `think_harder` |
-| Games | `src/games/` | Games it plays with you on a table in front of it. Chess: the engine's living stone pieces, rules from chess.js and the engine's chess opponent picking its moves (fast, always legal, levels 1 to 5), while Claude reacts out loud to each move and a stretchy arm moves its pieces. Quiz: ten questions from the engine's bank of about 2,700 (`gs.trivia`, Open Trivia Database, CC BY-SA 4.0) on a card with four buzzers, starting easy and climbing; Reverie hosts, reading each question out and reacting to each answer, and is only told the answer once you've given yours. `src/games/index.js` says how to add another |
+| Games | `src/games/` | Games it plays with you on a table in front of it. Chess: the engine's living stone pieces, rules from chess.js and the engine's chess opponent picking its moves (fast, always legal, levels 1 to 5), while Claude reacts out loud to each move and a stretchy arm moves its pieces. Quiz: ten questions from the engine's bank of about 2,700 (`gs.trivia`, Open Trivia Database, CC BY-SA 4.0) on a card with four buzzers, starting easy and climbing; Reverie hosts, reading each question out and reacting to each answer, and is only told the answer once you've given yours. Noughts and crosses: the engine's game search (`gs.solve.Search`) picks its noughts, with slips at the lower levels and none at 5; tap a square or say it. Twenty Questions: the game picks the secret, counts your questions on twenty lamps and spots a right guess itself, so Reverie only has to answer; guess it and the mystery box opens and the thing is made in its hands. Draw and Guess: you draw a word against the clock on the drawing pad, and the doodle reader (`gs.doodle`) guesses live while Reverie calls its guesses out in its own voice, with no trip to Claude. Dice Quest: a path across the table past four challenges, each a little model from the generator, and real dice thrown from its hands; Reverie tells the story. `src/games/index.js` says how to add another |
 
 Everyday chat goes to Claude Haiku 5.5 with low effort, for speed. When a question needs real thought, it calls
 `think_harder` and the rest of that turn goes to Claude Sonnet 5.5. Either can be changed with `REVERIE_QUICK_MODEL`
