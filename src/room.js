@@ -6,7 +6,7 @@ import { colourOf } from './looks.js';
 const KEY = 'reverie.room.v1';
 export const MAX_ITEMS = 16;
 
-export const DEFAULT_ROOM = { walls: '#b07a5a', floor: '#8a5c3a', rug: '#b9583f', wood: '#6e4a2e' };
+export const DEFAULT_ROOM = { walls: '#ebe4da', floor: '#c9a882', rug: '#d39a80', wood: '#c69c72' };
 export const PARTS = Object.keys(DEFAULT_ROOM);
 
 /**
@@ -21,25 +21,25 @@ export const SPOTS = {
   'on the rug': { at: [-.45, .012, .45], spread: [.3, .1], about: 'on the rug' },
   'by the window': { at: [-.3, 0, -1.3], spread: [.38, 0], about: 'on the floor under the window' },
   'on the windowsill': { at: [-.3, 1.145, -1.53], spread: [.22, 0], small: true, about: 'on the windowsill' },
-  'on the workbench': { at: [.8, .815, -1.2], spread: [.22, 0], small: true, about: 'on the workbench' },
+  'on the workbench': { at: [.8, .815, -1.2], spread: [.22, 0], small: true, about: 'on the desk' },
   'on the shelf': { at: [-1.05, 1.475, -1.5], spread: [-.2, 0], small: true, about: 'on the shelf' },
-  'back left corner': { at: [-1.6, 0, -.6], spread: [.3, .35], about: 'in the back left corner, by the crate' },
-  'by the barrel': { at: [1.75, 0, .05], spread: [0, .4], about: 'on the right, by the barrel' },
-  'under the workbench': { at: [1.15, 0, -1.25], spread: [.35, 0], about: 'under the workbench' },
+  'back left corner': { at: [-1.6, 0, -.6], spread: [.3, .35], about: 'in the back left corner, by the pouf' },
+  'by the plant': { at: [1.75, 0, .05], spread: [0, .4], about: 'on the right, by the plant' },
+  'under the workbench': { at: [1.15, 0, -1.25], spread: [.35, 0], about: 'under the desk' },
   'by the left wall': { at: [-1.7, 0, .35], spread: [0, .4], about: 'against the left wall' },
   'front left': { at: [-1.05, 0, .75], spread: [-.35, -.2], about: 'at the front on the left' },
   'front right': { at: [1.05, 0, .75], spread: [.35, -.2], about: 'at the front on the right' },
 };
 export const SPOT_NAMES = Object.keys(SPOTS);
 
-/** The spot a name means ("window" → "by the window", "bench" → "on the workbench"), or null. */
+/** The spot a name means ("window" → "by the window", "bench" or "desk" → "on the workbench"), or null. */
 export function spotOf(name) {
   const t = String(name || '').toLowerCase().trim();
   if (SPOTS[t]) return t;
   const words = t.replace(/[^a-z ]+/g, ' ').split(/\s+/).filter(w => w.length > 2 && !['the', 'you', 'your', 'and', 'next', 'put'].includes(w));
   let best = null, score = 0;
   for (const s of SPOT_NAMES) {
-    const n = words.filter(w => s.includes(w) || (w === 'bench' && s.includes('workbench')) || (w === 'sill' && s.includes('windowsill'))).length;
+    const n = words.filter(w => s.includes(w) || ((w === 'bench' || w === 'desk' || w === 'table') && s.includes('workbench')) || (w === 'sill' && s.includes('windowsill'))).length;
     if (n > score) { best = s; score = n; }
   }
   return best;
