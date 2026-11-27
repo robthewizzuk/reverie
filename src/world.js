@@ -7,6 +7,8 @@ import { colours, tidyColours, keepColours } from './looks.js';
 import { describe } from './describe.js';
 import { GAMES } from './games/index.js';
 import { lightRoom, WINDOW } from './light.js';
+import { makeDaylight } from './daylight.js';
+import { makeSleepy } from './sleepy.js';
 import { makeDice } from './dice.js';
 import { SPOTS, SPOT_NAMES, spotOf, roomColours, roomItems, tidyRoomColours, keepRoomColours, keepItem, forgetItem, forgetAll, freePlace, findItem, roomLine, inRoom, MAX_ITEMS } from './room.js';
 
@@ -15,7 +17,7 @@ const SIZE_WORDS = [[/\b(giant|huge|enormous)\b/, 1.8], [/\b(bigger|big|large)\b
 const article = w => w.replace(/^(a|an|the|some)\s+/i, '');
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 
-let v, light, creature, fx, world, room, embers, motes, body;
+let v, light, creature, fx, world, room, embers, motes, body, daylight, sleepy;
 // the room's recolourable parts: the meshes made of each, and the recipe they are made from
 const ROOM_LOOK = { walls: null, floor: ['wood', [8, 8]], rug: null, wood: ['wood', [1, 1]] };
 const roomParts = { walls: [], floor: [], rug: [], wood: [] }, relight = [];
@@ -54,6 +56,7 @@ function setup() {
   frame(W0.y1 - W0.y0, .035, wy, W0.z0); frame(W0.y1 - W0.y0, .035, wy, W0.z1); frame(W0.y1 - W0.y0, .03, wy, wz);
   const ledge = part('wood', new THREE.Mesh(rbox(.3, .035, W0.z1 - W0.z0 + .14, .012), wood)); ledge.position.set(W0.x + .1, W0.y0 - .02, wz); add(ledge);
   // (the day outside: a soft bright sky the room's reflections and bounce light pick up; it throws no shadow)
+  // (daylight.js paints it with the real sky outside: day, dusk, night with stars, cloud, fog)
   const sky = new THREE.Mesh(new THREE.PlaneGeometry(5, 3.4), pbr('#eef0ec', { glow: 1.05, glowCol: '#f4f2ea', rough: 1 }));
   sky.position.set(W0.x - .8, 1.6, wz); sky.rotation.y = Math.PI / 2; room.add(sky);
   // a white ceiling (out of view): it closes the room, so daylight comes in only by the windows and bounces about
@@ -63,8 +66,11 @@ function setup() {
   const skirt = (w, d, x, z) => { const m = part('wood', new THREE.Mesh(rbox(w, .07, d, .01), wood)); m.position.set(x, .035, z); add(m); };
   skirt(6, .02, 0, -1.59); skirt(.02, 6, -1.99, 1.2);
   // a round window in the back wall, the day outside it, a deep reveal and a sill
-  const glass = new THREE.Mesh(new THREE.CircleGeometry(.31, 64), pbr('#eef0ec', { rough: .2, glow: .9, glowCol: '#f2f0e8' }));
-  glass.position.set(-.3, 1.5, -1.6); room.add(glass);
+  // (just off the wall's face, not in it: in it, the two flickered in wedges. Matte, so the sky painted in it by
+  // daylight.js reads: the stars and moon at night, not the room mirrored over them)
+  const glass = new THREE.Mesh(new THREE.CircleGeometry(.31, 64), pbr('#eef0ec', { rough: 1, glow: .9, glowCol: '#f2f0e8' }));
+  glass.position.set(-.3, 1.5, -1.597); room.add(glass);
+  const GLASS = { x: -.3, y: 1.5, z: -1.597, r: .31 };
   const reveal = part('wood', new THREE.Mesh(new THREE.TorusGeometry(.33, .025, 16, 72), wood)); reveal.position.set(-.3, 1.5, -1.585); add(reveal);
   const sill = part('wood', new THREE.Mesh(rbox(.86, .04, .14, .012), wood)); sill.position.set(-.3, 1.125, -1.53); add(sill);
   // the desk (where it makes things): a pale oak top on slim rounded legs, and a globe lamp
@@ -73,7 +79,8 @@ function setup() {
   for (const [x, z] of [[.58, -1.05], [1.72, -1.05], [.58, -1.45], [1.72, -1.45]]) { const leg = new THREE.Mesh(new THREE.CylinderGeometry(.016, .012, .775, 16), pale); leg.position.set(x, .388, z); add(leg); }
   const lampBase = new THREE.Mesh(new THREE.CylinderGeometry(.06, .068, .018, 40), pale); lampBase.position.set(1.55, .824, -1.32); add(lampBase);
   const stem = new THREE.Mesh(new THREE.CylinderGeometry(.006, .006, .2, 12), pale); stem.position.set(1.55, .93, -1.32); add(stem);
-  const globe = new THREE.Mesh(new THREE.SphereGeometry(.075, 40, 24), pbr('#fff6e8', { rough: .35, glow: 1.6, glowCol: '#ffe2b8' })); globe.position.set(1.55, 1.1, -1.32); room.add(globe);
+  const globeMat = pbr('#fff6e8', { rough: .35, glow: 1.6, glowCol: '#ffe2b8' });
+  const globe = new THREE.Mesh(new THREE.SphereGeometry(.075, 40, 24), globeMat); globe.position.set(1.55, 1.1, -1.32); room.add(globe);
   // a floating shelf, with a small vase
   const shelf = part('wood', new THREE.Mesh(rbox(1.1, .04, .26, .012), wood)); shelf.position.set(-1.35, 1.45, -1.5); add(shelf);
   const vaseShape = [[0, 0], [.045, 0], [.055, .03], [.05, .09], [.03, .13], [.026, .16], [.032, .17], [0, .17]].map(([x, y]) => new THREE.Vector2(x, y));
@@ -88,13 +95,16 @@ function setup() {
   // a little dust drifting in the daylight
   motes = new gs.fx3d.Particles3D(v.scene);
   // (where the sun's beams cross the room, between the window and the creature)
-  motes.make({ x: -.9, y: 1.1, z: .2 }, { loop: true, rate: 3, life: [6, 10], speed: [.01, .04], size: [.004, .008], colors: ['#ffe6c0', '#ffd09a'], radius: 1.2, gravity: -.004, glow: false, shrink: false });
+  const dust = motes.make({ x: -.9, y: 1.1, z: .2 }, { loop: true, rate: 3, life: [6, 10], speed: [.01, .04], size: [.004, .008], colors: ['#ffe6c0', '#ffd09a'], radius: 1.2, gravity: -.004, glow: false, shrink: false });
   creature = makeCreature(); v.scene.add(creature.root);
   creature.setColours(colours());   // (the colours it was asked for last time, kept on this device)
   // the light: the sun through the window, the bench lamp, its core, bounce light and the room's own reflections
   // (made once the creature is in the room, so the reflections reach its eyes and glass dome)
   light = lightRoom(v, creature, { min: [-2.0, 0, -1.6], max: [2.2, 3, 2.2] });
   relight.push(light.bounce, light.room);   // (both baked again when the room is repainted)
+  // the real day outside: the sun, the sky in the windows, the lamp, rain on the glass (daylight.js)
+  daylight = makeDaylight({ v, light, outside: { side: sky.material, round: glass.material }, glass: GLASS, side: W0, globe: globeMat, motes: dust });
+  sleepy = makeSleepy({ scene: v.scene, creature });   // (Z's over its head when it dozes off late at night)
   fx = new gs.fx3d.Particles3D(v.scene);
   // embers drifting up from its core: a few when idle, more while listening, a stream while thinking
   embers = makeEmbers();
@@ -329,6 +339,8 @@ export function makeWorld() {
     get view() { return v; },
     /** The room's light (light.js). */
     get light() { return light; },
+    /** The day outside and its weather (daylight.js). */
+    get daylight() { return daylight; },
     get creature() { return creature; },
     get held() { return held; },
     /** How many props there are, held or on the floor. */
@@ -337,7 +349,8 @@ export function makeWorld() {
     scene() {
       const floor = loose.map(e => e.short).slice(-6);
       if (dice?.onFloor) floor.push(dice.onFloor);
-      return `In your hands: ${held ? held.short : 'nothing'}.${floor.length ? ` On the floor: ${floor.join(', ')}.` : ''}${roomLine(placed)}`;
+      const out = daylight?.line();
+      return `In your hands: ${held ? held.short : 'nothing'}.${floor.length ? ` On the floor: ${floor.join(', ')}.` : ''}${roomLine(placed)}${out ? ` Outside: ${out}.` : ''}`;
     },
     reset() {
       if (!v) setup();
@@ -360,6 +373,7 @@ export function makeWorld() {
       game?.update(dt);
       if (acts.length) { if (acts[0](dt)) acts.shift(); body.place(creature.root.position.x, .33, creature.root.position.z); }
       creature.update(dt, v.cam);
+      daylight.update(dt); sleepy.update(dt);
       light.update(dt, t);
       creature.coreAt(at);
       const st = creature.state; embers.at({ x: at.x, y: at.y, z: at.z + .03 }); embers.rate = st.thinking ? 14 : st.listening ? 6 : st.speaking ? 4 : 2; embers.on = true;
@@ -469,6 +483,13 @@ export function makeWorld() {
       setTimeout(() => { for (const r of relight) r?.bake?.(); }, 600);   // (once the new materials' pictures are painted)
       creature.gesture('tada'); gs.sound.sounds.pop();
       return { text: `The room's ${r.changed.join(', ')} ${r.changed.length > 1 ? 'are' : 'is'} now ${r.changed.map(k => r.colours[k]).join(', ')}. It is remembered next time.` };
+    },
+    /** A burst of confetti round it, and a little hop (a birthday, a streak). */
+    celebrate() {
+      creature.gesture('tada'); creature.mood('excited');
+      const cols = ['#ff6b6b', '#ffd166', '#06d6a0', '#4cc9f0', '#c77dff'];
+      cols.forEach((color, i) => setTimeout(() => fx.sparks({ x: Math.cos(i * 1.26) * .3, y: .75 + (i % 2) * .1, z: .2 + Math.sin(i * 1.26) * .2 }, { color, count: 22, power: 1.1, light: false }), i * 140));
+      gs.sound.sounds.coin?.();
     },
     async act(gesture, mood) {
       if (mood) creature.mood(mood); if (gesture) creature.gesture(gesture);

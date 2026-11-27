@@ -9,6 +9,12 @@ tidy up. Decorate its room: "make a lamp and put it by the window", "move the te
 sky blue". It walks over and sets things down itself, and the room is kept as you left it. Tap it and it giggles. Talk over it and it stops to listen.
 Play chess, a quiz, noughts and crosses, Twenty Questions, Draw and Guess or a Dice Quest with it, ask it to roll some dice, or tap the pencil and draw something for it to make real.
 
+It remembers you. Tell it your name, your birthday or that your dog is called Biscuit, and it brings it up next time, along
+with how your chess games went and what it made for you. Tap the book to see its diary and forget any of it. On the
+first visit of each day it has made you something overnight, gives you a short spoken briefing (the weather, the sun
+and moon, anything special about the day) and has a fact, riddle, word scramble or trivia question waiting. Ask for
+"my briefing" any time.
+
 ## Run it
 
 ```bash
@@ -38,8 +44,10 @@ and nothing with a `VITE_` prefix holds it, so it never reaches the page.
 | Dice | `src/dice.js` | Real dice (`gs.tabletop.die`) thrown from its hands onto the rug in the stage's physics, read by which face lands on top (`gs.dice.Dice3D`). Other dice (a d20) are rolled with `gs.dice.roll` and the number floats over its head (`gs.fx3d.text3d`) |
 | Drawing pad | `src/doodle.js` | The pencil button (or the `doodle` tool) opens a sheet of paper over the stage. The engine's doodle model (`gs.doodle`, on the device) names what was drawn among 200 things, and it is made with the 3D generator. Only the name goes to Claude |
 | The sky outside | `src/place.js` | The device line also says whether the sun is up and the moon's phase, and a low battery (`gs.real`, worked out on the device, no permission) |
+| Its diary | `src/memory.js`, `src/diary.js` | What it remembers about you, kept only in this browser (`localStorage`): your name and birthday, facts it was told to `remember`, game records, things it made, the last few lines you said, and a line or two for each day. Claude gets a short summary at the top of each chat (read once a chat, so the cached prompt never changes under it). The book button opens the diary sheet: a ✕ on each fact, and "Forget everything" |
+| Its day | `src/daily.js` | Picked from the date, so a day's surprise is the same on every visit: a thing it made overnight (in its hands when you arrive), and a fun fact, riddle, word scramble or trivia question (`gs.trivia`). The briefing note: the day, birthdays, streaks and fun days, the weather, sunrise, sunset and the moon (`gs.real`), and the surprise, said by Claude in its own words after its hello. Birthdays and streaks get confetti |
 | The backend | `server/turn.js` | One small handler that adds the key and streams Claude's reply back. Runs inside the Vite dev server (`server/dev.js`) and as a Cloudflare Worker (`worker/`) |
-| Its personality and tools | `server/persona.js` | The system prompt and its tools: `make`, `change`, `toss`, `clear`, `place`, `room_colours`, `roll`, `doodle`, `act`, `play`, `game_move`, `stop_game`, `think_harder` |
+| Its personality and tools | `server/persona.js` | The system prompt and its tools: `make`, `change`, `toss`, `clear`, `place`, `room_colours`, `roll`, `doodle`, `act`, `play`, `game_move`, `stop_game`, `remember`, `forget`, `briefing`, `diary`, `think_harder` |
 | Games | `src/games/` | Games it plays with you on a table in front of it. Chess: the engine's living stone pieces, rules from chess.js and the engine's chess opponent picking its moves (fast, always legal, levels 1 to 5), while Claude reacts out loud to each move and a stretchy arm moves its pieces. Quiz: ten questions from the engine's bank of about 2,700 (`gs.trivia`, Open Trivia Database, CC BY-SA 4.0) on a card with four buzzers, starting easy and climbing; Reverie hosts, reading each question out and reacting to each answer, and is only told the answer once you've given yours. Noughts and crosses: the engine's game search (`gs.solve.Search`) picks its noughts, with slips at the lower levels and none at 5; tap a square or say it. Twenty Questions: the game picks the secret, counts your questions on twenty lamps and spots a right guess itself, so Reverie only has to answer; guess it and the mystery box opens and the thing is made in its hands. Draw and Guess: you draw a word against the clock on the drawing pad, and the doodle reader (`gs.doodle`) guesses live while Reverie calls its guesses out in its own voice, with no trip to Claude. Dice Quest: a path across the table past four challenges, each a little model from the generator, and real dice thrown from its hands; Reverie tells the story. `src/games/index.js` says how to add another |
 
 Everyday chat goes to Claude Haiku 5.5 with low effort, for speed. When a question needs real thought, it calls
@@ -75,6 +83,7 @@ REVERIE_FAKE=1 npm run dev -- --port 5179
 npm run smoke                 # wakes it, makes, changes and throws a prop, asks a deep question; pictures in tests/out/
 node tests/chess.mjs          # asks to play chess, taps a move, says a move, puts the board away
 node tests/kits.mjs           # rolls dice, plays three quiz questions (tap, button, said), draws a house and has it made
+node tests/memory.mjs --page  # the diary alone, then a second day: the overnight surprise, the briefing, a name kept, the diary sheet
 node tests/room.mjs           # carries a lamp to the window, a teapot to the shelf, paints the room, reloads it
 node tests/perf.mjs --gpu --tier 2 --idle   # CPU time a frame, draw calls and triangles (the GPU here is software)
 node tests/look.mjs --seats front,top       # pictures of the light from the usual seat and from above, in tests/out/
