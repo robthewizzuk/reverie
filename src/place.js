@@ -33,6 +33,23 @@ export function askPlace() {
   return asked;
 }
 
+/** Where they are, once they shared it ({ lat, lon, name, ... }), else null. */
+export const herePlace = () => here;
+
+// What the sky is doing where they are, for the room's window (daylight.js): the weather now, asked again every
+// 20 minutes. { code (WMO), cloud (0..1), rain (mm), wind (km/h), at (ms) }, or null until known (or with no place).
+let nowSky = null, skyAsked = 0;
+export function skyHere() {
+  const now = Date.now();
+  if (here && now - skyAsked > 20 * 60e3) {
+    skyAsked = now;
+    fetchJson(`https://api.open-meteo.com/v1/forecast?latitude=${here.lat}&longitude=${here.lon}&current=weather_code,cloud_cover,precipitation,wind_speed_10m&timezone=auto`)
+      .then(w => { const c = w?.current; if (c && c.weather_code != null) nowSky = { code: c.weather_code, cloud: (c.cloud_cover ?? 0) / 100, rain: c.precipitation ?? 0, wind: c.wind_speed_10m ?? 0, at: now }; })
+      .catch(() => { skyAsked = now - 15 * 60e3; });   // (try again in five minutes)
+  }
+  return nowSky;
+}
+
 /** Where they are, to the nearest 100 m, once they have shared it: { lat, lon } or null. */
 export const placeAt = () => here ? { lat: here.lat, lon: here.lon } : null;
 

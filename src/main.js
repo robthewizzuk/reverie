@@ -149,6 +149,7 @@ async function boot() {
   brain = makeBrain({ world, onCaption: say, onStatus: setStatus, onTiming: showTiming,
     memo: () => memory.summary(), onHeard: text => memory.said('you', text), onTool: noted,
     tools: {
+      window: input => world.daylight.set(input),
       doodle: async () => { pad.show(); return 'The drawing pad is open on their screen. When they press Make it!, you will hear what they drew and it appears in your hands.'; },
       remember: async input => memory.remember(input),
       forget: async input => { const r = memory.forget(input); brain.refreshMemo(); return r; },
@@ -181,6 +182,7 @@ function wakeUp() {
   if (awake) return; awake = true; wake.hidden = true;
   const c = world.creature, visit = memory.visit();
   c.gesture('wave'); c.mood('happy');
+  world.daylight.sound(true);   // (the rain's patter, now the page may make sound)
   // (through its speaker, so the mic knows this is its voice): the tour the first time, after that a hello by name
   brain.speak(visit.first ? HELLOS[Math.floor(Math.random() * HELLOS.length)] : welcome(visit));
   if (memory.birthdayToday() || [7, 30, 100].includes(memory.visits.streak) && visit.newDay) world.celebrate?.();
