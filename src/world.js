@@ -12,6 +12,7 @@ import { makeSleepy } from './sleepy.js';
 import { makeDice } from './dice.js';
 import { makePet } from './pet.js';
 import { makeFloaties } from './floaties.js';
+import { makeMotion, flexFor } from './motion.js';
 import { SPOTS, SPOT_NAMES, spotOf, roomColours, roomItems, tidyRoomColours, keepRoomColours, keepItem, forgetItem, forgetAll, freePlace, findItem, roomLine, inRoom, MAX_ITEMS } from './room.js';
 
 const HOLD_SIZE = .4;            // metres: the longest side of a prop in its hands
@@ -135,7 +136,8 @@ function standAt(o, x, y, z) { const { THREE } = gs.hd; o.position.set(x, y, z);
  */
 export function makeWorld() {
   const { THREE } = gs.hd;
-  let W = 360, H = 640, held = null, loose = [], seed = 1, t = 0, pops = [];
+  let W = 360, H = 640, held = null, loose = [], seed = 1, t = 0, motion = null;
+  const every = [];   // (held, loose and placed, gathered each frame for their own small movements)
   // things kept in the room (room.js has what is saved), what it is doing with its legs now, and carrying jobs in a queue
   let placed = [], acts = [], carrying = Promise.resolve(), restored = false;
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), at = new THREE.Vector3();
@@ -167,14 +169,15 @@ export function makeWorld() {
   function pivotFor(thing, size) {
     const p = new THREE.Group();
     fitTo(thing, size); const b = boxOf(thing), c = b.getCenter(new THREE.Vector3());
-    thing.position.sub(c); p.add(thing);
+    thing.position.sub(c);
     thing.traverse(m => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } });
     p.userData.size = b.getSize(new THREE.Vector3());
+    flexFor(p, thing, p.userData.size);   // (in a group at its base, so it squashes and rocks on what it stands on: motion.js)
     return p;
   }
   function hold(entry) {
     held = entry; creature.hold.add(entry.pivot); entry.pivot.position.set(0, entry.pivot.userData.size.y * .3, 0); entry.pivot.rotation.set(0, 0, 0);
-    creature.holding = true; pops.push({ o: entry.pivot, t: 0 });
+    creature.holding = true; motion.life(entry);
   }
   function poof(o, color = '#ffd27a') {
     o.getWorldPosition(at);
@@ -191,7 +194,14 @@ export function makeWorld() {
     entry.body.twist((Math.random() - .5) * 6, (Math.random() - .5) * 6, (Math.random() - .5) * 4);
     loose.push(entry); creature.holding = false; held = null;
   }
-  function remove(entry) { if (entry.body) entry.body.remove(); entry.pivot.removeFromParent(); }
+  function remove(entry) { motion?.stop(entry); if (entry.body) entry.body.remove(); entry.body = null; entry.pivot.removeFromParent(); }
+  // it shrinks away (motion.js), then goes in a puff of sparkles; its body goes at once, so nothing lands on what is leaving
+  function vanish(entry, color = '#ffffff', delay = 0) {
+    entry.body?.remove?.(); entry.body = null;
+    if (!entry.pivot.parent) return;
+    if (entry.pivot.parent !== v.scene) toWorld(entry.pivot);
+    motion.vanish(entry, () => { poof(entry.pivot, color); gs.sound.sounds.pop(); remove(entry); }, delay);
+  }
 
   // its real weight per cubic metre of its box, so an anvil thuds and a balloon floats down
   function densityOf(thing) {
@@ -219,7 +229,7 @@ export function makeWorld() {
     let read = null; try { read = gs.models.generate.understood(words); } catch { /* still loading: none */ }
     const d = describe(thing, words, { size: HOLD_SIZE * k, read, asked: o.asked ?? words });
     const entry = { words, seed: s, sizeK: k, density, short: d.short, pivot: pivotFor(thing, HOLD_SIZE * k), body: null };
-    hold(entry); poof(entry.pivot); gs.sound.sounds.pop();
+    hold(entry); motion.appear(entry); poof(entry.pivot); gs.sound.sounds.pop();
     return o.said ?? `Made ${d.text}`;
   }
 
@@ -236,6 +246,7 @@ export function makeWorld() {
     e.body.place(e.x, e.pivot.position.y, e.z, e.pivot.quaternion);
   }
   async function restoreRoom() {
+    let n = 0;
     for (const i of roomItems()) {
       let thing = null;
       try { thing = await gs.models.generate.make(i.words, { seed: i.seed }); } catch { /* the generator could not: leave it out this time */ }
@@ -243,6 +254,7 @@ export function makeWorld() {
       const pivot = pivotFor(thing, i.size), e = { ...i, pivot, body: null };
       pivot.position.set(i.x, i.y + pivot.userData.size.y / 2, i.z); pivot.rotation.set(0, i.ry || 0, 0);
       v.scene.add(pivot); settle(e); placed.push(e);
+      motion.life(e, { still: true }); motion.appear(e, Math.min(n++, 8) * .09);   // (each pops in where it was left, one after another)
       seed = Math.max(seed, i.seed || 0);
     }
   }
@@ -299,12 +311,12 @@ export function makeWorld() {
 
     // a thing in the room: walk over, pick it up
     if (from === 'room') {
-      if (away) { poof(entry.pivot, '#ffffff'); remove(entry); placed = placed.filter(e => e !== entry); forgetItem(entry.id); gs.sound.sounds.pop(); return `Took ${name} out of the room.`; }
+      if (away) { vanish(entry); placed = placed.filter(e => e !== entry); forgetItem(entry.id); return `Took ${name} out of the room.`; }
       if (held) release(held, false);
       const [sx, sz] = standFor(entry.x, entry.z, entry.r || .15);
       await walkTo(sx, sz); await pause(.15, Math.atan2(entry.x - sx, entry.z - sz));
       creature.reach(entry.pivot.position);
-      entry.body?.remove?.(); entry.body = null;
+      entry.body?.remove?.(); entry.body = null; motion.stop(entry); motion.lift(entry);
       placed = placed.filter(e => e !== entry); forgetItem(entry.id);
       creature.hold.updateMatrixWorld(true);
       const hp = creature.hold.localToWorld(new THREE.Vector3(0, entry.pivot.userData.size.y * .3, 0));
@@ -313,7 +325,7 @@ export function makeWorld() {
       const e2 = { words: entry.words, seed: entry.seed, sizeK: entry.sizeK, density: entry.density ?? 300, short: entry.short, pivot: entry.pivot, body: null };
       e2.pivot.scale.setScalar(1); hold(e2); entry = e2;
       if (toHands) { await goHome(); return `Fetched ${name} back into your hands.`; }
-    } else if (away) { poof(entry.pivot, '#ffffff'); remove(entry); held = null; creature.holding = false; return `Made ${name} vanish.`; }
+    } else if (away) { held = null; creature.holding = false; vanish(entry); return `Made ${name} vanish.`; }
     else if (toHands) return `${name} is already in your hands.`;
 
     // carry it to the spot and put it down
@@ -328,7 +340,7 @@ export function makeWorld() {
     await walkTo(sx, sz); await pause(.2, face);
     const ry = face + Math.PI;   // (its front, as it held it, turned to face the room)
     creature.reach(new THREE.Vector3(p.x, p.y + .1, p.z));
-    const pivot = entry.pivot; held = null; creature.holding = false;
+    const pivot = entry.pivot; held = null; creature.holding = false; motion.stop(entry);
     toWorld(pivot);
     const goal = new THREE.Vector3(p.x, p.y + entry.pivot.userData.size.y * k / 2, p.z);
     const q0 = pivot.quaternion.clone(), q1 = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, ry, 0));
@@ -337,6 +349,7 @@ export function makeWorld() {
     creature.reach(null); gs.sound.sounds.pop(); fx.sparks({ x: p.x, y: p.y + .02, z: p.z }, { color: '#ffe2b0', count: 14, power: .4, light: false });
     const item = { id: entry.id || newId(), words: entry.words, seed: entry.seed, sizeK: entry.sizeK, density: entry.density, size, spot, x: +p.x.toFixed(3), y: +p.y.toFixed(3), z: +p.z.toFixed(3), ry: +ry.toFixed(3), r: +r.toFixed(3), short: entry.short };
     const e = { ...item, pivot, body: null }; settle(e); placed.push(e); keepItem(item);
+    motion.land(e); motion.life(e, { still: true }); if (near) motion.wobble(near, motion.FEEL.bump);   // (it squashes down onto the spot, and its neighbour rocks)
     await pause(.25, face); await goHome(); creature.gesture('nod');
     return `Carried ${name} over and put it ${S.about}${near ? `, next to ${near.short || near.words}` : ''}, at ${Math.round(size * 100)} cm. It stays in the room, and is remembered next time.`;
   }
@@ -360,10 +373,11 @@ export function makeWorld() {
     },
     reset() {
       if (!v) setup();
+      motion ||= makeMotion({ view: v, fx });
       keeper ||= makePet({ scene: v.scene, camera: v.cam, creature, world: api, floaties, sparks: stage.sparks, mood: { fun: (k, n) => mood?.fun(k, n) }, news: text => onNews(text, false) });
       if (!restored) { restored = true; restoreRoom(); keeper.restore(); }
       for (const e of loose) remove(e); loose = []; if (held) remove(held); held = null; creature.holding = false;
-      fx.clear(); embers = makeEmbers(); creature.mood('calm');
+      fx.clear(); for (const e of placed) motion.life(e, { still: true }); embers = makeEmbers(); creature.mood('calm');
       dice ||= makeDice({ THREE, scene: v.scene, physics: world, creature, sparks: stage.sparks }); dice.clear();
       if (game) { game.stop(); game = null; }
     },
@@ -384,9 +398,15 @@ export function makeWorld() {
       light.update(dt, t);
       creature.coreAt(at);
       const st = creature.state; embers.at({ x: at.x, y: at.y, z: at.z + .03 }); embers.rate = st.thinking ? 14 : st.listening ? 6 : st.speaking ? 4 : 2; embers.on = true;
-      // a new prop pops into its hands
-      for (const p of pops) { p.t += dt; const k = Math.min(1, p.t / .28), e = 1 + 2.7 * Math.pow(k - 1, 3) + 1.7 * Math.pow(k - 1, 2); p.o.scale.setScalar(Math.max(.01, e)); }
-      pops = pops.filter(p => p.t < .28);
+      // props springing (popping in, landing, wobbling, vanishing) and their own small movements; a thing it brushes past rocks
+      every.length = 0; if (held) every.push(held); for (const e of loose) every.push(e);
+      const cr = creature.root.position;
+      for (const e of placed) {
+        every.push(e);
+        const d = Math.hypot(cr.x - e.x, cr.z - e.z), r = (e.r || .15) + .3;
+        if (!e.brushed && d < r && acts.length) { e.brushed = true; motion.wobble(e, motion.FEEL.bump); } else if (d > r + .15) e.brushed = false;
+      }
+      motion.update(dt, every);
       if (held) { held.pivot.rotation.y += dt * .5; held.pivot.position.y = held.pivot.userData.size.y * .3 + Math.sin(t * 2.4) * .01; }
       world.step(dt);
       dice?.update(dt);
@@ -403,6 +423,13 @@ export function makeWorld() {
       if (game?.tap(ray)) return 'game';
       if (held && ray.intersectObject(held.pivot, true).length) return 'prop';
       if (keeper?.tap(ray)) return 'pet';
+      // a thing in the room rocks when tapped (and a box, a chest or a laptop opens or shuts)
+      const hit = placed.find(e => !motion.going(e) && ray.intersectObject(e.pivot, true).length);
+      if (hit) {
+        motion.wobble(hit); gs.sound.sounds.boing?.();
+        if (hit.life?.parts?.some(m => /lid|hatch|door/.test(m.userData.part))) { hit.open = !hit.open; hit.life.open('lid', +hit.open); hit.life.open('hatch', +hit.open); hit.life.open('doors', +hit.open); }
+        return 'thing';
+      }
       if (ray.intersectObject(creature.root, true).length) return 'creature';
       return null;
     },
@@ -443,7 +470,7 @@ export function makeWorld() {
       let k = held.sizeK;
       if (/\b(bigger|larger)\b/i.test(ch)) k *= 1.35; else if (/\b(smaller)\b/i.test(ch)) k *= .7;
       else for (const [re, f] of SIZE_WORDS) if (re.test(ch.toLowerCase())) { k = f; break; }
-      const old = held; held = null; poof(old.pivot, '#9fd8ff'); remove(old);
+      const old = held; held = null; creature.holding = false; vanish(old, '#9fd8ff');
       const r = await makeProp(prompt, { seed: old.seed, sizeK: clamp(k, .3, 2.2), asked: ch });
       return r.startsWith('Made') ? r.replace(/^Made/, 'Changed it into') : r;
     },
@@ -454,8 +481,8 @@ export function makeWorld() {
     },
     async clear(o = {}) {
       const n = loose.length + (held ? 1 : 0) + (dice?.clear() || 0), m = o.room ? placed.length : 0;
-      for (const e of [...loose, ...(held ? [held] : []), ...(o.room ? placed : [])]) { poof(e.pivot, '#ffffff'); remove(e); }
-      loose = []; held = null; creature.holding = false; gs.sound.sounds.pop();
+      [...(held ? [held] : []), ...loose, ...(o.room ? placed : [])].forEach((e, i) => vanish(e, '#ffffff', Math.min(i, 12) * .06));
+      loose = []; held = null; creature.holding = false;
       if (o.room) { placed = []; forgetAll(); }
       const kept = placed.length ? ` The ${placed.length} thing${placed.length > 1 ? 's' : ''} kept in the room stayed.` : '';
       return n + m ? `Cleared ${n + m} prop${n + m > 1 ? 's' : ''}.${kept}` : `There was nothing to clear.${kept}`;
@@ -474,6 +501,10 @@ export function makeWorld() {
     roll: text => dice.roll(text),
     /** The things kept in the room, as saved: [{ id, words, spot, x, y, z, ... }]. */
     get room() { return placed.map(({ pivot, body, ...i }) => i); },
+    /** The props' springs and small movements (motion.js). */
+    get motion() { return motion; },
+    /** The things kept in the room, with their pivots: [{ pivot, words, spot, life, ... }]. */
+    get kept() { return placed; },
     /** True while it is walking about the room with something. */
     get walking() { return acts.length > 0; },
     /** Puts something in the room ({ item, spot, near, size }), carrying it there itself. Resolves a sentence. */

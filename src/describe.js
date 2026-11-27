@@ -22,7 +22,9 @@ export function colourName(hex) {
 // the generator's material recipes in plain words
 const MATERIAL = { brushed: 'metal', metal: 'metal', chrome: 'chrome', plastic: '', paint: 'paint', wood: 'wood', planks: 'wooden planks', fabric: 'fabric',
   stone: 'stone', brick: 'brick', glass: 'glass', fur: 'fur', scales: 'scales', leather: 'leather', rubber: 'rubber', ceramic: 'ceramic', gold: 'gold' };
-const look = ([name, o = {}]) => {
+const look = x => {
+  // ([recipe, { colour, glow }], or for some things { name, colour } or just the recipe's name)
+  const [name, o = {}] = Array.isArray(x) ? x : typeof x === 'string' ? [x] : x && typeof x === 'object' ? [x.name ?? x.recipe ?? '', x] : [''];
   const c = colourName(o.colour), m = MATERIAL[name] ?? name;
   return [o.glow ? 'glowing' : '', c, m].filter(Boolean).join(' ') || null;
 };
