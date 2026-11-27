@@ -4,7 +4,7 @@
 // little more. Talking over it stops it at once.
 import gs from '../engine/src/gamescroll.js';
 import { weather, contextLine } from './place.js';
-import { sayOptions, setVoice, echoNow } from './looks.js';
+import { sayOptions, setVoice, voiceNow, echoNow } from './looks.js';
 import { splitCues } from './cues.js';
 import { playCue } from './sounds.js';
 import { GAMES } from './games/index.js';
@@ -148,6 +148,7 @@ function checkInput(name, input) {
   if (name === 'voice' && ['size', 'lively', 'pitch', 'speed'].some(k => input[k] != null && typeof input[k] !== 'number')) return 'size, lively, pitch and speed must be numbers';
   if (name === 'voice' && ['effect', 'echo'].some(k => input[k] != null && typeof input[k] !== 'string')) return 'effect and echo must be names';
   if (name === 'colours' && ['body', 'glow'].some(k => input[k] != null && typeof input[k] !== 'string')) return 'colours must be text';
+  if (name === 'wear' && (['put_on', 'take_off'].some(k => input[k] != null && !(Array.isArray(input[k]) ? input[k].every(w => typeof w === 'string') : typeof input[k] === 'string')) || (input.colour != null && typeof input.colour !== 'string'))) return 'put_on and take_off must be lists of names, colour text';
   if (name === 'act' && (!GESTURES.includes(input.gesture) || !MOODS.includes(input.mood))) return 'unknown gesture or mood';
   if (name === 'play' && typeof input.game !== 'string') return 'game must be a name';
   if (name === 'roll' && input.dice != null && typeof input.dice !== 'string') return 'dice must be text, like 2d6';
@@ -224,7 +225,7 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
     if (name === 'think_harder') return Promise.resolve(deepNow
       ? { text: 'You are already thinking harder. Answer the question now.', error: true }
       : { text: 'Handed over to deeper thinking. You are now thinking harder about this question: answer it now, and do not call think_harder again.', deep: true });
-    const fn = { make: () => world.make(input.words), change: () => world.change(input.words), toss: () => world.toss(), weather: () => weather(input.place), clear: () => world.clear({ room: !!input.room }), place: () => world.place(input), room_colours: () => world.recolourRoom(input), act: () => world.act(input.gesture, input.mood), voice: async () => setVoice(input), colours: () => world.recolour(input),
+    const fn = { make: () => world.make(input.words), change: () => world.change(input.words), toss: () => world.toss(), weather: () => weather(input.place), clear: () => world.clear({ room: !!input.room }), place: () => world.place(input), room_colours: () => world.recolourRoom(input), act: () => world.act(input.gesture, input.mood), voice: async () => { const r = setVoice(input), d = r.error ? '' : world.dressFor?.(voiceNow().name) || ''; return d ? { ...r, text: `${r.text} ${d}` } : r; }, wear: () => world.wear(input), colours: () => world.recolour(input),
       play: () => world.play(input.game, { level: input.level }), game_move: () => world.game ? world.game.command(input.move) : Promise.resolve('No game is being played.'), stop_game: () => world.stopGame(),
       roll: () => world.roll(input.dice || '1d6'), pet: () => world.pet(input), ...Object.fromEntries(Object.entries(extra).map(([k, f]) => [k, () => f(input)])) }[name];
     if (!fn) return Promise.resolve({ text: `There is no tool called ${name}.`, error: true });
