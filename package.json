@@ -14,6 +14,7 @@
     "test:body": "node tests/body.mjs",
     "test:look": "node tests/lookaround.mjs",
     "test:clean": "node tests/clean.mjs",
+    "helpers:sync": "node --env-file-if-exists=.env.local scripts/helpers-sync.mjs",
     "test:sounds": "node tests/sounds.mjs",
     "test:fluid": "node tests/fluid.mjs",
     "latency": "node tests/latency.mjs",
