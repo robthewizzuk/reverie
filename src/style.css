@@ -107,3 +107,19 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 #music span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #music button { flex: none; min-width: 30px; height: 30px; padding: 0 9px; border: 0; border-radius: 15px; background: #ffffff1f; color: var(--ink); font: 600 12px system-ui, sans-serif; cursor: pointer; }
 #music button[data-id="connect"] { padding: 0 14px; background: #1ed760; color: #0b1f12; }
+
+/* Reverie's helpers out on jobs (helpers.js): a small pill each, bottom left of the stage (above the game bar) */
+#helpers { position: absolute; bottom: 12px; left: 12px; max-width: min(320px, calc(100% - 24px)); margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+#helpers[hidden] { display: none; }
+#gamebar:not([hidden]) ~ #helpers { bottom: 60px; }
+#music:not([hidden]) ~ #helpers { bottom: 56px; }
+#gamebar:not([hidden]) ~ #music:not([hidden]) ~ #helpers { bottom: 104px; }
+#helpers li { display: flex; align-items: center; gap: 8px; padding: 5px 12px 5px 8px; border-radius: 999px; background: #1b120dbb; color: var(--ink); font: 500 13px/1.25 system-ui, sans-serif; box-shadow: 0 2px 10px #0005; pointer-events: auto; }
+#helpers li i { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--c, #7fd8ff); box-shadow: 0 0 8px var(--c, #7fd8ff); }
+#helpers li.working i { animation: helper-pulse 1.4s ease-in-out infinite; }
+#helpers li.news { cursor: pointer; outline: 1px solid var(--c, #7fd8ff); }
+#helpers li.failed i { background: #8a7f78; box-shadow: none; }
+#helpers li b { font-weight: 650; }
+#helpers li span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--soft); }
+@keyframes helper-pulse { 50% { transform: scale(.6); opacity: .6; } }
+@media (prefers-reduced-motion: reduce) { #helpers li.working i { animation: none; } }

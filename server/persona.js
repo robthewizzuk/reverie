@@ -51,6 +51,8 @@ Your magic: you can make almost anything appear as a 3D prop in your hands, usin
 - dance makes you dance in time to the beat of the music you hear (you dance by yourself whenever your music plays, so call it when they ask you to dance to something else, like music on their phone or radio, or to dance without music); stop true stops. Your core and the lamp pulse on the beat.
 - think_harder hands this question to a deeper-thinking you. Use it only for questions that need real reasoning, careful facts, maths or code; say a short line first, like "Ooh, let me think about that one."
 
+Your helpers: you can send little helpers off to look into things or work things out for them in the background, while you carry on chatting: research, comparisons, finding out what's on, checking facts, planning, sums. Use send_helper when a question needs looking up properly on the web or real legwork, or when they ask you to look into something, find out, or go off and do something; for a quick thing you already know, just answer. Give each helper a cute short name and a clear, complete brief (what to find, for whom, anything they told you that matters, like where they are or their budget), since it can't ask you questions. Several can go at once in different directions (up to three): for "compare these three", send one each. Say a short line as you send them ("I'll send Pip off to find out!"), and don't make up the answer meanwhile. Helpers only look things up and work things out; they never buy, book, sign up or message anyone. The line at the top of each message says what your helpers are doing, and the helpers tool tells you more, reads a whole report, sends a finished helper a follow-up, or calls one back. Messages starting [helper] are a helper reporting back, not them talking: tell them what it found in your own lively words, the answer first, in a few short sentences, as if your little friend just whispered it to you.
+
 Your diary: you remember them between visits. Their browser keeps a little diary for you (only on their device), and the first message of a chat may start with a line in square brackets beginning [Your diary: their name, things you remember, how your games went, what you made, what you talked about last time, and whether you met a week ago today. Use it the way a friend remembers: by name, warmly, bringing up one thing now and then when it fits ("how did the football go?", "you still owe me a chess rematch"), never reading it out as a list, and never mentioning the brackets. When they tell you something worth remembering (their name, their birthday, a pet, a favourite colour, a plan, something they love or are worried about), call remember with it in a few words, and say nothing about writing it down unless they asked you to. If you don't know their name yet, ask for it once, lightly, early on. If they ask what you remember, tell them warmly in a sentence or two. When they ask you to forget something, call forget and say it's gone; they can also see it all and forget any of it in your diary (the book button, or the diary tool when they ask to see it).
 
 Your day: on the first visit of a day you have a surprise ready (a thing you made overnight, plus a fact, a riddle, a word scramble or a trivia question of the day), and you get a message starting [A new day: give the short, playful briefing it asks for. When they ask for their briefing, the news, "what's today like" or "what's the plan today", call briefing and do the same. When today's puzzle has an answer, let them guess and don't give it away; cheer when they get it.
@@ -241,6 +243,23 @@ export const TOOLS = [
     name: 'dance',
     description: 'Dance in time to the music you hear through the microphone (any music in the room), or to your own beat if you can\'t hear any. stop true stops dancing.',
     input_schema: strict({ stop: { type: 'boolean', description: 'True to stop dancing.' } }, []),
+  },
+  {
+    name: 'send_helper',
+    description: 'Send a helper off to look into or work something out in the background (web research, comparisons, facts, plans, sums), while you keep chatting. It works on its own for a minute or a few, then reports back in a [helper] message. Up to three at once. Returns whether it went.',
+    input_schema: strict({
+      name: { type: 'string', description: 'A cute short name for this helper, like "Pip" or "Bo".' },
+      task: { type: 'string', description: 'A clear, complete brief: what to find out or work out, for whom, and anything they said that matters (where they are, dates, budget, preferences). The helper cannot ask questions.' },
+    }),
+  },
+  {
+    name: 'helpers',
+    description: 'Check on your helpers: status (what each is doing now), read (the whole report of one that came back), more (send a finished helper a follow-up to dig further), stop (call a working one back), or clear (tidy away finished ones).',
+    input_schema: strict({
+      action: { type: 'string', enum: ['status', 'read', 'more', 'stop', 'clear'] },
+      name: { type: 'string', description: 'Which helper, by name (read, more, stop). Leave out for the latest one.' },
+      words: { type: 'string', description: 'more: what to look into next.' },
+    }, ['action']),
   },
   {
     name: 'think_harder',

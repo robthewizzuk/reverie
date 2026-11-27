@@ -8,7 +8,7 @@ import { makeLook } from './look.js';
 import { makeBrain } from './brain.js';
 import { makeBody } from './body.js';
 import { Listener, sameWords } from './listen.js';
-import { askPlace, placeAt, weather } from './place.js';
+import { askPlace, placeAt, weather, contextLine } from './place.js';
 import { makePad, madeFrom } from './doodle.js';
 import { makeMood, toneOf } from './mood.js';
 import { setTone, sayOptions } from './looks.js';
@@ -18,15 +18,17 @@ import { surpriseFor, briefingNote, funDay } from './daily.js';
 import { makeDiary } from './diary.js';
 import { makeShaker } from './fun.js';
 import { makeMusic } from './music.js';
+import { makeHelpers, reportOf } from './helpers.js';
+import { makeWisps } from './helper-wisps.js';
 
 const $ = s => document.querySelector(s);
 const stage = $('#stage'), canvas = $('#view'), ctx = canvas.getContext('2d');
 const input = $('#say'), form = $('#bar'), mic = $('#mic'), caption = $('#caption'), status = $('#status'), wake = $('#wake'), timing = $('#timing');
 const gamebar = $('#gamebar'), gameText = $('#gamebar span'), gameButtons = $('#gamebar div');
-const draw = $('#draw'), book = $('#book'), look = $('#look'), recentre = $('#recentre');
+const draw = $('#draw'), book = $('#book'), look = $('#look'), recentre = $('#recentre'), helperList = $('#helpers');
 const debug = new URLSearchParams(location.search).has('debug');
 
-let W = 0, H = 0, world, brain, body, voice, pad, diary, mood, show, shaker, music, last = 0, awake = false, captionT = 0, nextAt = 0;
+let W = 0, H = 0, world, brain, body, voice, pad, diary, mood, show, shaker, music, helpers, wisps, last = 0, awake = false, captionT = 0, nextAt = 0;
 // its diary, kept in this browser (memory.js), and today's surprise (daily.js): { surprise, holding, funDay }
 const memory = makeMemory();
 const today = { surprise: null, holding: null, funDay: funDay() };
@@ -139,6 +141,7 @@ function frame(now) {
     if (recentre.hidden === looking.moved) recentre.hidden = !looking.moved;
     canvas.classList.toggle('looking', looking.dragging);
     world.update(dt);
+    wisps?.update(dt); helpers?.tell();
     world.draw(ctx);
   } catch (e) {
     if (!e?.kitLoading) { console.error(e); setStatus('error: ' + e.message); }
@@ -184,6 +187,17 @@ async function boot() {
   // music and dancing (music.js): Spotify plays, the mic hears the beat, and it dances
   music = makeMusic({ world, el: $('#music'), onNews: (text, loud) => brain?.notice(text, loud) });
   world.addLine(() => music.line());
+  // its helpers (helpers.js): little agents it sends off to look into things, shown as wisps over its head and pills on
+  // the stage; one that comes back is passed to Claude as news when Reverie is free, to tell you in its own words
+  wisps = makeWisps({ scene: world.view.scene, creature: world.creature, floaties: world.floaties });
+  helpers = makeHelpers({
+    ready: () => awake && !!brain && !brain.busy && !brain.speaking && !world.creature.state.listening,
+    onReport: h => { brain.hear(reportOf(h), { at: performance.now(), news: true }); if (h.status !== 'failed') mood.fun('chat'); return true; },
+    context: () => contextLine().replace(/^\[From the device, not said aloud: |\]$/g, ''),
+    onChange: list => { wisps.show(list); showHelpers(list); },
+  });
+  wisps.show(helpers.list); showHelpers(helpers.list);
+  world.addLine(() => helpers.line());
   world.creature.cheer = mood.cheer;
   setTone(() => toneOf(mood.cheer));
   brain = makeBrain({ world, onCaption: say, onStatus: setStatus, onTiming: showTiming,
@@ -199,6 +213,8 @@ async function boot() {
       effect: input => world.show(input.kind),
       smash: input => world.smash(input.how),
       ...music.tools,
+      send_helper: input => helpers.send(input),
+      helpers: input => helpers.manage(input),
       diary: async () => { diary.show(); return 'Your diary is open on their screen: everything you remember about them, and a way to forget any of it.'; },
     } });
   body = makeBody({ creature: world.creature, world, mood });
@@ -209,7 +225,7 @@ async function boot() {
   world.onSay = line => { if (brain.busy || brain.speaking) return false; brain.speak(line); return true; };
   world.pad = pad;
   voice = new Listener({ onProblem: () => listeningOff(), onNote: debug ? line => { timing.textContent = 'mic: ' + line; } : null });
-  window.__reverie = { world, brain, body, gs, voice, pad, memory, diary, today, mood, show, shaker, music };
+  window.__reverie = { world, brain, body, gs, voice, pad, memory, diary, today, mood, show, shaker, music, helpers };
   requestAnimationFrame(frame);
   // every shader the room needs, built in the background before it wakes (the driver's own threads), so none is built
   // in the middle of a chat: a whole room's shaders built in one frame was a stall of a second or more
@@ -364,6 +380,24 @@ const looking = makeLook({
 });
 canvas.addEventListener('pointerdown', () => { speed.inputAt = performance.now(); });
 recentre.addEventListener('click', () => looking.recentre());
+
+/** The helpers' pills on the stage: who is out and what each is doing; one with news can be tapped to hear it. */
+function showHelpers(list) {
+  const now = list.filter(h => h.status === 'working' || (!h.told && h.status !== 'stopped')).slice(-4);
+  helperList.hidden = !now.length;
+  helperList.replaceChildren(...now.map(h => {
+    const li = document.createElement('li'), dot = document.createElement('i'), name = document.createElement('b'), what = document.createElement('span');
+    li.className = h.status === 'working' ? 'working' : h.status === 'failed' ? 'failed news' : 'news';
+    li.style.setProperty('--c', h.colour || '#7fd8ff'); li.dataset.name = h.name;
+    name.textContent = h.name;
+    what.textContent = h.status === 'working' ? h.doing : h.status === 'failed' ? 'came back empty-handed' : 'is back: tap to hear';
+    li.title = h.task; li.append(dot, name, what); return li;
+  }));
+}
+helperList.addEventListener('click', e => {
+  const li = e.target.closest('li.news'); if (!li || !brain) return;
+  wakeUp(); helpers.tell();
+});
 
 // The line above the chat bar while a game is on: how it stands, and its buttons (Undo, New game, Done).
 let barKey = '';
