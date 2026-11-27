@@ -38,8 +38,8 @@ await page.mouse.move(400, 400); await page.mouse.down();
 for (let i = 1; i <= 30; i++) { await page.mouse.move(400 - i * 20, 400 + i * 10); await page.waitForTimeout(10); }
 await page.mouse.up(); await settle();
 const far = await cam(); console.log('dragged far:', JSON.stringify(far));
-const room = await page.evaluate(async () => (await import('/src/look.js')).ROOM);
-for (const [i, k] of ['x', 'y', 'z'].entries()) if (far[k] < room.min[i] - 1e-3 || far[k] > room.max[i] + 1e-3) fail(`the camera left the room (${k} ${far[k]})`);
+const gap = await page.evaluate(async p => { const { ROOM } = await import('/src/look.js'), { inside } = await import('/src/shell.js'); return { left: inside(p.x, p.y, p.z), want: ROOM.gap, y0: ROOM.y0, y1: ROOM.y1 }; }, far);
+if (gap.left < gap.want - .01 || far.y < gap.y0 - 1e-3 || far.y > gap.y1 + 1e-3) fail(`the camera left the room (${JSON.stringify(far)}, ${gap.left.toFixed(3)} m from the wall)`);
 await page.screenshot({ path: 'tests/out/look-2-far.png' });
 
 // 3. the recentre button eases back to the seat

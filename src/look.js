@@ -2,17 +2,24 @@
 // the recentre button (or a new game seat) eases it back. The view is kept as offsets from the seat the stage wants
 // (home, or a game's seat), so a game's camera still works and recentring is just the offsets easing to nothing.
 // A press that hardly moves is still a tap (handed to onTap on release), so poking Reverie and playing games work.
+import { SHELL, inside as shellInside } from './shell.js';
 
 /** How far you can look around, from the seat. Angles in radians. */
 export const LIMITS = { yaw: 1.2, pitchUp: .9, pitchDown: .35, lowest: -.05, highest: 1.25, near: .5, far: 1.6 };
 
 /**
- * The inside of the room the camera stays in, in metres (Reverie stands at 0, 0; the back wall is at z -1.6 and the
- * window wall at x -2.1). A rounded room changes only this: inside(p) moves a point back inside it.
+ * The inside of the room the camera stays in: the round capsule (shell.js), kept a quarter metre from its wall, between
+ * just above the floor and well under the dome's crown (ROOM: those heights). inside(p) moves a point back inside it,
+ * straight in towards the room's middle line.
  */
-export const ROOM = { min: [-1.85, .15, -1.35], max: [1.95, 2.7, 2.25] };
+export const ROOM = { y0: .15, y1: 2.7, gap: .25 };
 export function inside(p) {
-  for (let i = 0; i < 3; i++) p[i] = Math.min(ROOM.max[i], Math.max(ROOM.min[i], p[i]));
+  p[1] = Math.min(ROOM.y1, Math.max(ROOM.y0, p[1]));
+  const short = ROOM.gap - shellInside(p[0], p[1], p[2]);
+  if (short > 0) {
+    const dx = SHELL.cx - p[0], dz = SHELL.cz - p[2], d = Math.hypot(dx, dz) || 1;
+    p[0] += dx / d * short; p[2] += dz / d * short;
+  }
   return p;
 }
 
