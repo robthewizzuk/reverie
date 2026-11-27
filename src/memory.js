@@ -141,6 +141,7 @@ export function makeMemory({ store = globalThis.localStorage, clock = () => new 
       } else if (kind === 'roll') r.rolls++;
       else if (kind === 'doodle' && o.what) { r.doodles++; log(`drew ${clean(o.what, 40)}`); }
       else if (kind === 'day' && o.line) log(o.line);
+      else if (kind === 'watched' && o.what) log(`watched "${clean(o.what, 70)}" together`);
       save();
     },
     /** A line of the chat ('you' or 'me'), so it can recall what you talked about last time. */

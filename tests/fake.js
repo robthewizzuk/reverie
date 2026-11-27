@@ -38,6 +38,11 @@ function plan(body) {
     if (/^\[Their daily briefing/.test(r)) return { text: 'Here is your briefing: it is a lovely day for making things.', tools: [] };
     if (/diary is open/i.test(r)) return { text: 'There it is, my diary.', tools: [] };
     if (/^Answered /.test(r)) return { text: 'Ooh.', tools: [] };
+    if (/^(Searched YouTube.*)?The screen rolled down/.test(r)) return { text: 'Ooh, popcorn time!', tools: [] };
+    if (/^(Paused|Playing|Jumped)/.test(r)) return { text: 'There we go.', tools: [] };
+    if (/^Where ".*" comes up/.test(r)) { const t = /at (\d+:\d+)/.exec(r)?.[1]; return { text: `Found it, at ${t}.`, tools: [] }; }
+    if (/^Rolled the screen back up/.test(r)) return { text: 'That was fun!', tools: [] };
+    if (/what shall we watch/i.test(r)) return { text: 'What shall we watch?', tools: [] };
     if (/noughts and crosses board is set up/i.test(r)) return { text: 'Crosses, your move.', tools: [] };
     if (/Twenty Questions is set up/.test(r)) return { text: "I'm thinking of something. Twenty questions, go!", tools: [] };
     if (/Draw and Guess is on/.test(r)) return { text: 'Draw, draw, draw!', tools: [] };
@@ -49,7 +54,9 @@ function plan(body) {
     return { text: /fail|could not|nothing/i.test(r) ? 'Hmm, that one fizzled.' : 'Ta-da!', tools: [] };
   }
   let m0;
-  const said = saidOf(u).replace(/^\[[a-z ]+[,:][^\]]*\]\s*/, '').toLowerCase().replace(/^(\[(pet|mood)\][^\n]*\n+)+(?=\S)/, '');
+  // (a video on: the line about it rides at the top of what they said)
+  const watching = /^\[watching[^\n]*\n/.exec(saidOf(u).replace(/^\[[a-z ]+[,:][^\]]*\]\s*/, ''))?.[0] || '';
+  const said = saidOf(u).replace(/^(\[[a-z ]+[,:][^\]]*\]\s*)?\[watching[^\n]*\n/, '$1').replace(/^\[[a-z ]+[,:][^\]]*\]\s*/, '').toLowerCase().replace(/^(\[(pet|mood)\][^\n]*\n+)+(?=\S)/, '');
   if (/^\[(noughts|twenty|draw and guess|quest)\]/.test(said)) return { text: /they won/.test(said) ? 'No fair!' : /you won/.test(said) ? 'Three in a row!' : /round is over/.test(said) ? 'What a round of drawings!' : /treasure chest with/.test(said) ? 'And they lived happily ever after!' : /last heart/.test(said) ? 'And the owl flew them home.' : 'Hmm, interesting.', tools: [] };
   if (/\(they guessed it|\(they gave up/.test(said)) return { text: 'Ta-da, there it is!', tools: [] };
   if (/\(question \d+ of 20/.test(said)) return { text: 'Nope!', tools: [] };
@@ -61,6 +68,14 @@ function plan(body) {
   const sm = /^(?:show|look)(?: at)?(?: me)?(?: something)?(?: find (?:me )?(.+))?$/.exec(said);
   if (sm) return { text: 'Show me!', tools: [['show', sm[1] ? { find: sm[1] } : {}]] };
   if (/^\[doodle\]/.test(said)) return { text: 'What a lovely drawing!', tools: [] };
+  if (/^\[watch\]/.test(said)) return /they picked/.test(said) ? { text: 'Ooh, popcorn time!', tools: [] } : /just finished/.test(said) ? { text: 'What a great video!', tools: [] } : /paused/.test(said) ? { text: '', tools: [] } : { text: /lava/.test(said) ? 'Lava! So hot.' : 'Ha, I love this bit!', tools: [] };
+  if (/video was put on the screen straight away/.test(said)) return { text: 'Ooh, popcorn time!', tools: [] };
+  if ((m0 = /^watch (https?:\/\/\S+|something|a video about (.+))$/.exec(said))) return { text: 'Ooh, let me pull the screen down.', tools: [['watch', m0[1] === 'something' ? { action: 'open' } : { action: 'open', video: m0[2] || m0[1] }]] };
+  if (/^pause (it|the video)/.test(said)) return { text: 'Pausing.', tools: [['watch', { action: 'pause' }]] };
+  if ((m0 = /^find the bit about (.+)/.exec(said))) return { text: 'Let me look.', tools: [['watch', { action: 'find', words: m0[1] }]] };
+  if ((m0 = /^go to (\d+) seconds/.exec(said))) return { text: 'Off we go.', tools: [['watch', { action: 'seek', seconds: +m0[1] }]] };
+  if (/^stop watching/.test(said)) return { text: 'Rolling it up.', tools: [['watch', { action: 'close' }]] };
+  if (/^what (did they|are they) (say|talking about)/.test(said)) return { text: watching ? `They said: ${/"([^"]{0,60})/.exec(watching.split(': ').slice(1).join(': '))?.[1] || 'nothing yet'}` : 'Nothing is on.', tools: [] };
   if (/^\[a new day/.test(said)) return { text: /in your hands now/.test(said) ? 'Good morning! I made you something overnight. Here is your briefing, and a puzzle.' : 'Good morning! Here is your briefing.', tools: [] };
   if ((m0 = /my name is (\w+)/.exec(said))) return { text: `Lovely to meet you, ${m0[1]}!`, tools: [['remember', { name: m0[1][0].toUpperCase() + m0[1].slice(1) }]] };
   if ((m0 = /^remember (?:that )?i (.+)/.exec(said))) return { text: 'Ooh, noted.', tools: [['remember', { fact: m0[1] }]] };
@@ -127,4 +142,19 @@ export async function fakeTurn(request) {
     },
   });
   return new Response(stream, { headers: { 'content-type': 'text/event-stream' } });
+}
+
+// A pretend /api/video (REVERIE_FAKE=1): captions for the test video TESTVIDEO01, none for any other, and a search
+// that always finds it.
+export function fakeVideo(request) {
+  const q = new URL(request.url).searchParams;
+  const json = o => new Response(JSON.stringify(o), { headers: { 'content-type': 'application/json' } });
+  if (q.get('q')) return json({ results: [{ id: 'TESTVIDEO01', title: 'Volcanoes for beginners', channel: 'Rocky Earth' }] });
+  if (q.get('v') !== 'TESTVIDEO01') return json({ id: q.get('v'), title: '', channel: '', seconds: 0, about: '', lines: [], why: 'no captions' });
+  const said = ['Hello and welcome to volcanoes for beginners.', 'Today we are going to find out what makes a mountain explode.', 'Deep under our feet the rock is so hot it melts.',
+    'That melted rock is called magma.', 'When it comes out of the ground we call it lava.', 'Lava can be hotter than a thousand degrees.', '[Laughter]',
+    'Do not try to toast marshmallows on it.', 'Some volcanoes ooze gently, like honey.', 'Others blow their tops with a huge bang.'];
+  const lines = []; let t = 1;
+  for (let round = 0; round < 6; round++) for (const text of said) { lines.push({ t, d: 2.6, text }); t += text === '[Laughter]' ? 5 : 3; }
+  return json({ id: 'TESTVIDEO01', title: 'Volcanoes for beginners', channel: 'Rocky Earth', seconds: 180, about: 'A friendly look at how volcanoes work.', lang: 'en', lines });
 }

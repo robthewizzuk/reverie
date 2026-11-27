@@ -1,16 +1,23 @@
 // The Claude route inside `npm run dev`: POST /api/turn runs server/turn.js in the Vite dev server, with the key
-// read from .env.local (or the shell). Nothing here reaches the page's bundle.
+// read from .env.local (or the shell). Nothing here reaches the page's bundle. GET /api/video runs server/video.js.
 //
 // REVERIE_FAKE=1 answers with a scripted Claude instead (tests/fake.js): no key, no network. The smoke test uses it.
 import { Readable } from 'node:stream';
 import { handleTurn } from './turn.js';
-import { fakeTurn } from '../tests/fake.js';
+import { handleVideo } from './video.js';
+import { fakeTurn, fakeVideo } from '../tests/fake.js';
 
 export function reverieApi(env) {
   return {
     name: 'reverie-api',
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
+        if ((req.url || '').startsWith('/api/video')) {
+          const request = new Request('http://localhost' + req.url);
+          const response = env.REVERIE_FAKE === '1' ? fakeVideo(request) : await handleVideo(request, env);
+          res.statusCode = response.status; response.headers.forEach((v, k) => res.setHeader(k, v));
+          return res.end(await response.text());
+        }
         if (!(req.url || '').startsWith('/api/turn')) return next();
         const ac = new AbortController();
         res.on('close', () => { if (!res.writableEnded) ac.abort(); });

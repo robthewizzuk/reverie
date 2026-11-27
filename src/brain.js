@@ -129,6 +129,7 @@ function checkInput(name, input) {
   if (name === 'remember' && ['fact', 'name', 'birthday'].some(k => input[k] != null && typeof input[k] !== 'string')) return 'fact, name and birthday must be text';
   if (name === 'forget' && (typeof input.what !== 'string' || !input.what.trim())) return 'what must say what to forget';
   if (name === 'game_move' && (typeof input.move !== 'string' || !input.move.trim())) return 'move must be text';
+  if (name === 'watch' && (typeof input.action !== 'string' || ['video', 'words', 'chatter'].some(k => input[k] != null && typeof input[k] !== 'string') || (input.seconds != null && typeof input.seconds !== 'number'))) return 'action must be text, seconds a number, and the rest text';
   if (name === 'pet' && (!['make', 'trick', 'rename', 'away'].includes(input.action) || ['animal', 'name', 'colour', 'trick'].some(k => input[k] != null && typeof input[k] !== 'string'))) return 'action must be make, trick, rename or away, and the rest text';
   return null;
 }
@@ -146,7 +147,7 @@ export function gameAsked(text) {
   return { game, level };
 }
 
-export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, onTiming = () => {}, tools: extra = {}, memo = () => '', onHeard = () => {}, onTool = () => {} }) {
+export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, onTiming = () => {}, tools: extra = {}, memo = () => '', onHeard = () => {}, onTool = () => {}, context = () => '' }) {
   const creature = world.creature, speaker = makeSpeaker(creature, onCaption);
   let history = [], turn = 0, ctl = null, cut = '', deepNow = false;
   // a game's news (games/index.js): quiet news waits for the next thing said; loud news gets a reaction when it's free
@@ -249,7 +250,8 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
       const r = await world.play(wantsGame.game, { level: wantsGame.level });
       text += `\n(The ${(GAMES[wantsGame.game]?.title || wantsGame.game).toLowerCase()} ${wantsGame.game === 'draw_and_guess' ? 'game' : wantsGame.game === 'chess' ? 'board' : 'table'} was set up straight away when they asked: ${r} Don't call play or make for it; just react.)`;
     }
-    turnCtx = world.game?.context() || '';
+    // (and anything else on the go that isn't a game: a video being watched together, watch.js)
+    turnCtx = [world.game?.context(), context()].filter(Boolean).join('\n');
     const my = ++turn;
     // talking over it: it stops, and is told what it didn't get to say
     if (ctl) { ctl.abort(); ctl = null; }
