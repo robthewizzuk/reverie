@@ -32,7 +32,7 @@ const byWho = t => (t.artists || []).map(a => a.name).slice(0, 2).join(' and ');
  * line() for the line Claude reads each turn, duck(on) to turn it down while Reverie talks or listens.
  */
 export function makeSpotify({ onNews = () => {}, onChange = () => {} } = {}) {
-  let auth = store.get();   // { access, refresh, expires }
+  let auth = store.get(), listeners = [];   // { access, refresh, expires }
   let player = null, deviceId = null, sdkProblem = null, now = null, volume = .7, ducked = false, lastState = 0;
 
   // ---- signing in
@@ -136,17 +136,20 @@ export function makeSpotify({ onNews = () => {}, onChange = () => {} } = {}) {
     lastState = performance.now();
     if (!st) { setNow(null); return; }
     const t = st.track_window?.current_track;
-    setNow(t ? { title: t.name, by: byWho(t), uri: t.uri, playing: !st.paused, here: true } : null);
+    setNow(t ? { title: t.name, by: byWho(t), uri: t.uri, id: t.id, durationMs: st.duration, playing: !st.paused, here: true } : null, st.position);
   }
-  function setNow(n) {
+  // where in the song it is: positionMs at performance.now() posAt (moving on while it plays)
+  let posMs = 0, posAt = 0;
+  function setNow(n, position) {
+    if (position != null) { posMs = position; posAt = performance.now(); }
     const was = now; now = n;
-    if (was?.uri !== n?.uri || was?.playing !== n?.playing) onChange(now);
+    if (was?.uri !== n?.uri || was?.playing !== n?.playing) { onChange(now); for (const f of listeners) try { f(now); } catch (e) { console.warn('[reverie] spotify listener', e); } }
   }
   /** What is playing, asked of Spotify (any device). */
   async function refresh() {
     const p = await call('/me/player').catch(() => null);
     const t = p?.item;
-    if (!(deviceId && p?.device?.id === deviceId && player)) setNow(t ? { title: t.name, by: byWho(t), uri: t.uri, playing: !!p.is_playing, here: p.device?.id === deviceId, device: p.device?.name } : null);
+    if (!(deviceId && p?.device?.id === deviceId && player)) setNow(t ? { title: t.name, by: byWho(t), uri: t.uri, id: t.id, durationMs: t.duration_ms, playing: !!p.is_playing, here: p.device?.id === deviceId, device: p.device?.name } : null, p?.progress_ms);
     return p;
   }
 
@@ -274,6 +277,10 @@ export function makeSpotify({ onNews = () => {}, onChange = () => {} } = {}) {
     /** What is playing: { title, by, playing, here, device } or null. */
     get now() { return now; },
     get playing() { return !!now?.playing; },
+    /** How far into the song it is now, in ms (worked out between Spotify's updates; for karaoke lyrics). */
+    positionMs() { return now ? posMs + (now.playing ? performance.now() - posAt : 0) : 0; },
+    /** Calls fn(now) whenever the song or play/pause changes (as well as the onChange it was made with). */
+    onState(fn) { listeners.push(fn); },
     /** True when the music comes out of this page (so the mic hearing lyrics is the page's own sound). */
     get here() { return !!now?.here; },
     connect, finishSignIn, command, duck, tapped, update, startPlayer,

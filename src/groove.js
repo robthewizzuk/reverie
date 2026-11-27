@@ -127,7 +127,8 @@ registerProcessor('reverie-bands', Bands);`;
  * ahead: seconds to dance ahead of what was heard (the mic hears a little late).
  */
 export function makeGroove({ ahead = .06 } = {}) {
-  let ctx = null, stream = null, node = null, src = null, tracker = new BeatTracker(), heard = false, raw = null;
+  let ctx = null, stream = null, node = null, src = null, tracker = new BeatTracker(), heard = false, raw = null, lastBeat = null;
+  const beatFns = [];
   const g = {
     get on() { return !!ctx; },
     get bpm() { return tracker.bpm; },
@@ -160,12 +161,15 @@ export function makeGroove({ ahead = .06 } = {}) {
       ctx?.close().catch(() => {});
       ctx = stream = node = src = null; heard = false; tracker = new BeatTracker();
     },
-    /** The beat now (danced a little ahead of what was heard), or null with none heard yet. */
+    /** The beat now (danced a little ahead of what was heard), or null with none heard yet. Calls the onBeat fns on a new beat. */
     now() {
       if (!ctx || !heard || tracker.confidence < .15) return null;
       const b = tracker.where(ctx.currentTime + ahead);
+      if (b && b.beat !== lastBeat) { lastBeat = b.beat; for (const f of beatFns) try { f({ beat: b.beat, bpm: tracker.bpm, sure: tracker.confidence }); } catch (e) { console.warn('[reverie] onBeat', e); } }
       return b && { ...b, bpm: tracker.bpm, sure: tracker.confidence };
     },
+    /** fn({ beat, bpm, sure }) on each beat heard (checked each frame, while it dances). */
+    onBeat(fn) { beatFns.push(fn); },
   };
   return g;
 }
