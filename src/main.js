@@ -31,6 +31,7 @@ import { makeAchievements, ICONS } from './achievements.js';
 import { playCue } from './sounds.js';
 import { makeTrophies } from './trophies.js';
 import { roomColours } from './room.js';
+import { makeGarden } from './garden.js';
 
 const $ = s => document.querySelector(s);
 const stage = $('#stage'), canvas = $('#view'), ctx = canvas.getContext('2d');
@@ -39,7 +40,7 @@ const gamebar = $('#gamebar'), gameText = $('#gamebar span'), gameButtons = $('#
 const draw = $('#draw'), book = $('#book'), look = $('#look'), recentre = $('#recentre'), helperList = $('#helpers');
 const debug = new URLSearchParams(location.search).has('debug');
 
-let W = 0, H = 0, world, brain, body, voice, pad, diary, mood, show, shaker, music, helpers, wisps, google, timers, shop, trophies, last = 0, awake = false, captionT = 0, nextAt = 0;
+let W = 0, H = 0, world, brain, body, voice, pad, diary, mood, show, shaker, music, helpers, wisps, google, timers, shop, trophies, garden, last = 0, awake = false, captionT = 0, nextAt = 0;
 // its diary, kept in this browser (memory.js), and today's surprise (daily.js): { surprise, holding, funDay }
 const memory = makeMemory();
 // what you are learning together (learn.js), kept beside the diary; the lessons write their days in the diary too
@@ -163,6 +164,7 @@ function frame(now) {
     canvas.classList.toggle('looking', looking.dragging);
     world.update(dt);
     wisps?.update(dt); helpers?.tell();
+    garden?.update(dt);
     world.draw(ctx);
   } catch (e) {
     if (!e?.kitLoading) { console.error(e); setStatus('error: ' + e.message); }
@@ -270,6 +272,7 @@ async function boot() {
       badges: async () => achievements.report(),
       diary: async () => { diary.show(); return 'Your diary is open on their screen: everything you remember about them, and a way to forget any of it.'; },
       reminder: input => timers.tool(input),
+      garden: input => garden.command(input),
     } });
   // reminders and timers: chips on the stage, a chime and Reverie saying so when one goes off (once it is free to talk)
   world.addLine(() => reminders.line());
@@ -281,6 +284,9 @@ async function boot() {
   // the phone in their hands (fun.js): shaken, it gets dizzy and Claude hears of it; tilted, things on the floor roll
   shaker = makeShaker({ world: world.physics, creature: world.creature, floaties: world.floaties, floor: world.floorBodies, pet: () => world.keeper,
     onShaken: strength => { mood.fun('shake'); if (!world.game) brain.notice(`[phone] They just shook the phone ${strength > 220 ? 'really hard' : 'about'}: you are dizzy, and everything on the floor bounced.`, true); } });
+  // its windowsill garden (garden.js): plants that grow over real days, watered by asking or by a tap on the pot
+  garden = makeGarden({ world, onNews: (text, loud) => brain.notice(text, loud) });
+  world.addLine(() => garden.line());
   world.onNews = (text, loud) => { gameNews(text); gameBadges(text); if (/^\[(chess|quiz|noughts|twenty|draw and guess|quest|lesson)/.test(text)) mood.fun(/checkmate|you win|you won|they won|last question|well played|right!|guessed it|treasure/i.test(text) ? 'win' : 'move'); brain.notice(text, loud); };
   world.onSay = line => { if (brain.busy || brain.speaking) return false; brain.speak(line); return true; };
   world.pad = pad;
@@ -288,7 +294,7 @@ async function boot() {
   // (which games they play most, for the diary's habits)
   const play0 = world.play.bind(world);
   world.play = (game, o) => { memory.note('play', { game }); return play0(game, o); };
-  window.__reverie = { world, brain, body, gs, voice, pad, memory, learning, diary, today, mood, show, shaker, music, helpers, google, reminders, timers, recapper, shop, achievements, trophies };
+  window.__reverie = { world, brain, body, gs, voice, pad, memory, learning, diary, today, mood, show, shaker, music, helpers, google, reminders, timers, recapper, shop, achievements, trophies, garden };
   achievements.onUnlock(celebrateBadge);
   requestAnimationFrame(frame);
   // every shader the room needs, built in the background before it wakes (the driver's own threads), so none is built
@@ -320,6 +326,7 @@ function wakeUp() {
   }
   mood.fun('chat');
   world.keeper?.greet();
+  garden.greet();   // (what grew, or wants a drink, while they were away)
   world.daylight.sound(true);   // (the rain's patter, now the page may make sound)
   // (through its speaker, so the mic knows this is its voice): the tour the first time, after that a hello by name
   brain.speak(visit.first ? hello || pick(HELLOS) : welcome(visit));
@@ -542,6 +549,7 @@ const looking = makeLook({
     const hit = world.tap(x, y);
     if (hit === 'game') return;
     if (!hit && tapTrophy(x, y)) return;
+    if (!hit && garden.tap(x, y, W, H)) return;
     if (hit === 'pet') achievements.track('pat');
     if (hit === 'creature') { body.poke(); mood.fun('poke'); gs.sound.sounds.boing?.(); achievements.track('poke'); }
     else if (hit === 'prop') world.toss();
