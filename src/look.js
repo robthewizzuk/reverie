@@ -3,6 +3,8 @@
 // (home, or a game's seat), so a game's camera still works and recentring is just the offsets easing to nothing.
 // A press that hardly moves is still a tap (handed to onTap on release), so poking Reverie and playing games work.
 
+import { SHELL, shellR } from './shell.js';
+
 /** How far you can look around, from the seat. Angles in radians. */
 export const LIMITS = { yaw: 1.2, pitchUp: .9, pitchDown: .35, lowest: -.05, highest: 1.25, near: .5, far: 1.6 };
 
@@ -11,8 +13,13 @@ export const LIMITS = { yaw: 1.2, pitchUp: .9, pitchDown: .35, lowest: -.05, hig
  * window wall at x -2.1). A rounded room changes only this: inside(p) moves a point back inside it.
  */
 export const ROOM = { min: [-1.85, .15, -1.35], max: [1.95, 2.7, 2.25] };
+const WALL_GAP = .3;   // (how near the round wall the camera may come, metres)
 export function inside(p) {
   for (let i = 0; i < 3; i++) p[i] = Math.min(ROOM.max[i], Math.max(ROOM.min[i], p[i]));
+  // the room is round (shell.js): a point too near its curved wall or dome is pulled back towards the middle
+  const dx = p[0] - SHELL.cx, dz = p[2] - SHELL.cz, d = Math.hypot(dx, dz);
+  const r = shellR(Math.atan2(dz, dx), p[1]) - WALL_GAP;
+  if (d > Math.max(r, 0) && d > 1e-6) { const k = Math.max(r, 0) / d; p[0] = SHELL.cx + dx * k; p[2] = SHELL.cz + dz * k; }
   return p;
 }
 
