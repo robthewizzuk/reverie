@@ -78,6 +78,7 @@ function plan(body) {
     if (/Twenty Questions is set up/.test(r)) return { text: "I'm thinking of something. Twenty questions, go!", tools: [] };
     if (/Draw and Guess is on/.test(r)) return { text: 'Draw, draw, draw!', tools: [] };
     if (/Dice Quest is set up/.test(r)) return { text: 'Once upon a time, a brave little hero set off. Roll!', tools: [] };
+    if (/Escape room ".*" is set up/.test(r)) return { text: "Oh no, we are locked in! Tap things to search.", tools: [] };
     if (/^Put their cross/.test(r)) return { text: 'Hmm.', tools: [] };
     if (/^(They got it|You showed them)/.test(r)) return { text: 'Ta-da!', tools: [] };
     if (/^Played /.test(r)) return { text: 'Bold.', tools: [] };
@@ -92,6 +93,7 @@ function plan(body) {
   if ((m0 = /^cancel (?:the )?(.+)/.exec(said))) return { text: 'Okay.', tools: [['reminder', { action: 'cancel', what: m0[1] }]] };
   if (/^snooze/.test(said)) return { text: 'Fine.', tools: [['reminder', { action: 'snooze', minutes: 5 }]] };
   if (/what reminders|what timers/.test(said)) return { text: 'Let me look.', tools: [['reminder', { action: 'list' }]] };
+  if (/^\[escape\]/.test(said)) return { text: /pressed Hint/.test(said) ? 'Psst, here is a clue.' : /escaped in/.test(said) ? 'We are free!' : 'Ooh, a clue!', tools: [] };
   if (/^\[(noughts|twenty|draw and guess|quest)\]/.test(said)) return { text: /they won/.test(said) ? 'No fair!' : /you won/.test(said) ? 'Three in a row!' : /round is over/.test(said) ? 'What a round of drawings!' : /treasure chest with/.test(said) ? 'And they lived happily ever after!' : /last heart/.test(said) ? 'And the owl flew them home.' : 'Hmm, interesting.', tools: [] };
   if (/^\[achievement\]/.test(said)) return { text: '[fanfare] Woohoo, a new badge for you!', tools: [] };
   if (/\b(badges?|trophies|achievements?)\b/.test(said)) return { text: 'Let me look at my shelf.', tools: [['badges', {}]] };
@@ -140,6 +142,7 @@ function plan(body) {
   if (/stop playing|put it away/.test(said)) return { text: 'Fine, fine.', tools: [['stop_game', {}]] };
   let m;
   if ((m = /^answer (.+)/.exec(said))) return { text: 'Locking it in.', tools: [['game_move', { move: m[1] }]] };
+  if ((m = /^(code|escape hint) ?(.*)/.exec(said))) return { text: 'Let us try it.', tools: [['game_move', { move: m[1] === 'code' ? m[2] : 'hint' }]] };
   if ((m = /^square (.+)/.exec(said))) return { text: 'Brave.', tools: [['game_move', { move: m[1] }]] };
   if (/^i give up/.test(said)) return { text: 'Ha!', tools: [['game_move', { move: 'give up' }]] };
   if (/^stop dancing/.test(said)) return { text: 'Phew!', tools: [['dance', { stop: true }]] };
