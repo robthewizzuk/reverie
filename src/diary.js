@@ -1,13 +1,13 @@
 // The diary sheet: everything Reverie remembers about you, on a page over the stage (the book button opens it). Each
 // fact has a ✕ to forget it, and "Forget everything" (pressed twice) wipes the whole diary. It lives in this browser
-// only: nothing here is sent anywhere.
+// only: nothing here is sent anywhere. At the bottom, Gmail and the calendar can be connected or disconnected.
 import { prettyDay, daysBetween, dayOf } from './memory.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const nice = ymd => new Date(ymd + 'T12:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
 
 /** el: the #diary element. memory: memory.js. onForget(): after anything is forgotten (so the chat reads it again). */
-export function makeDiary({ el, memory, today = () => ({}), onForget = () => {} }) {
+export function makeDiary({ el, memory, today = () => ({}), onForget = () => {}, google = null }) {
   const body = el.querySelector('.pages'), wipe = el.querySelector('[data-id="wipe"]');
   let armed = 0;
 
@@ -35,12 +35,19 @@ export function makeDiary({ el, memory, today = () => ({}), onForget = () => {} 
     const days = Object.keys(m.days).sort().reverse().slice(0, 14);
     if (days.length) parts.push(`<section><h3>Our days</h3>${days.map(k => `<div class="day"><b>${k === d ? 'Today' : daysBetween(k, d) === 1 ? 'Yesterday' : esc(nice(k))}</b><span>${esc(m.days[k].join(' · '))}</span></div>`).join('')}</section>`);
     if (m.chat.length) parts.push(`<section><h3>What we said lately</h3><ul class="chat">${m.chat.slice(-8).map(x => `<li class="${x.who === 'you' ? 'you' : 'me'}">${esc(x.text)}</li>`).join('')}</ul><button type="button" class="small" data-forget="the chats">Forget our chats</button></section>`);
+    // Gmail and the calendar: connect or disconnect (the sign-in is kept by Google and an encrypted cookie, not here)
+    const g = google?.status;
+    if (g?.ready) parts.push(`<section class="google"><h3>Gmail and calendar</h3>${g.connected
+      ? `<p>Connected${g.email ? ` as ${esc(g.email)}` : ''}. I can read your calendar and email and write drafts, and I ask you on screen before I send an email or add an event.</p><button type="button" class="small" data-id="google-off">Disconnect Google</button>`
+      : `<p class="soft">Connect your Google account and I can tell you what's on today, add things to your calendar, and help with your email.</p><button type="button" class="small" data-id="google-on">Connect Google</button>`}</section>`);
     body.innerHTML = parts.join('');
   }
 
   el.addEventListener('click', e => {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.id === 'close') return hide();
+    if (b.dataset.id === 'google-on') { google.connect().then(render); return; }
+    if (b.dataset.id === 'google-off') { google.disconnect().then(render); return; }
     if (b.dataset.id === 'wipe') {
       // pressed twice within a few seconds: there's no undo
       if (Date.now() - armed > 4000) { armed = Date.now(); wipe.textContent = 'Tap again to forget everything'; wipe.classList.add('armed'); return; }
@@ -51,6 +58,7 @@ export function makeDiary({ el, memory, today = () => ({}), onForget = () => {} 
   });
   const disarm = () => { wipe.textContent = 'Forget everything'; wipe.classList.remove('armed'); };
   memory.onChange(() => { if (!el.hidden) render(); });
+  google?.onChange(() => { if (!el.hidden) render(); });
   function show() { render(); disarm(); el.hidden = false; }
   function hide() { el.hidden = true; }
   return { show, hide, get open() { return !el.hidden; } };
