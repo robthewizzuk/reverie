@@ -25,6 +25,7 @@ import { makeLearning } from './learn.js';
 import { useLearning } from './games/lesson.js';
 import { makeReminders } from './reminders.js';
 import { makeTimers } from './timers.js';
+import { makeRecapper } from './recap.js';
 
 const $ = s => document.querySelector(s);
 const stage = $('#stage'), canvas = $('#view'), ctx = canvas.getContext('2d');
@@ -41,6 +42,8 @@ const learning = makeLearning();
 useLearning(learning, { onDay: line => memory.note('day', { line }) });
 // reminders and timers, kept in this browser too (reminders.js), with their chips, chime and notifications (timers.js)
 const reminders = makeReminders();
+// (now and then the chat is boiled down into the diary: recap.js)
+const recapper = makeRecapper({ memory });
 const today = { surprise: null, holding: null, funDay: funDay() };
 let overnight = Promise.resolve(), hello = '';
 // which kind of fun each of Claude's tools is, for its mood (mood.js FUN)
@@ -216,12 +219,13 @@ async function boot() {
   world.creature.cheer = mood.cheer;
   setTone(() => toneOf(mood.cheer));
   brain = makeBrain({ world, onCaption: say, onStatus: setStatus, onTiming: showTiming,
-    memo: () => [memory.summary(), learning.summary()].filter(Boolean).join('\n'), onHeard: (text, again) => { memory.said('you', text, again); if (!again) mood.fun('chat'); timers?.heard(); },
+    memo: () => [memory.summary(), learning.summary()].filter(Boolean).join('\n'), onHeard: (text, again) => { memory.said('you', text, again); recapper.poke(); if (!again) mood.fun('chat'); timers?.heard(); },
     onTool: (name, input, r) => { noted(name, input, r); if (!r?.error && FUN_OF[name]) mood.fun(FUN_OF[name]); },
     tools: {
       window: input => world.daylight.set(input),
       doodle: async () => { if (world.game?.id === 'draw_and_guess') return { text: 'Not opened: the drawing pad is already in use for Draw and Guess.', error: true }; pad.show(); return 'The drawing pad is open on their screen. When they press Make it!, you will hear what they drew and it appears in your hands.'; },
       remember: async input => memory.remember(input),
+      recall: async input => memory.recall(input),
       forget: async input => {
         // (lessons are kept in their own book: "forget my Spanish lessons", or everything)
         const lessons = /\b(lessons?|learning|learned|learnt|studies|words)\b/i.test(input.what || '') ? learning.forget(input.what) : '';
@@ -259,7 +263,10 @@ async function boot() {
   world.onSay = line => { if (brain.busy || brain.speaking) return false; brain.speak(line); return true; };
   world.pad = pad;
   voice = new Listener({ onProblem: () => listeningOff(), onNote: debug ? line => { timing.textContent = 'mic: ' + line; } : null });
-  window.__reverie = { world, brain, body, gs, voice, pad, memory, learning, diary, today, mood, show, shaker, music, helpers, google, reminders, timers };
+  // (which games they play most, for the diary's habits)
+  const play0 = world.play.bind(world);
+  world.play = (game, o) => { memory.note('play', { game }); return play0(game, o); };
+  window.__reverie = { world, brain, body, gs, voice, pad, memory, learning, diary, today, mood, show, shaker, music, helpers, google, reminders, timers, recapper };
   requestAnimationFrame(frame);
   // every shader the room needs, built in the background before it wakes (the driver's own threads), so none is built
   // in the middle of a chat: a whole room's shaders built in one frame was a stall of a second or more
@@ -362,7 +369,7 @@ let lastEnd = '';
 function gameNews(text) {
   const g = world.game, key = (g?.id || '') + ':' + (g?.round ?? '');
   let end = null;
-  if (/^\[chess\]/.test(text)) end = /checkmate: they beat you/i.test(text) ? ['chess', { result: 'won' }] : /checkmate: you won/i.test(text) ? ['chess', { result: 'lost' }] : /stalemate|game is a draw/i.test(text) ? ['chess', { result: 'drawn' }] : null;
+  if (/^\[chess\]/.test(text)) { const level = g?.level; end = /checkmate: they beat you/i.test(text) ? ['chess', { result: 'won', level }] : /checkmate: you won/i.test(text) ? ['chess', { result: 'lost', level }] : /stalemate|game is a draw/i.test(text) ? ['chess', { result: 'drawn', level }] : null; }
   else if (/^\[quiz\] That was the last question/.test(text)) { const m = /scored (\d+) out of (\d+)/.exec(text); if (m) end = ['quiz', { score: +m[1], of: +m[2] }]; }
   if (!end) return;
   // (the same ending can be told twice; a new round is a new game object start)

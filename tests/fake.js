@@ -188,3 +188,17 @@ export async function fakeTurn(request) {
   });
   return new Response(stream, { headers: { 'content-type': 'text/event-stream' } });
 }
+
+/** A scripted recap (POST /api/recap): "i love X" / "my sister is called X" / "i have a test on friday" become facts. */
+export async function fakeRecap(request) {
+  const b = await request.json(), add = [];
+  for (const l of b.lines) {
+    if (l.who !== 'you') continue;
+    const t = l.text.toLowerCase(); let m;
+    if ((m = /\bi (?:really )?love (.+?)[.!]?$/.exec(t))) add.push({ kind: 'likes', text: `loves ${m[1]}`, when: '' });
+    if ((m = /\bmy (sister|brother|mum|dad|dog|cat) is called (\w+)/.exec(t))) add.push({ kind: 'people', text: `has a ${m[1]} called ${m[2][0].toUpperCase() + m[2].slice(1)}`, when: '' });
+    if ((m = /\bi have an? (.+?) (on \w+|tomorrow)/.exec(t))) add.push({ kind: 'plan', text: `has a ${m[1]}`, when: m[2].replace(/^on /, '') });
+  }
+  const theirs = b.lines.filter(l => l.who === 'you').map(l => l.text);
+  return new Response(JSON.stringify({ recap: theirs.length ? `We chatted about ${theirs.slice(0, 2).join(' and ').slice(0, 80)}.` : '', add, update: [], drop: [], name: '' }), { headers: { 'content-type': 'application/json' } });
+}

@@ -154,7 +154,8 @@ function checkInput(name, input) {
   if (name === 'place' && (typeof input.spot !== 'string' || !input.spot.trim())) return 'spot must be a place';
   if (name === 'place' && ['item', 'near', 'size'].some(k => input[k] != null && typeof input[k] !== 'string')) return 'item, near and size must be text';
   if (name === 'room_colours' && ['walls', 'floor', 'rug', 'wood'].some(k => input[k] != null && typeof input[k] !== 'string')) return 'colours must be text';
-  if (name === 'remember' && ['fact', 'name', 'birthday'].some(k => input[k] != null && typeof input[k] !== 'string')) return 'fact, name and birthday must be text';
+  if (name === 'remember' && ['fact', 'name', 'birthday', 'kind', 'when'].some(k => input[k] != null && typeof input[k] !== 'string')) return 'fact, kind, when, name and birthday must be text';
+  if (name === 'recall' && (typeof input.about !== 'string' || !input.about.trim())) return 'about must say what to look up';
   if (name === 'forget' && (typeof input.what !== 'string' || !input.what.trim())) return 'what must say what to forget';
   if (name === 'effect' && typeof input.kind !== 'string') return 'kind must be a show, like fireworks';
   if (name === 'smash' && input.how != null && !['smash', 'slice'].includes(input.how)) return 'how must be smash or slice';
