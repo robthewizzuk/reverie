@@ -123,7 +123,7 @@ export function makeCreature() {
   }
   setMood('calm');
 
-  /** A gesture: wave, point, tada, shrug, think, nod, shake, bounce. */
+  /** A gesture: wave, point, tada, shrug, think, nod, shake, bounce, dizzy (shaken about: its head goes round and round). */
   function doGesture(g) {
     if (!g || g === 'none') return;
     gesture = g; gT = 0;
@@ -144,6 +144,7 @@ export function makeCreature() {
     if (gesture === 'point' && !L) return [-1.45, .05];
     if (gesture === 'tada') return [-.4, 2.2];
     if (gesture === 'shrug') return [-.35, 1.15];
+    if (gesture === 'dizzy' && !holding) return [-.2 + Math.sin(d * 7 + a.s) * .25, 1 + Math.cos(d * 7) * .3];
     if (gesture === 'think' && !L) return [-2.1, -.55];
     if (idle === 'stretch' && !holding) { const up = Math.sin(Math.min(1, iT / 2.8) * Math.PI); return [-.15 * up, .35 + up * 1.9]; }
     if (holding) return HOLD;
@@ -160,7 +161,7 @@ export function makeCreature() {
     if (a === 'perk') { perk = 1; bounce = Math.max(bounce, .3); face.blink(); }
     return true;
   }
-  const GESTURE_TIME = { wave: 1.6, point: 1.4, tada: 1.3, shrug: 1.2, think: 2.2, nod: .9, shake: 1, bounce: .8 };
+  const GESTURE_TIME = { wave: 1.6, point: 1.4, tada: 1.3, shrug: 1.2, think: 2.2, nod: .9, shake: 1, bounce: .8, dizzy: 2.4 };
 
   function update(dt, cam) {
     t += dt; gT += dt;
@@ -192,7 +193,9 @@ export function makeCreature() {
     tilt += ((state.thinking ? .13 : gesture === 'shrug' ? .08 : giggle * Math.sin(t * 30) * .1 + tiltIdle) - tilt) * e;
     nod = gesture === 'nod' ? Math.sin(gT * 14) * .12 : 0;
     const shake = gesture === 'shake' ? Math.sin(gT * 16) * .18 : 0;
-    body.rotation.set(lean + nod, shake + look * .55, tilt);
+    // (dizzy: its body sways round in circles that slowly settle, and its arms flop out)
+    const woozy = gesture === 'dizzy' ? Math.max(0, 1 - gT / GESTURE_TIME.dizzy) * .2 : 0;
+    body.rotation.set(lean + nod + Math.sin(gT * 7) * woozy, shake + look * .55, tilt + Math.cos(gT * 7) * woozy);
     // turn to face the camera a little
     if (heading != null) { let d = heading - turn; d = Math.atan2(Math.sin(d), Math.cos(d)); turn += d * (1 - Math.exp(-dt * 8)); root.rotation.y = turn; }
     else if (cam) { const want = Math.atan2(cam.position.x - root.position.x, cam.position.z - root.position.z) * .5; let d = want - turn; d = Math.atan2(Math.sin(d), Math.cos(d)); turn += d * e; root.rotation.y = turn; }
