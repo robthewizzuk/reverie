@@ -182,20 +182,28 @@ function checkInput(name, input) {
   if (name === 'watch' && (typeof input.action !== 'string' || ['video', 'words', 'chatter'].some(k => input[k] != null && typeof input[k] !== 'string') || (input.seconds != null && typeof input.seconds !== 'number'))) return 'action must be text, seconds a number, and the rest text';
   if (name === 'karaoke' && (['verse', 'chorus', 'verse2', 'bridge'].some(k => input[k] != null && (!Array.isArray(input[k]) || input[k].some(x => typeof x !== 'string'))) || ['song', 'title', 'name', 'mode', 'mood', 'style'].some(k => input[k] != null && typeof input[k] !== 'string'))) return 'verse, chorus, verse2 and bridge must be lists of lines, the rest text';
   if (name === 'pet' && (!['make', 'trick', 'rename', 'away'].includes(input.action) || ['animal', 'name', 'colour', 'trick'].some(k => input[k] != null && typeof input[k] !== 'string'))) return 'action must be make, trick, rename or away, and the rest text';
+  if (name === 'aquarium' && (!['add', 'feed', 'decor', 'rename', 'remove'].includes(input.action) || ['species', 'name', 'colour', 'decor', 'which'].some(k => input[k] != null && typeof input[k] !== 'string'))) return 'action must be add, feed, decor, rename or remove, and the rest text';
+  if (name === 'capsule' && (!['seal', 'open', 'list', 'remove'].includes(input.action) || ['note', 'prop', 'until', 'label', 'id'].some(k => input[k] != null && typeof input[k] !== 'string'))) return 'action must be seal, open, list or remove, and the rest text';
+  if (name === 'story' && (!['start', 'puppet', 'scene', 'end'].includes(input.action) || ['title', 'theme', 'time', 'weather', 'prop', 'character', 'voice', 'effect', 'beat'].some(k => input[k] != null && typeof input[k] !== 'string'))) return 'action must be start, puppet, scene or end, and the rest text';
+  if (name === 'jam' && (!['start', 'change', 'pad', 'stop'].includes(input.action) || ['style', 'mood', 'pad'].some(k => input[k] != null && typeof input[k] !== 'string') || (input.bpm != null && typeof input.bpm !== 'number'))) return 'action must be start, change, pad or stop, bpm a number, the rest text';
   return null;
 }
 
-/** Did they ask to play a game? { game, level } or null. Asking to stop, or talking about a game, is not asking. */
+/** Did they ask to play a game? { game, level, mode } or null. Asking to stop, or talking about a game, is not asking. */
 export function gameAsked(text) {
   const t = text.toLowerCase().replace(/^\[from the device[^\]]*\]\s*/, '');
   const game = /\bchess\b/.test(t) ? 'chess' : /\b(quiz|trivia|quiz me)\b/.test(t) ? 'quiz'
     : /\b(noughts|naughts|tic.?tac.?toe|x'?s and o'?s)\b/.test(t) ? 'noughts' : /\b(twenty|20) questions\b/.test(t) ? 'twenty'
     : /\b(draw and guess|draw ?& ?guess|pictionary|guess (what i'?m drawing|my drawing(s)?))\b/.test(t) ? 'draw_and_guess'
-    : /\b(dice quest|dice adventure|quest|adventure game)\b/.test(t) ? 'quest' : /\b(escape room|escape game|escape the room)\b/.test(t) ? 'escape' : null;
+    : /\b(dice quest|dice adventure|quest|adventure game)\b/.test(t) ? 'quest' : /\b(escape room|escape game|escape the room)\b/.test(t) ? 'escape'
+    : /\b(blackjack|pontoon|higher or lower|fortune teller|tarot|read my cards|card game)\b/.test(t) ? 'cards'
+    : /\b(wordle|hangman|word guesser|word game)\b/.test(t) ? 'words' : null;
   if (!game || /\b(stop|quit|end|enough|no more|don'?t|not now|later|rules|history|who invented)\b/.test(t)) return null;
-  if (!/\b(play|game|match|fancy|let'?s|up for|challenge|set up|get out|board|again|rematch|wanna|want to|quiz me|another|round|start|do a|have a|host|guess my|go on a|tell me a)\b/.test(t) && !/^\W*(chess|quiz|trivia|noughts and crosses|tic tac toe|twenty questions|draw and guess|pictionary|dice quest|escape room)\W*$/.test(t)) return null;
+  if (!/\b(play|game|match|fancy|let'?s|up for|challenge|set up|get out|board|again|rematch|wanna|want to|quiz me|another|round|start|do a|have a|host|guess my|go on a|tell me a|deal|read my)\b/.test(t) && !/^\W*(chess|quiz|trivia|noughts and crosses|tic tac toe|twenty questions|draw and guess|pictionary|dice quest|escape room|blackjack|higher or lower|fortune teller|tarot|wordle|hangman)\W*$/.test(t)) return null;
   const level = /\b(easy|gentle|beginner|go easy)\b/.test(t) ? 1 : /\b(hardest|master|best you can|full strength)\b/.test(t) ? 5 : /\b(hard|tough|serious)\b/.test(t) ? 4 : undefined;
-  return { game, level };
+  const mode = game === 'cards' ? (/\b(fortune|tarot|read my cards)\b/.test(t) ? 'fortune' : /\bhigher or lower\b/.test(t) ? 'higher_lower' : 'blackjack')
+    : game === 'words' ? (/\bhangman\b/.test(t) ? 'hangman' : 'wordle') : undefined;
+  return { game, level, mode };
 }
 
 export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, onTiming = () => {}, tools: extra = {}, memo = () => '', onHeard = () => {}, onTool = () => {}, context = () => '' }) {
@@ -241,7 +249,7 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
       ? { text: 'You are already thinking harder. Answer the question now.', error: true }
       : { text: 'Handed over to deeper thinking. You are now thinking harder about this question: answer it now, and do not call think_harder again.', deep: true });
     const fn = { make: () => world.make(input.words), change: () => world.change(input.words), toss: () => world.toss(), weather: () => weather(input.place), clear: () => world.clear({ room: !!input.room }), place: () => world.place(input), room_colours: () => world.recolourRoom(input), act: () => world.act(input.gesture, input.mood), voice: async () => { const r = setVoice(input), d = r.error ? '' : world.dressFor?.(voiceNow().name) || ''; return d ? { ...r, text: `${r.text} ${d}` } : r; }, wear: () => world.wear(input), colours: () => world.recolour(input),
-      play: () => world.play(input.game, { level: input.level }), game_move: () => world.game ? world.game.command(input.move) : Promise.resolve('No game is being played.'), stop_game: () => world.stopGame(),
+      play: () => world.play(input.game, { level: input.level, mode: input.mode }), game_move: () => world.game ? world.game.command(input.move) : Promise.resolve('No game is being played.'), stop_game: () => world.stopGame(),
       roll: () => world.roll(input.dice || '1d6'), pet: () => world.pet(input), ...Object.fromEntries(Object.entries(extra).map(([k, f]) => [k, () => f(input)])) }[name];
     if (!fn) return Promise.resolve({ text: `There is no tool called ${name}.`, error: true });
     // (a tool answers with a sentence, or with { text, error } when it was not done)
@@ -330,7 +338,7 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
     const wantsGame = !o.news && gameAsked(own);
     // ("quiz me" in a lesson is a question on the chalkboard, not the trivia quiz)
     if (wantsGame && !(world.game?.id === 'lesson' && wantsGame.game === 'quiz') && (world.game?.id !== wantsGame.game || ['done', 'won', 'lost', 'over'].includes(world.game.state))) {
-      const r = await world.play(wantsGame.game, { level: wantsGame.level });
+      const r = await world.play(wantsGame.game, { level: wantsGame.level, mode: wantsGame.mode });
       text += `\n(The ${(GAMES[wantsGame.game]?.title || wantsGame.game).toLowerCase()} ${wantsGame.game === 'draw_and_guess' ? 'game' : wantsGame.game === 'chess' ? 'board' : wantsGame.game === 'escape' ? 'puzzle' : 'table'} was set up straight away when they asked: ${r} Don't call play or make for it; just react.)`;
     }
     // (and anything else on the go that isn't a game: a video being watched together, watch.js)

@@ -182,6 +182,7 @@ export function briefingNote(memory, o = {}) {
   if (fu.length) lines.push(`From your diary, worth asking about: ${fu.map(f => `${f.text} (${f.said})`).join('; ')}.`);
   if (o.weather) lines.push(`The weather: ${o.weather}`);
   if (o.google) lines.push(o.google);
+  if (o.capsules) lines.push(o.capsules);
   const s = sky(now); if (s) lines.push(`The sky: ${s}.`);
   if (o.surprise) {
     if (o.firstToday && o.holding) lines.push(`Your surprise: you made ${o.holding} for them overnight, and it is in your hands now: show it off proudly (say you made it while they were away).`);
