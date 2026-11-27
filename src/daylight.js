@@ -231,6 +231,8 @@ export function makeDaylight({ v, light, outside, glass, side, globe, motes }) {
     v.envI = now.envI; v.exposure = now.exposure;
     v.scene.background.copy(BG).lerp(now.low, now.night);
     light.lamp.i = now.lamp; light.lamp.reach = now.reach;
+    // (at night the lamp is a softer warm white and the core's own light is turned down: the room cosy, not orange)
+    light.lamp.col = '#' + LAMP_DAY.clone().lerp(LAMP_NIGHT, now.night).getHexString(); light.coreK = 1 - .5 * now.night;
     globe.emissiveIntensity = now.globe;
     const lit = flashT > .25 || (flashT > .08 && flashT < .16), fl = lit ? 3.5 : 1;   // (lightning: two quick flickers)
     for (const sk of skies) { sk.m.emissiveIntensity = now.glow * fl; sk.m.color.copy(sk.col).multiplyScalar(.35 + .65 * (1 - now.night)); }
@@ -267,7 +269,7 @@ export function makeDaylight({ v, light, outside, glass, side, globe, motes }) {
   }
 
   // the first answer at once: the room starts as it is outside, with nothing to fade
-  const BG = v.scene.background.clone();
+  const BG = v.scene.background.clone(), LAMP_DAY = C(light.lamp.col), LAMP_NIGHT = C('#ffe6cc');
   target(); snap(); apply(); for (const s of skies) paintSky(s);
   Object.assign(baked, { sunI: now.sunI, lamp: now.lamp, glow: now.glow, hemiI: now.hemiI, sun: now.sun.clone(), dir: dirNow.clone() });   // (baked by the view on its first frame)
 

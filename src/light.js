@@ -54,10 +54,12 @@ export function lightRoom(v, creature, roomBox) {
     sun: s,
     /** The desk lamp's light ({ i, reach, col }): daylight.js turns it up as the day goes. */
     lamp,
+    /** How much of its core's light reaches the room (daylight.js turns it down at night, so the rug isn't orange). */
+    coreK: 1,
     /** The bounce light and the room's reflections: bake() each again after the room changes. */
     bounce, room: reflections,
     update(dt, t) {
-      creature.coreAt(at); core.at(at.x, at.y - .04, at.z + .2); core.i0 = .2 + creature.coreGlow * .5;
+      creature.coreAt(at); core.at(at.x, at.y - .04, at.z + .2); core.i0 = (.2 + creature.coreGlow * .5) * this.coreK;
       v.placeLamps([lamp], 0, .4, 0, t);
       s.follow(0, 0, 0);
     },
