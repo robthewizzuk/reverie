@@ -126,6 +126,8 @@ async function boot() {
     tools: { doodle: async () => { pad.show(); return 'The drawing pad is open on their screen. When they press Make it!, you will hear what they drew and it appears in your hands.'; } } });
   body = makeBody({ creature: world.creature, world });
   world.onNews = (text, loud) => brain.notice(text, loud);
+  world.onSay = line => { if (brain.busy || brain.speaking) return false; brain.speak(line); return true; };
+  world.pad = pad;
   voice = new Listener({ onProblem: () => listeningOff(), onNote: debug ? line => { timing.textContent = 'mic: ' + line; } : null });
   window.__reverie = { world, brain, body, gs, voice, pad };
   requestAnimationFrame(frame);

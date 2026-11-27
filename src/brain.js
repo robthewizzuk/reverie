@@ -5,6 +5,7 @@
 import gs from '../engine/src/gamescroll.js';
 import { weather, contextLine } from './place.js';
 import { sayOptions, setVoice } from './looks.js';
+import { GAMES } from './games/index.js';
 
 const API = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '') + '/api/turn';
 const KEEP = 40;                 // messages kept in the conversation (older ones drop off, whole turns at a time)
@@ -128,9 +129,12 @@ function checkInput(name, input) {
 /** Did they ask to play a game? { game, level } or null. Asking to stop, or talking about a game, is not asking. */
 export function gameAsked(text) {
   const t = text.toLowerCase().replace(/^\[from the device[^\]]*\]\s*/, '');
-  const game = /\bchess\b/.test(t) ? 'chess' : /\b(quiz|trivia|quiz me)\b/.test(t) ? 'quiz' : null;
+  const game = /\bchess\b/.test(t) ? 'chess' : /\b(quiz|trivia|quiz me)\b/.test(t) ? 'quiz'
+    : /\b(noughts|naughts|tic.?tac.?toe|x'?s and o'?s)\b/.test(t) ? 'noughts' : /\b(twenty|20) questions\b/.test(t) ? 'twenty'
+    : /\b(draw and guess|draw ?& ?guess|pictionary|guess (what i'?m drawing|my drawing(s)?))\b/.test(t) ? 'draw_and_guess'
+    : /\b(dice quest|dice adventure|quest|adventure game)\b/.test(t) ? 'quest' : null;
   if (!game || /\b(stop|quit|end|enough|no more|don'?t|not now|later|rules|history|who invented)\b/.test(t)) return null;
-  if (!/\b(play|game|match|fancy|let'?s|up for|challenge|set up|get out|board|again|rematch|wanna|want to|quiz me|another|round|start|do a|have a|host)\b/.test(t) && !/^\W*(chess|quiz|trivia)\W*$/.test(t)) return null;
+  if (!/\b(play|game|match|fancy|let'?s|up for|challenge|set up|get out|board|again|rematch|wanna|want to|quiz me|another|round|start|do a|have a|host|guess my|go on a|tell me a)\b/.test(t) && !/^\W*(chess|quiz|trivia|noughts and crosses|tic tac toe|twenty questions|draw and guess|pictionary|dice quest)\W*$/.test(t)) return null;
   const level = /\b(easy|gentle|beginner|go easy)\b/.test(t) ? 1 : /\b(hardest|master|best you can|full strength)\b/.test(t) ? 5 : /\b(hard|tough|serious)\b/.test(t) ? 4 : undefined;
   return { game, level };
 }
@@ -204,13 +208,16 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
 
   async function hear(text, o = {}) {
     text = String(text || '').trim().slice(0, 1000); if (!text) return;
+    // a game hears what they said first (Twenty Questions counts a question, spots a guess) and may add a note
+    const heard = !o.news && world.game?.heard?.(text);
+    if (heard) text += '\n' + heard;
     // game news not yet passed on goes first, so it knows what happened on the board
     if (news.length) { text = news.join('\n') + '\n\n' + text; news = []; loudAt = 0; }
     // "let's play chess": the board goes up at once, before Claude has said a word (so it can't make a prop board instead)
     const wantsGame = !o.news && gameAsked(text);
     if (wantsGame && (world.game?.id !== wantsGame.game || world.game.state === 'done')) {
       const r = await world.play(wantsGame.game, { level: wantsGame.level });
-      text += `\n(The ${wantsGame.game} ${wantsGame.game === 'chess' ? 'board' : 'table'} was set up straight away when they asked: ${r} Don't call play or make for it; just react.)`;
+      text += `\n(The ${(GAMES[wantsGame.game]?.title || wantsGame.game).toLowerCase()} ${wantsGame.game === 'draw_and_guess' ? 'game' : wantsGame.game === 'chess' ? 'board' : 'table'} was set up straight away when they asked: ${r} Don't call play or make for it; just react.)`;
     }
     turnCtx = world.game?.context() || '';
     const my = ++turn;
