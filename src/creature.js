@@ -94,6 +94,8 @@ export function makeCreature() {
 
   // where a prop is held: in front of the chest, between the hands
   const hold = new THREE.Group(); hold.position.set(0, .3, .5); body.add(hold);
+  // the middle of its face, for the light that puts a glint in its eyes (it leans and tilts with the body)
+  const face3d = new THREE.Object3D(); face3d.position.set(0, .43, .2); body.add(face3d);
 
   // ---- life
   let t = 0, mood = 'calm', gesture = null, gT = 0, bounce = 0, giggle = 0, holding = false;
@@ -240,7 +242,7 @@ export function makeCreature() {
   const glowed = hex => '#' + shift(new THREE.Color(), new THREE.Color(hex)).getHexString();
 
   return {
-    root, hold, face, core,
+    root, hold, face, core, face3d,
     setColours, glowed,
     state,
     get coreGlow() { return coreGlow; },

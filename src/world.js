@@ -6,29 +6,26 @@ import { makeCreature } from './creature.js';
 import { colours, tidyColours, keepColours } from './looks.js';
 import { describe } from './describe.js';
 import { GAMES } from './games/index.js';
+import { lightRoom, WINDOW } from './light.js';
 import { makeDice } from './dice.js';
 import { SPOTS, SPOT_NAMES, spotOf, roomColours, roomItems, tidyRoomColours, keepRoomColours, keepItem, forgetItem, forgetAll, freePlace, findItem, roomLine, inRoom, MAX_ITEMS } from './room.js';
 
-const CORE_LAMP = '#ff7020';     // the light its core casts, as made (moved with the glow colour)
 const HOLD_SIZE = .4;            // metres: the longest side of a prop in its hands
 const SIZE_WORDS = [[/\b(giant|huge|enormous)\b/, 1.8], [/\b(bigger|big|large)\b/, 1.4], [/\b(smaller|small|little)\b/, .7], [/\b(tiny|teeny)\b/, .5]];
 const article = w => w.replace(/^(a|an|the|some)\s+/i, '');
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 
-let v, sunLight, creature, fx, world, coreLamp, lampSpot, room, embers, motes, body;
+let v, light, creature, fx, world, room, embers, motes, body;
 // the room's recolourable parts: the meshes made of each, and the recipe they are made from
 const ROOM_LOOK = { walls: ['brick', [4, 2]], floor: ['planks', [6, 6]], rug: ['fabric', [3, 3]], wood: ['wood', [1, 2]] };
 const roomParts = { walls: [], floor: [], rug: [], wood: [] }, relight = [];
 const roomMat = (part, colour) => gs.models.material(ROOM_LOOK[part][0], { colour, repeat: ROOM_LOOK[part][1] });
 
 function setup() {
-  const { HDView, pbr, rbox, sun, THREE } = gs.hd, { material, prop } = gs.models;
+  const { HDView, pbr, rbox, THREE } = gs.hd, { material, prop } = gs.models;
   // parts that may still be loading go first: if one throws StillLoading, setup runs again from the top with nothing made
   const w3 = new gs.physics3d.World3D({ gravity: -9.81 });
-  v = new HDView({ bg: '#2a1d16', fog: 0, env: .55, amb: .35, fov: 36 });
-  v.lampLights(6);
-  v.look('golden hour', { sun: false });
-  sunLight = sun('#ffd9b0', 2.4, 6, [-.55, 1, .7]); sunLight.softShadows(2.5); v.scene.add(sunLight, sunLight.target); v.onTier(T => sunLight.setTier(T));
+  v = new HDView({ bg: '#2a1d16', fog: 0, fov: 36 });   // (its light, mood and finish: light.js)
   room = new THREE.Group(); v.scene.add(room);
   const shade = o => { o.traverse(m => { if (m.isMesh) { m.castShadow = true; m.receiveShadow = true; } }); return o; };
   // floor, a round rug, two walls, a window: in the colours you chose for them (room.js), kept on this device
@@ -39,7 +36,24 @@ function setup() {
   rug.position.y = .006; rug.receiveShadow = true; room.add(rug);
   const wallMat = roomMat('walls', rc.walls);
   const back = part('walls', new THREE.Mesh(rbox(6, 3, .2, .02), wallMat)); back.position.set(0, 1.5, -1.7); shade(back); room.add(back);
-  const side = part('walls', new THREE.Mesh(rbox(.2, 3, 5, .02), wallMat)); side.position.set(-2.1, 1.5, .6); shade(side); room.add(side);
+  // the left wall, with a window the low sun comes in through (the wall in four pieces round the opening, a wooden
+  // frame and a cross of glazing bars whose shadow falls on the rug), and the bright afternoon outside it
+  const W0 = WINDOW, wall = (y0, y1, z0, z1) => { const m = part('walls', new THREE.Mesh(rbox(.2, y1 - y0, z1 - z0, .02), wallMat)); m.position.set(W0.x, (y0 + y1) / 2, (z0 + z1) / 2); shade(m); room.add(m); };
+  wall(0, W0.y0, -1.9, 4.2); wall(W0.y1, 3, -1.9, 4.2); wall(W0.y0, W0.y1, -1.9, W0.z0); wall(W0.y0, W0.y1, W0.z1, 4.2);   // (past the camera, so the low sun comes in only by the window)
+  const frameMat = roomMat('wood', rc.wood), wz = (W0.z0 + W0.z1) / 2, wy = (W0.y0 + W0.y1) / 2;
+  const bar = (h, d, y, z) => { const m = part('wood', new THREE.Mesh(rbox(.24, h, d, .01), frameMat)); m.position.set(W0.x + .01, y, z); shade(m); room.add(m); return m; };
+  bar(.07, W0.z1 - W0.z0 + .14, W0.y0 - .035, wz); bar(.07, W0.z1 - W0.z0 + .14, W0.y1 + .035, wz);
+  bar(W0.y1 - W0.y0, .07, wy, W0.z0 - .035); bar(W0.y1 - W0.y0, .07, wy, W0.z1 + .035);
+  const ledge = part('wood', new THREE.Mesh(rbox(.34, .04, W0.z1 - W0.z0 + .24, .01), frameMat)); ledge.position.set(W0.x + .08, W0.y0 - .07, wz); shade(ledge); room.add(ledge);
+  const glazing = part('wood', new THREE.Mesh(rbox(.05, W0.y1 - W0.y0, .05, .005), frameMat)); glazing.position.set(W0.x, wy, wz); shade(glazing); room.add(glazing);
+  const glazing2 = part('wood', new THREE.Mesh(rbox(.05, .05, W0.z1 - W0.z0, .005), frameMat)); glazing2.position.set(W0.x, wy + .12, wz); shade(glazing2); room.add(glazing2);
+  // a ceiling of dark boards (out of the camera's view): it keeps the sun to the window, and closes the room for its bounce light
+  const ceiling = new THREE.Mesh(new THREE.PlaneGeometry(6.4, 6.4), material('planks', { colour: '#4e3422', repeat: [4, 4] }));
+  ceiling.rotation.x = Math.PI / 2; ceiling.position.set(.9, 3, 1.1); shade(ceiling); room.add(ceiling);
+  // (the outside: a warm bright sky seen through it, which the room's reflections and bounce light pick up too; it
+  // throws no shadow, so the sun still comes in)
+  const outside = new THREE.Mesh(new THREE.PlaneGeometry(4, 3), pbr('#ffe2b8', { glow: 1.2, glowCol: '#ffd9a8', rough: 1 }));
+  outside.position.set(W0.x - .6, 1.6, wz); outside.rotation.y = Math.PI / 2; room.add(outside);
   // a workbench and a few things a maker keeps about
   const wood = roomMat('wood', rc.wood);
   const top = part('wood', new THREE.Mesh(rbox(1.3, .07, .55, .02), wood)); top.position.set(1.15, .78, -1.25); shade(top); room.add(top);
@@ -57,21 +71,16 @@ function setup() {
   keep(prop('barrel', { seed: 3 }), .55, 1.85, 0, -.6, .3);
   keep(prop('bucket', { seed: 4 }), .22, .95, .815, -1.25);
   keep(prop('lamp', { seed: 2 }), .32, 1.55, .815, -1.3);
-  // the room's own light: bounce light from the brick and the floor (a warm wall tints what is next to it), reflections
-  // of the room itself in anything shiny (its eyes, its glass dome, the floorboards) instead of the kit's studio, and
-  // soft contact shadows on the rug under its feet and the props. Each scales itself down on a slow phone (v's tiers).
-  const roomBox = { min: [-2.1, 0, -1.6], max: [2.2, 2.6, 2.2] };
-  relight.push(v.bounce(roomBox, { spacing: .9, bounces: 1 })); v.hemi.intensity = .22;   // (less fill light: the bounce light does that now)
-  relight.push(v.room(roomBox, { strength: .8 }));   // (relight: both baked again when the room is repainted)
-  v.contact({ y: .013, size: 3, darkness: 1, opacity: .45, height: .8 });
   // dust drifting in the low sun, lit as it passes through the light
   motes = new gs.fx3d.Particles3D(v.scene);
-  motes.make({ x: -.2, y: 1, z: -.2 }, { loop: true, rate: 6, life: [6, 10], speed: [.01, .04], size: [.004, .008], colors: ['#ffe6c0', '#ffd09a'], radius: 1.3, gravity: -.004, glow: false, shrink: false });
-  // a warm lamp over the bench
-  lampSpot = { x: 1.3, y: 1.6, z: -1.1, col: '#ffc98a', i: 9, reach: 4 };   // (no flick: any flick makes a lamp stutter like a failing tube)
+  // (where the sun's beams cross the room, between the window and the creature)
+  motes.make({ x: -.9, y: 1.1, z: .2 }, { loop: true, rate: 7, life: [6, 10], speed: [.01, .04], size: [.004, .008], colors: ['#ffe6c0', '#ffd09a'], radius: 1.2, gravity: -.004, glow: false, shrink: false });
   creature = makeCreature(); v.scene.add(creature.root);
   creature.setColours(colours());   // (the colours it was asked for last time, kept on this device)
-  coreLamp = v.flash(0, .3, .3, { keep: true, col: creature.glowed(CORE_LAMP), i: .8, reach: .9 });
+  // the light: the sun through the window, the bench lamp, its core, bounce light and the room's own reflections
+  // (made once the creature is in the room, so the reflections reach its eyes and glass dome)
+  light = lightRoom(v, creature, { min: [-2.0, 0, -1.6], max: [2.2, 3, 2.2] });
+  relight.push(light.bounce, light.room);   // (both baked again when the room is repainted)
   fx = new gs.fx3d.Particles3D(v.scene);
   // embers drifting up from its core: a few when idle, more while listening, a stream while thinking
   embers = makeEmbers();
@@ -292,6 +301,8 @@ export function makeWorld() {
 
   return {
     get view() { return v; },
+    /** The room's light (light.js). */
+    get light() { return light; },
     get creature() { return creature; },
     get held() { return held; },
     /** How many props there are, held or on the floor. */
@@ -323,10 +334,9 @@ export function makeWorld() {
       game?.update(dt);
       if (acts.length) { if (acts[0](dt)) acts.shift(); body.place(creature.root.position.x, .33, creature.root.position.z); }
       creature.update(dt, v.cam);
-      creature.coreAt(at); coreLamp.at(at.x, at.y - .05, at.z + .12); coreLamp.i0 = .25 + creature.coreGlow * .6;
+      light.update(dt, t);
+      creature.coreAt(at);
       const st = creature.state; embers.at({ x: at.x, y: at.y, z: at.z + .03 }); embers.rate = st.thinking ? 14 : st.listening ? 6 : st.speaking ? 4 : 2; embers.on = true;
-      v.placeLamps([lampSpot], 0, .4, 0, t);
-      sunLight.follow(0, 0, 0);
       // a new prop pops into its hands
       for (const p of pops) { p.t += dt; const k = Math.min(1, p.t / .28), e = 1 + 2.7 * Math.pow(k - 1, 3) + 1.7 * Math.pow(k - 1, 2); p.o.scale.setScalar(Math.max(.01, e)); }
       pops = pops.filter(p => p.t < .28);
@@ -402,7 +412,7 @@ export function makeWorld() {
       const r = tidyColours(input, THREE);
       if (r.error) return { text: `Not changed: ${r.error}.`, error: true };
       creature.setColours(r.colours); keepColours(r.colours);
-      coreLamp.s.col = creature.glowed(CORE_LAMP);
+      light.recolour();
       embers.remove(); embers = makeEmbers();
       creature.gesture('tada'); poof(creature.core, creature.glowed('#ffd27a')); gs.sound.sounds.pop();
       return { text: `Your body is now ${r.colours.body} and your glow ${r.colours.glow}. It is remembered next time.` };
