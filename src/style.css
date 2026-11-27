@@ -252,3 +252,19 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 #watching button[data-id="close"] { width: 36px; height: 36px; padding: 0; }
 #watching button.file { align-self: flex-start; height: 36px; font-size: 14px; }
 @media (max-width: 380px) { #bar { gap: 4px; } #bar button { width: 36px; height: 36px; } #bar button svg { width: 20px; height: 20px; } }
+/* karaoke (karaoke.js): the words at the bottom, each syllable lighting up as it is sung */
+#karaoke { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); width: min(calc(100% - 32px), 640px); box-sizing: border-box;
+  padding: 8px 14px 12px; border-radius: 20px; background: #170d1fd9; backdrop-filter: blur(10px); color: #fff; text-align: center;
+  box-shadow: 0 6px 28px #0008, 0 0 0 1px #ffffff14 inset; --lit: #ff7ac0; transition: opacity .4s; }
+#karaoke[hidden] { display: none; }
+#karaoke.yours { --lit: #ffd84a; }
+#karaoke header { display: flex; align-items: center; gap: 8px; font: 600 12px system-ui, sans-serif; color: #ffffffa8; letter-spacing: .02em; }
+#karaoke .title { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#karaoke .who { color: var(--lit); text-transform: uppercase; }
+#karaoke header button { flex: none; width: 26px; height: 26px; border: 0; border-radius: 13px; background: #ffffff1f; color: #fff; cursor: pointer; font-size: 12px; }
+#karaoke .now { margin: 4px 0 2px; font: 700 clamp(20px, 5.2vw, 30px)/1.25 system-ui, -apple-system, sans-serif; text-wrap: balance; }
+#karaoke .now span { background: linear-gradient(90deg, var(--lit) calc(var(--k, 0) * 100%), #ffffffc4 calc(var(--k, 0) * 100%));
+  -webkit-background-clip: text; background-clip: text; color: transparent; }
+#karaoke .next { margin: 0; min-height: 1.3em; font: 500 clamp(14px, 3.6vw, 18px)/1.3 system-ui, sans-serif; color: #ffffff80; }
+#music:not([hidden]) ~ #karaoke { bottom: 64px; }
+#gamebar:not([hidden]) ~ #karaoke { bottom: 112px; }

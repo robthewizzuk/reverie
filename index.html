@@ -23,7 +23,9 @@
     <button id="recentre" type="button" aria-label="Look back at Reverie" title="Look back at Reverie" hidden>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm9 3h-2.07A7 7 0 0 0 13 5.07V3h-2v2.07A7 7 0 0 0 5.07 11H3v2h2.07A7 7 0 0 0 11 18.93V21h2v-2.07A7 7 0 0 0 18.93 13H21v-2Zm-9 6a5 5 0 1 1 0-10 5 5 0 0 1 0 10Z"/></svg>
     </button>
-    <div id="music" hidden><i aria-hidden="true">♪</i><span></span><button type="button" data-id="connect">Connect Spotify</button><button type="button" data-id="toggle" aria-label="Pause">❚❚</button><button type="button" data-id="next" aria-label="Next song">⏭</button></div>
+    <div id="music" hidden><i aria-hidden="true">♪</i><span></span><button type="button" data-id="connect">Connect Spotify</button><button type="button" data-id="toggle" aria-label="Pause">❚❚</button><button type="button" data-id="next" aria-label="Next song">⏭</button><button type="button" data-id="lyrics" aria-label="Add the words of this song (an LRC file)" title="Add the words of this song (an LRC file)">🎤</button></div>
+    <input id="lrc" type="file" accept=".lrc,.txt,text/plain" hidden>
+    <div id="karaoke" hidden><header><span class="title"></span><span class="who"></span><button type="button" data-id="stop" aria-label="Stop the song">✕</button></header><p class="now" aria-live="polite"></p><p class="next"></p></div>
     <ul id="helpers" aria-label="Reverie's helpers" aria-live="polite" hidden></ul>
     <div id="pad" hidden>
       <p>Draw something, and Reverie will make it real</p>

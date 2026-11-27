@@ -10,6 +10,7 @@ import { GAMES } from './games/index.js';
 import { lightRoom, WINDOW, LAMP } from './light.js';
 import { SHELL, shellR, backZ, wallNormal, buildShell, roundRect, circle } from './shell.js';
 import { makeDaylight } from './daylight.js';
+import { makeParty } from './party.js';
 import { makeSleepy } from './sleepy.js';
 import { makeDice } from './dice.js';
 import { makePet } from './pet.js';
@@ -23,7 +24,7 @@ const SIZE_WORDS = [[/\b(giant|huge|enormous)\b/, 1.8], [/\b(bigger|big|large)\b
 const article = w => w.replace(/^(a|an|the|some)\s+/i, '');
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 
-let v, light, creature, outfits, fx, world, room, embers, motes, body, daylight, sleepy, floaties;
+let v, light, creature, outfits, fx, world, room, embers, motes, body, daylight, sleepy, floaties, party;
 // the room's recolourable parts: the meshes made of each, and the recipe they are made from
 const ROOM_LOOK = { walls: null, floor: ['wood', [8, 8]], rug: null, wood: ['wood', [1, 1]] };
 const roomParts = { walls: [], floor: [], rug: [], wood: [] }, relight = [];
@@ -131,6 +132,7 @@ function setup() {
   relight.push(light.bounce, light.room);   // (both baked again when the room is repainted)
   // the real day outside: the sun, the sky in the windows, the lamp, rain on the glass (daylight.js)
   daylight = makeDaylight({ v, light, outside: { side: sky.material, round: glass.material }, glass: GLASS, side: W0, globe: globeMat, motes: dust });
+  party = makeParty(v);   // (karaoke's mirror ball and coloured lights, put away until a song starts)
   sleepy = makeSleepy({ scene: v.scene, creature });   // (Z's over its head when it dozes off late at night)
   fx = new gs.fx3d.Particles3D(v.scene);
   floaties = makeFloaties(v.scene);   // (hearts, and a sleepy pet's "z")
@@ -413,6 +415,8 @@ export function makeWorld() {
     get view() { return v; },
     /** The room's light (light.js). */
     get light() { return light; },
+    /** Karaoke's party lights (party.js): on, beat(phase). */
+    get party() { return party; },
     /** The day outside and its weather (daylight.js). */
     get daylight() { return daylight; },
     get creature() { return creature; },
@@ -462,6 +466,7 @@ export function makeWorld() {
       creature.update(dt, v.cam); outfits.update(dt);
       daylight.update(dt); sleepy.update(dt);
       light.update(dt, t);
+      party.update(dt); v.exposure *= party.dim;   // (the room a little darker while the party lights are up)
       creature.coreAt(at);
       const st = creature.state; embers.at({ x: at.x, y: at.y, z: at.z + .03 }); embers.rate = st.thinking ? 14 : st.listening ? 6 : st.speaking ? 4 : 2; embers.on = true;
       // props springing (popping in, landing, wobbling, vanishing) and their own small movements; a thing it brushes past rocks
