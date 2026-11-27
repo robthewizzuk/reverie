@@ -166,6 +166,7 @@ function checkInput(name, input) {
   if (name === 'music' && (typeof input.action !== 'string' || (input.query != null && typeof input.query !== 'string') || (input.level != null && typeof input.level !== 'number'))) return 'action must be text, query text and level a number';
   if (name === 'calendar' && (!['list', 'add'].includes(input.action) || ['day', 'title', 'start', 'end', 'where', 'notes'].some(k => input[k] != null && typeof input[k] !== 'string') || ['days', 'minutes'].some(k => input[k] != null && typeof input[k] !== 'number'))) return 'action must be list or add, days and minutes numbers, the rest text';
   if (name === 'email' && (!['inbox', 'search', 'read', 'draft', 'send'].includes(input.action) || ['q', 'id', 'reply_to', 'to', 'subject', 'body', 'draft'].some(k => input[k] != null && typeof input[k] !== 'string') || input.max != null && typeof input.max !== 'number')) return 'action must be inbox, search, read, draft or send, max a number, the rest text';
+  if (name === 'garden' && (!['plant', 'water', 'pick', 'dig_up', 'rename'].includes(input.action) || ['plant', 'pot', 'name', 'colour'].some(k => input[k] != null && typeof input[k] !== 'string'))) return 'action must be plant, water, pick, dig_up or rename, and the rest text';
   if (name === 'pet' && (!['make', 'trick', 'rename', 'away'].includes(input.action) || ['animal', 'name', 'colour', 'trick'].some(k => input[k] != null && typeof input[k] !== 'string'))) return 'action must be make, trick, rename or away, and the rest text';
   return null;
 }
