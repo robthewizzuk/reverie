@@ -118,8 +118,8 @@ export function makeSpeaker(creature, onCaption) {
       const now = performance.now(), mine = new Set();
       for (const x of said) if (now - x.until < ECHO_KEEP) for (const w of x.words) mine.add(w);
       for (const w of wordsOf(words())) mine.add(w);   // (about to be said: the reply streams ahead of the voice)
-      const words = wordsOf(text);
-      return { words, yours: mine.size ? words.filter(w => !mine.has(w) && ![...mine].some(m => near(w, m))) : words };
+      const heard = wordsOf(text);   // (not named `words`: that would hide words() above, used on the line before)
+      return { words: heard, yours: mine.size ? heard.filter(w => !mine.has(w) && ![...mine].some(m => near(w, m))) : heard };
     },
     /** Resolves when it has said everything queued. */
     done: () => busy ? idle : Promise.resolve(),
