@@ -53,9 +53,10 @@ function tidyVoice(input, base) {
 // engine maps each spoken word back to the written one, so the mouth stays in step ("Reverie's" is covered too).
 // One word, so it is said at the pace of the line: "rev uh ree" was three words to the voice, each said as a word of
 // its own with gaps between (slow, and "ah" for "uh"). Picked with the engine's scripts/say-as.mjs over 12 spellings in
-// 7 voices, scored by a phoneme recogniser (2026-11-27): "Revree" came out REV-uh-ree in 13 of 21 takes; as written,
-// "Reverie" in none (ri-VAIR-ee, REEV-ree), and "Rev" with a vowel or a double v after it is read as "Reverend".
-export const SAY_AS = { Reverie: 'Revree' };
+// 7 voices, scored by a phoneme recogniser (2026-11-27): "Revery" and "Revree" each came out REV-uh-ree in 13 of 21
+// takes, and Rob picked Revery by ear; as written, "Reverie" in none (ri-VAIR-ee, REEV-ree), and "Rev" with a vowel or a
+// double v after it is read as "Reverend".
+export const SAY_AS = { Reverie: 'Revery' };
 
 // its mood's share of the voice (mood.js toneOf): { lively, size, mood } added to the voice it chose, or null
 let tone = () => null;
