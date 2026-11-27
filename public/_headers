@@ -1,0 +1,7 @@
+# Cloudflare (Workers static assets) reads this file and doesn't serve it.
+# Everything in /assets/ has its content's hash in its name (Vite), so a browser may keep it for a year without asking
+# again: a later visit loads the page's 3D, physics and kits from its own cache instead of checking each of them with
+# Cloudflare first (by default every file is asked about again on every visit, a round trip each). A new build makes
+# new names, so nothing stale is ever used. index.html keeps the default (always checked), so a deploy shows at once.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
