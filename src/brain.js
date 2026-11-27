@@ -143,6 +143,7 @@ function checkInput(name, input) {
   if (name === 'remember' && ['fact', 'name', 'birthday'].some(k => input[k] != null && typeof input[k] !== 'string')) return 'fact, name and birthday must be text';
   if (name === 'forget' && (typeof input.what !== 'string' || !input.what.trim())) return 'what must say what to forget';
   if (name === 'game_move' && (typeof input.move !== 'string' || !input.move.trim())) return 'move must be text';
+  if (name === 'garden' && (!['plant', 'water', 'pick', 'dig_up', 'rename'].includes(input.action) || ['plant', 'pot', 'name', 'colour'].some(k => input[k] != null && typeof input[k] !== 'string'))) return 'action must be plant, water, pick, dig_up or rename, and the rest text';
   if (name === 'pet' && (!['make', 'trick', 'rename', 'away'].includes(input.action) || ['animal', 'name', 'colour', 'trick'].some(k => input[k] != null && typeof input[k] !== 'string'))) return 'action must be make, trick, rename or away, and the rest text';
   return null;
 }

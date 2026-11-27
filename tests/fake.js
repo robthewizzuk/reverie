@@ -10,6 +10,7 @@
 //   "roll ..."        -> roll;  "quiz me" -> play quiz;  "[quiz] ..." -> a quip;  "answer b" -> game_move;  "draw" -> doodle;  "[doodle] ..." -> a quip
 //   "square <x>"      -> game_move (noughts);  "[noughts|twenty|draw and guess] ..." -> a quip;  a counted question -> "Nope!"
 //   "make me a pet fox called pip" -> pet make;  "pet sit" -> pet trick;  "[pet] ..." / "[mood] ..." -> a quip
+//   "plant a sunflower called sunny" -> garden plant;  "water the plants" -> garden water;  "pick the flower" -> garden pick;  "[garden] ..." -> a quip
 //   "tell me a joke" -> a line with sound cues;  "a ghost in a cave" / "helium" -> voice with an effect, echo, pitch and speed
 //   anything else     -> a friendly line with a wave
 const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -34,6 +35,7 @@ function plan(body) {
     if (/camera window is open/i.test(r)) return { text: 'Go on, show me something!', tools: [] };
     if (/drawing pad is open/i.test(r)) return { text: 'Go on, draw me something!', tools: [] };
     if (/^Made .*as your pet|does |is now called|gone off/.test(r)) return { text: 'Aww, look at it!', tools: [] };
+    if (/^(Planted|Watered|Picked|Dug up)/.test(r)) return { text: /^Planted/.test(r) ? 'Grow, little seed!' : /^Watered/.test(r) ? 'Drink up, little ones.' : 'For you!', tools: [] };
     if (/^Written in your diary/.test(r)) return { text: 'Got it, I will remember that.', tools: [] };
     if (/^Forgot /.test(r)) return { text: 'Poof, forgotten.', tools: [] };
     if (/^\[Their daily briefing/.test(r)) return { text: 'Here is your briefing: it is a lovely day for making things.', tools: [] };
@@ -50,7 +52,7 @@ function plan(body) {
     return { text: /fail|could not|nothing/i.test(r) ? 'Hmm, that one fizzled.' : 'Ta-da!', tools: [] };
   }
   let m0;
-  const said = saidOf(u).replace(/^\[[a-z ]+[,:][^\]]*\]\s*/, '').toLowerCase().replace(/^(\[(pet|mood)\][^\n]*\n+)+(?=\S)/, '');
+  const said = saidOf(u).replace(/^\[[a-z ]+[,:][^\]]*\]\s*/, '').toLowerCase().replace(/^(\[(pet|mood|garden)\][^\n]*\n+)+(?=\S)/, '');
   if (/^\[(noughts|twenty|draw and guess|quest)\]/.test(said)) return { text: /they won/.test(said) ? 'No fair!' : /you won/.test(said) ? 'Three in a row!' : /round is over/.test(said) ? 'What a round of drawings!' : /treasure chest with/.test(said) ? 'And they lived happily ever after!' : /last heart/.test(said) ? 'And the owl flew them home.' : 'Hmm, interesting.', tools: [] };
   if (/\(they guessed it|\(they gave up/.test(said)) return { text: 'Ta-da, there it is!', tools: [] };
   if (/\(question \d+ of 20/.test(said)) return { text: 'Nope!', tools: [] };
@@ -78,6 +80,10 @@ function plan(body) {
   if ((m = /^roll (.+)/.exec(said))) return { text: 'Rolling!', tools: [['roll', { dice: m[1].replace(/^(a|the) /, '') }]] };
   if (/^draw/.test(said)) return { text: 'Ooh, a drawing!', tools: [['doodle', {}]] };
   if ((m = /^move (?!the )(\S+)/.exec(said))) return { text: 'Ooh.', tools: [['game_move', { move: m[1] }]] };
+  if ((m = /^(?:let'?s )?plant (?:an? |some )?([a-z ]+?)(?: called (\w+))?(?: in the (left|middle|right) pot)?$/.exec(said))) return { text: 'Ooh, a seed!', tools: [['garden', { action: 'plant', plant: m[1], ...(m[2] ? { name: m[2] } : {}), ...(m[3] ? { pot: m[3] } : {}) }]] };
+  if (/^water (the )?(plants|garden|flowers)/.test(said)) return { text: 'Here comes the rain.', tools: [['garden', { action: 'water' }]] };
+  if (/^pick (the|a) (flower|strawberry)/.test(said)) return { text: 'Snip!', tools: [['garden', { action: 'pick' }]] };
+  if (/^\[garden\]/.test(said)) return { text: 'Look at them grow!', tools: [] };
   if ((m = /(?:get|make) (?:me )?an? (?:pet )?(\w+)(?: called (\w+))?/.exec(said)) && /pet|called/.test(said)) return { text: 'A pet! Hold on.', tools: [['pet', { action: 'make', animal: m[1], ...(m[2] ? { name: m[2] } : {}) }]] };
   if ((m = /^pet (sit|jump|spin|come|sleep|play_dead|zoomies|dance)/.exec(said))) return { text: 'Watch this.', tools: [['pet', { action: 'trick', trick: m[1] }]] };
   const SPOT = /(by the window|on the windowsill|on the workbench|on the shelf|on the rug|left of you|right of you|in front of you|back left corner|by the barrel|front left|front right|your hands|away)/;
