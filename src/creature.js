@@ -111,6 +111,8 @@ export function makeCreature() {
   let reachAt = null, reachArm = 1;
   // walking (carrying something across the room): which way it faces (null: towards you) and how hard it waddles, 0..1
   let heading = null, stride = 0;
+  // dancing (groove.js, to music it hears): where it is in the beat, and how much it dances (eased in and out)
+  let groove = null, dance = 0, beats = 0, beatPhase = 0;
   const tmpV = new THREE.Vector3();
 
   function setMood(m) {
@@ -148,6 +150,14 @@ export function makeCreature() {
     if (idle === 'stretch' && !holding) { const up = Math.sin(Math.min(1, iT / 2.8) * Math.PI); return [-.15 * up, .35 + up * 1.9]; }
     if (holding) return HOLD;
     if (state.listening) return [-.2, .25];
+    if (dance > .05) {
+      // its moves change every two bars: pumping its arms in turn, both up and swaying, a side to side swing
+      const move = Math.floor(beats / 8) % 3, b = beats + beatPhase, hit = Math.pow(1 - beatPhase, 2);
+      const d = move === 0 ? [-.5 - Math.max(0, Math.sin(b * Math.PI * a.s)) * .9, .5 + hit * .25]
+        : move === 1 ? [-.25, 2.1 + Math.sin(b * Math.PI + a.s) * .35]
+        : [-.3 + Math.sin(b * Math.PI) * a.s * .35, .8 + hit * .5];
+      return [REST[0] + (d[0] - REST[0]) * dance, REST[1] + (d[1] - REST[1]) * dance];
+    }
     return [REST[0] + Math.sin(t * 1.3 + a.s) * .03, REST[1] + (cheer - .5) * .18 + Math.sin(t * (1.1 + cheer * .6)) * .04 * (.6 + cheer)];
   }
   // an idle move: none while a gesture runs; 'perk' (you started talking) cuts any idle move short
@@ -185,6 +195,16 @@ export function makeCreature() {
     const bob = state.thinking || stride ? 0 : Math.pow(Math.max(0, Math.sin(t * 3.1)), 6) * .014 * Math.max(0, cheer - .55) * 2.2;
     root.position.y = Math.abs(Math.sin(t * 11)) * .07 * bounce + Math.abs(Math.sin(t * 24)) * .015 * giggle + Math.abs(Math.sin(t * 12)) * .045 * stride + bob;
     root.rotation.z = Math.sin(t * 12) * .09 * stride;
+    // dancing: a bob that lands on each beat with a little squash, a sway from side to side over two beats, a twist
+    dance += ((groove && !reachAt && !stride ? groove.amount ?? 1 : 0) - dance) * (1 - Math.exp(-dt * 3));
+    if (groove) { beats = groove.beat | 0; beatPhase = groove.phase; }
+    let squash = 0;
+    if (dance > .01) {
+      const b = beats + beatPhase, talking = state.speaking || state.thinking ? .45 : 1;
+      squash = Math.pow(1 - beatPhase, 4) * .07 * dance * talking;
+      root.position.y += Math.sin(beatPhase * Math.PI) * .045 * dance * talking;
+      root.rotation.z += Math.sin(b * Math.PI) * .1 * dance * talking;
+    }
     const e = 1 - Math.exp(-dt * 6);
     const leanIdle = idle === 'peek' ? .2 * env : idle === 'stretch' ? -.08 * env : 0;
     lean += ((reachAt ? .24 : state.listening ? .14 : state.thinking ? -.05 : leanIdle + drowse * .06 + Math.max(0, .4 - cheer) * .12) - lean) * e - perk * dt * .8;
@@ -206,6 +226,10 @@ export function makeCreature() {
     sprout.rotation.z = Math.sin(t * (1.7 + cheer * .8)) * .12 * (.7 + cheer * .7) + tilt * -.8; sprout.rotation.x = Math.sin(t * 1.3) * .08 - lean;
     // the core: slow pulse when idle, brighter while listening, a quick swirl while thinking, steady while talking
     coreLevel = state.thinking ? .9 + Math.sin(t * 9) * .35 : state.listening ? 1.2 : state.speaking ? .9 : (.55 + Math.sin(t * (1.6 + cheer * .9 - drowse * .7)) * .12) * (1 - drowse * .35) * (.8 + cheer * .45) + perk * .5;
+    if (dance > .01) {
+      coreLevel += Math.pow(1 - beatPhase, 3) * .9 * dance;   // (its core flashes on the beat)
+      blob.scale.y *= 1 - squash; blob.scale.x *= 1 + squash * .5; blob.scale.z *= 1 + squash * .5;
+    }
     coreGlow += (coreLevel - coreGlow) * (1 - Math.exp(-dt * 8));
     coreMat.emissiveIntensity = 1.6 + coreGlow * 1.8;
     halo.material.opacity = .12 + coreGlow * .22; halo.scale.setScalar(.2 + coreGlow * .08 + cheer * .03 + Math.sin(t * 2.4) * .01);
@@ -280,6 +304,12 @@ export function makeCreature() {
       if (!reachAt) { reachAt = new THREE.Vector3(); reachArm = root.worldToLocal(tmpV.copy(p)).x >= 0 ? 1 : -1; }
       reachAt.copy(p);
     },
+    /**
+     * Dancing to a beat: { beat (whole beats counted), phase (0..1 through this beat), amount (0..1, how much) } each
+     * frame from groove.js, or null to stop (it eases in and out). Gestures, holding and walking still win.
+     */
+    set groove(g) { groove = g || null; },
+    get dancing() { return dance > .05; },
     /** Walking: stride 0..1 (how hard it waddles) and the way it faces (radians about y, 0 towards you; null faces you). */
     walk(s = 0, face = null) { stride = Math.max(0, Math.min(1, s)); heading = face; },
     /** The world position of the core, for its light. */

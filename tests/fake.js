@@ -10,6 +10,7 @@
 //   "roll ..."        -> roll;  "quiz me" -> play quiz;  "[quiz] ..." -> a quip;  "answer b" -> game_move;  "draw" -> doodle;  "[doodle] ..." -> a quip
 //   "square <x>"      -> game_move (noughts);  "[noughts|twenty|draw and guess] ..." -> a quip;  a counted question -> "Nope!"
 //   "make me a pet fox called pip" -> pet make;  "pet sit" -> pet trick;  "[pet] ..." / "[mood] ..." -> a quip
+//   "dance" -> dance;  "stop dancing" -> dance stop;  "play music <x>" -> music play;  "pause the music" -> music pause
 //   anything else     -> a friendly line with a wave
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const lastUser = messages => [...messages].reverse().find(m => m.role === 'user');
@@ -38,6 +39,7 @@ function plan(body) {
     if (/^\[Their daily briefing/.test(r)) return { text: 'Here is your briefing: it is a lovely day for making things.', tools: [] };
     if (/diary is open/i.test(r)) return { text: 'There it is, my diary.', tools: [] };
     if (/^Answered /.test(r)) return { text: 'Ooh.', tools: [] };
+    if (/^You (are|stopped|were not) danc/.test(r) || /^(Playing|Paused|Skipped)|Spotify/.test(r)) return { text: 'Wheee!', tools: [] };
     if (/noughts and crosses board is set up/i.test(r)) return { text: 'Crosses, your move.', tools: [] };
     if (/Twenty Questions is set up/.test(r)) return { text: "I'm thinking of something. Twenty questions, go!", tools: [] };
     if (/Draw and Guess is on/.test(r)) return { text: 'Draw, draw, draw!', tools: [] };
@@ -74,6 +76,10 @@ function plan(body) {
   if ((m = /^answer (.+)/.exec(said))) return { text: 'Locking it in.', tools: [['game_move', { move: m[1] }]] };
   if ((m = /^square (.+)/.exec(said))) return { text: 'Brave.', tools: [['game_move', { move: m[1] }]] };
   if (/^i give up/.test(said)) return { text: 'Ha!', tools: [['game_move', { move: 'give up' }]] };
+  if (/^stop dancing/.test(said)) return { text: 'Phew!', tools: [['dance', { stop: true }]] };
+  if (/^dance/.test(said)) return { text: 'Ooh, I love this one!', tools: [['dance', {}]] };
+  if ((m = /^play music (.+)/.exec(said))) return { text: 'Coming right up!', tools: [['music', { action: 'play', query: m[1] }]] };
+  if (/^pause the music/.test(said)) return { text: 'Shh.', tools: [['music', { action: 'pause' }]] };
   if ((m = /^roll (.+)/.exec(said))) return { text: 'Rolling!', tools: [['roll', { dice: m[1].replace(/^(a|the) /, '') }]] };
   if (/^draw/.test(said)) return { text: 'Ooh, a drawing!', tools: [['doodle', {}]] };
   if ((m = /^move (?!the )(\S+)/.exec(said))) return { text: 'Ooh.', tools: [['game_move', { move: m[1] }]] };
