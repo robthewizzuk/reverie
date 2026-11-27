@@ -100,6 +100,9 @@ export function makeCreature() {
   // ---- life
   let t = 0, mood = 'calm', gesture = null, gT = 0, bounce = 0, giggle = 0, holding = false;
   let lean = 0, tilt = 0, turn = 0, nod = 0, coreLevel = .6, coreGlow = .6;
+  // how happy it is (0..1, from mood.js): a readier smile, a brighter and quicker glow, a happy bob, arms more open;
+  // low, a softer glow, heavier lids and a little droop. faceCheer is the cheer its face was last set for.
+  let cheer = .5, faceCheer = .5;
   // idle moves (chosen on the device by body.js, between replies): what it is doing, for how long, which way it glances
   let idle = null, iT = 0, side = 1, look = 0, perk = 0, drowse = 0, drowsy = false, yawned = false;
   const IDLE_TIME = { rest: 0, glance: 2.4, peek: 2.2, sway: 4, hop: .9, stretch: 2.8, perk: .8 };
@@ -114,6 +117,9 @@ export function makeCreature() {
     mood = MOODS[m] ? m : 'calm';
     for (const k of FACE_SHAPES) face.set(k, 0);
     for (const [k, v] of Object.entries(MOODS[mood])) face.set(k, v);
+    // (a happier Reverie smiles more in every mood but sad; a low one less)
+    faceCheer = cheer;
+    if (mood !== 'sad') face.set('smile', Math.max(0, Math.min(1, (MOODS[mood].smile || 0) + (cheer - .5) * .45)));
   }
   setMood('calm');
 
@@ -142,7 +148,7 @@ export function makeCreature() {
     if (idle === 'stretch' && !holding) { const up = Math.sin(Math.min(1, iT / 2.8) * Math.PI); return [-.15 * up, .35 + up * 1.9]; }
     if (holding) return HOLD;
     if (state.listening) return [-.2, .25];
-    return [REST[0] + Math.sin(t * 1.3 + a.s) * .03, REST[1] + Math.sin(t * 1.1) * .04];
+    return [REST[0] + Math.sin(t * 1.3 + a.s) * .03, REST[1] + (cheer - .5) * .18 + Math.sin(t * (1.1 + cheer * .6)) * .04 * (.6 + cheer)];
   }
   // an idle move: none while a gesture runs; 'perk' (you started talking) cuts any idle move short
   function doIdle(a) {
@@ -161,6 +167,7 @@ export function makeCreature() {
     if (gesture && gT > (GESTURE_TIME[gesture] || 1.2)) gesture = null;
     iT += dt;
     if (gesture && idle) idle = null;
+    if (Math.abs(cheer - faceCheer) > .06 && !(idle === 'stretch' && yawned)) setMood(mood);
     if (idle === 'stretch' && !yawned && iT > .6) { yawned = true; face.set('round', .9); face.set('smile', 0); }
     if (idle && iT > IDLE_TIME[idle]) { if (idle === 'stretch' && yawned) setMood(mood); idle = null; }
     perk = Math.max(0, perk - dt * 1.6);
@@ -174,11 +181,13 @@ export function makeCreature() {
     blob.scale.set(1 / Math.sqrt(breathe), 1.12 * breathe, .95);
     bounce = Math.max(0, bounce - dt * 1.4);
     giggle = Math.max(0, giggle - dt * 1.5);
-    root.position.y = Math.abs(Math.sin(t * 11)) * .07 * bounce + Math.abs(Math.sin(t * 24)) * .015 * giggle + Math.abs(Math.sin(t * 12)) * .045 * stride;
+    // (happy: a little bob now and then, as if it can't keep still)
+    const bob = state.thinking || stride ? 0 : Math.pow(Math.max(0, Math.sin(t * 3.1)), 6) * .014 * Math.max(0, cheer - .55) * 2.2;
+    root.position.y = Math.abs(Math.sin(t * 11)) * .07 * bounce + Math.abs(Math.sin(t * 24)) * .015 * giggle + Math.abs(Math.sin(t * 12)) * .045 * stride + bob;
     root.rotation.z = Math.sin(t * 12) * .09 * stride;
     const e = 1 - Math.exp(-dt * 6);
     const leanIdle = idle === 'peek' ? .2 * env : idle === 'stretch' ? -.08 * env : 0;
-    lean += ((reachAt ? .24 : state.listening ? .14 : state.thinking ? -.05 : leanIdle + drowse * .06) - lean) * e - perk * dt * .8;
+    lean += ((reachAt ? .24 : state.listening ? .14 : state.thinking ? -.05 : leanIdle + drowse * .06 + Math.max(0, .4 - cheer) * .12) - lean) * e - perk * dt * .8;
     const tiltIdle = idle === 'sway' ? Math.sin(iT * 2.4) * .1 * env : idle === 'peek' ? .07 * env : 0;
     tilt += ((state.thinking ? .13 : gesture === 'shrug' ? .08 : giggle * Math.sin(t * 30) * .1 + tiltIdle) - tilt) * e;
     nod = gesture === 'nod' ? Math.sin(gT * 14) * .12 : 0;
@@ -194,17 +203,17 @@ export function makeCreature() {
       a.pivot.rotation.set(a.x, 0, a.s * a.z);
       a.long += ((reachAt && a.s === reachArm ? a.want || 1 : 1) - a.long) * k; a.pivot.scale.set(1, a.long, 1);
     }
-    sprout.rotation.z = Math.sin(t * 1.7) * .12 + tilt * -.8; sprout.rotation.x = Math.sin(t * 1.3) * .08 - lean;
+    sprout.rotation.z = Math.sin(t * (1.7 + cheer * .8)) * .12 * (.7 + cheer * .7) + tilt * -.8; sprout.rotation.x = Math.sin(t * 1.3) * .08 - lean;
     // the core: slow pulse when idle, brighter while listening, a quick swirl while thinking, steady while talking
-    coreLevel = state.thinking ? .9 + Math.sin(t * 9) * .35 : state.listening ? 1.2 : state.speaking ? .9 : (.55 + Math.sin(t * (1.6 - drowse * .7)) * .12) * (1 - drowse * .35) + perk * .5;
+    coreLevel = state.thinking ? .9 + Math.sin(t * 9) * .35 : state.listening ? 1.2 : state.speaking ? .9 : (.55 + Math.sin(t * (1.6 + cheer * .9 - drowse * .7)) * .12) * (1 - drowse * .35) * (.8 + cheer * .45) + perk * .5;
     coreGlow += (coreLevel - coreGlow) * (1 - Math.exp(-dt * 8));
     coreMat.emissiveIntensity = 1.6 + coreGlow * 1.8;
-    halo.material.opacity = .12 + coreGlow * .22; halo.scale.setScalar(.2 + coreGlow * .08 + Math.sin(t * 2.4) * .01);
+    halo.material.opacity = .12 + coreGlow * .22; halo.scale.setScalar(.2 + coreGlow * .08 + cheer * .03 + Math.sin(t * 2.4) * .01);
     core.rotation.z += dt * (state.thinking ? 6 : 1);
     // the face: speech and blinking (the engine's Face), eyelids from its blink shape
     face.update(dt);
     const shut = Math.min(1, mouth.morphTargetInfluences[blinkIndex] || 0);
-    const lids = (state.thinking ? .85 : 1) * (1 - drowse * .5) * (idle === 'stretch' && yawned ? .55 : 1) * (1 + perk * .18);
+    const lids = (state.thinking ? .85 : 1) * (1 - drowse * .5) * (idle === 'stretch' && yawned ? .55 : 1) * (1 + perk * .18) * (1 - Math.max(0, .4 - cheer) * .4);
     for (const g of eyes) { g.scale.y = Math.max(.08, (1 - shut) * lids); g.scale.x = 1 + perk * .1; }
   }
 
@@ -246,6 +255,8 @@ export function makeCreature() {
     setColours, glowed,
     state,
     get coreGlow() { return coreGlow; },
+    /** How happy it looks, 0..1 (mood.js sets it every frame). */
+    get cheer() { return cheer; }, set cheer(v) { cheer = Math.max(0, Math.min(1, +v || 0)); },
     get holding() { return holding; }, set holding(v) { holding = !!v; },
     mood: setMood,
     gesture: doGesture,

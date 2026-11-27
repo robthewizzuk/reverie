@@ -8,6 +8,8 @@ import { describe } from './describe.js';
 import { GAMES } from './games/index.js';
 import { lightRoom, WINDOW } from './light.js';
 import { makeDice } from './dice.js';
+import { makePet } from './pet.js';
+import { makeFloaties } from './floaties.js';
 import { SPOTS, SPOT_NAMES, spotOf, roomColours, roomItems, tidyRoomColours, keepRoomColours, keepItem, forgetItem, forgetAll, freePlace, findItem, roomLine, inRoom, MAX_ITEMS } from './room.js';
 
 const HOLD_SIZE = .4;            // metres: the longest side of a prop in its hands
@@ -15,7 +17,7 @@ const SIZE_WORDS = [[/\b(giant|huge|enormous)\b/, 1.8], [/\b(bigger|big|large)\b
 const article = w => w.replace(/^(a|an|the|some)\s+/i, '');
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 
-let v, light, creature, fx, world, room, embers, motes, body;
+let v, light, creature, fx, world, room, embers, motes, body, floaties;
 // the room's recolourable parts: the meshes made of each, and the recipe they are made from
 const ROOM_LOOK = { walls: null, floor: ['wood', [8, 8]], rug: null, wood: ['wood', [1, 1]] };
 const roomParts = { walls: [], floor: [], rug: [], wood: [] }, relight = [];
@@ -96,6 +98,7 @@ function setup() {
   light = lightRoom(v, creature, { min: [-2.0, 0, -1.6], max: [2.2, 3, 2.2] });
   relight.push(light.bounce, light.room);   // (both baked again when the room is repainted)
   fx = new gs.fx3d.Particles3D(v.scene);
+  floaties = makeFloaties(v.scene);   // (hearts, and a sleepy pet's "z")
   // embers drifting up from its core: a few when idle, more while listening, a stream while thinking
   embers = makeEmbers();
   world = w3;
@@ -128,6 +131,9 @@ export function makeWorld() {
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), at = new THREE.Vector3();
   // a game on the stage (./games): the one being played, the ones made so far, and where the camera is heading
   let game = null, onNews = () => {}, dice = null;
+  // its pet (pet.js), made once the room is; its mood (mood.js, set by the page); more lines for Claude's scene line
+  let keeper = null, mood = null;
+  const lines = [];
   const games = {}, HOME = { pos: [0, .78, 1.95], look: [0, .4, 0] }, camAt = { pos: [...HOME.pos], look: [...HOME.look] };
   const stage = {
     THREE, get scene() { return v.scene; }, get creature() { return creature; }, get physics() { return world; },
@@ -313,7 +319,7 @@ export function makeWorld() {
     return `Carried ${name} over and put it ${S.about}${near ? `, next to ${near.short || near.words}` : ''}, at ${Math.round(size * 100)} cm. It stays in the room, and is remembered next time.`;
   }
 
-  return {
+  const api = {
     get view() { return v; },
     /** The room's light (light.js). */
     get light() { return light; },
@@ -325,11 +331,12 @@ export function makeWorld() {
     scene() {
       const floor = loose.map(e => e.short).slice(-6);
       if (dice?.onFloor) floor.push(dice.onFloor);
-      return `In your hands: ${held ? held.short : 'nothing'}.${floor.length ? ` On the floor: ${floor.join(', ')}.` : ''}${roomLine(placed)}`;
+      return `In your hands: ${held ? held.short : 'nothing'}.${floor.length ? ` On the floor: ${floor.join(', ')}.` : ''}${roomLine(placed)}${keeper?.line() || ''}${lines.map(f => { try { return f() || ''; } catch { return ''; } }).join('')}`;
     },
     reset() {
       if (!v) setup();
-      if (!restored) { restored = true; restoreRoom(); }
+      keeper ||= makePet({ scene: v.scene, camera: v.cam, creature, world: api, floaties, sparks: stage.sparks, mood: { fun: (k, n) => mood?.fun(k, n) }, news: text => onNews(text, false) });
+      if (!restored) { restored = true; restoreRoom(); keeper.restore(); }
       for (const e of loose) remove(e); loose = []; if (held) remove(held); held = null; creature.holding = false;
       fx.clear(); embers = makeEmbers(); creature.mood('calm');
       dice ||= makeDice({ THREE, scene: v.scene, physics: world, creature, sparks: stage.sparks }); dice.clear();
@@ -360,7 +367,8 @@ export function makeWorld() {
       for (const e of loose) if (e.pivot.position.y < -4) remove(e);
       loose = loose.filter(e => e.pivot.position.y >= -4);
       while (loose.length > 14) remove(loose.shift());
-      fx.update(dt); motes.update(dt);
+      keeper?.update(dt);
+      fx.update(dt); motes.update(dt); floaties.update(dt);
     },
     draw(c) { v.render(c, W, H); },
     /** What a tap at (x, y) in CSS pixels hit: 'game' (the game used it), 'creature', 'prop' or null. */
@@ -368,6 +376,7 @@ export function makeWorld() {
       ndc.set(x / W * 2 - 1, -(y / H) * 2 + 1); ray.setFromCamera(ndc, v.cam);
       if (game?.tap(ray)) return 'game';
       if (held && ray.intersectObject(held.pivot, true).length) return 'prop';
+      if (keeper?.tap(ray)) return 'pet';
       if (ray.intersectObject(creature.root, true).length) return 'creature';
       return null;
     },
@@ -458,5 +467,20 @@ export function makeWorld() {
       if (mood) creature.mood(mood); if (gesture) creature.gesture(gesture);
       return 'Done.';
     },
+
+    // ---- its pet, its mood, and more for the scene line
+    /** The pet tool ({ action, animal, name, colour, trick }): resolves a sentence. */
+    pet: input => keeper ? keeper.command(input) : Promise.resolve({ text: 'Not done: the room is not ready yet.', error: true }),
+    /** Its pet (pet.js): pet, about, mode, greet(), ... */
+    get keeper() { return keeper; },
+    /** Hearts and z's floating up (floaties.js). */
+    get floaties() { return floaties; },
+    /** Its mood (mood.js), which the pet's fun lifts. */
+    get mood() { return mood; }, set mood(m) { mood = m; },
+    /** Props on the floor, for the pet to chase: [{ pivot, body }]. */
+    floorThings: () => loose,
+    /** Adds a line to what Claude is told of the scene each turn (fn returns text starting with a space, or ''). */
+    addLine(fn) { lines.push(fn); },
   };
+  return api;
 }

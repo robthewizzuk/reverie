@@ -6,7 +6,7 @@ makes for you out of words.
 
 Ask it to make something ("make me a red teapot"), change it ("make it made of gold", "make it bigger"), throw it, or
 tidy up. Decorate its room: "make a lamp and put it by the window", "move the teapot onto the shelf", "paint the walls
-sky blue". It walks over and sets things down itself, and the room is kept as you left it. Tap it and it giggles. Talk over it and it stops to listen.
+sky blue". It walks over and sets things down itself, and the room is kept as you left it. Tap it and it giggles. It gets happier the more you play, and can make itself a tiny pet that wanders the room ("make yourself a pet kitten called Mochi"). Talk over it and it stops to listen.
 Play chess or a quiz with it, ask it to roll some dice, or tap the pencil and draw something for it to make real.
 
 ## Run it
@@ -32,6 +32,8 @@ and nothing with a `VITE_` prefix holds it, so it never reaches the page.
 | The page | `src/main.js` | Runs the stage, the chat bar, the mic and the caption |
 | The turn loop | `src/brain.js` | Sends what you said to `/api/turn`, speaks each sentence as soon as it has streamed in, starts each tool the moment its words are complete, and stops at once when you talk over it |
 | Its body language | `src/body.js` | On the device, between replies: simple rules pick a little move every few seconds (glance about, peek at what it holds, sway, hop, stretch and yawn), it gets drowsy when left alone, and it perks up the moment you start talking or typing, before anything goes to Claude. A Tiny Brains `Coach` from the engine sits on the rules: poke it just after a move you like and it does that more in moments like that one (kept in the browser) |
+| Its mood | `src/mood.js` | It gets happier the more you play: making things, games, dice, drawings, patting it or its pet, just chatting. Each bit lifts it a little (less the happier it already is), and it drifts slowly back to content while you're away. Happier, it hops and sways more, bobs on the spot, smiles readily, its core glows brighter and pulses quicker, and its voice is livelier; low, it droops a little. Claude is told how it feels each turn, a level up sends up hearts, and after a long time away it tells Claude it missed you. Kept in the browser |
+| Its pet | `src/pet.js` | A tiny animal it makes for you (`pet` tool: a kitten, a fox, a bunny, an owl, a bee, a baby dragon... any of the engine's `gs.models.creature` animals that walk or fly), with real gaits on its own skeleton. On the device it wanders the room (mostly where you can see it), does zoomies when Reverie is happy, trots after Reverie when it walks, chases anything thrown and noses it along, runs to say hello when you arrive, and curls up asleep beside Reverie (with floating z's) when it gets drowsy. Tap it and it hops, with hearts and its name floating over it (`gs.fx3d.text3d`). Tricks on request: sit, jump, spin, come, sleep, play dead, zoomies, dance. What it is and its name are kept in the browser |
 | The creature | `src/creature.js` | Built in code: plush body, glowing core (pulses when idle, brightens when listening, swirls when thinking), blinking eyes, a mouth the engine's `Face` lip-syncs, arms that wave, point and hold |
 | The room | `src/room.js` | The room as you made it: the colours of its walls, floor, rug and woodwork, the spots things can go (by the window, on the shelf, on the workbench...), and the things placed there, kept in the browser and rebuilt from their words next time |
 | The stage | `src/world.js` | A workshop corner in the engine's Next Gen view; props from `gs.models.generate`, held in its hands, thrown with real weight by `gs.physics3d` |
@@ -39,7 +41,7 @@ and nothing with a `VITE_` prefix holds it, so it never reaches the page.
 | Drawing pad | `src/doodle.js` | The pencil button (or the `doodle` tool) opens a sheet of paper over the stage. The engine's doodle model (`gs.doodle`, on the device) names what was drawn among 200 things, and it is made with the 3D generator. Only the name goes to Claude |
 | The sky outside | `src/place.js` | The device line also says whether the sun is up and the moon's phase, and a low battery (`gs.real`, worked out on the device, no permission) |
 | The backend | `server/turn.js` | One small handler that adds the key and streams Claude's reply back. Runs inside the Vite dev server (`server/dev.js`) and as a Cloudflare Worker (`worker/`) |
-| Its personality and tools | `server/persona.js` | The system prompt and its tools: `make`, `change`, `toss`, `clear`, `place`, `room_colours`, `roll`, `doodle`, `act`, `play`, `game_move`, `stop_game`, `think_harder` |
+| Its personality and tools | `server/persona.js` | The system prompt and its tools: `make`, `change`, `toss`, `clear`, `place`, `room_colours`, `roll`, `doodle`, `act`, `play`, `game_move`, `stop_game`, `pet`, `think_harder` |
 | Games | `src/games/` | Games it plays with you on a table in front of it. Chess: the engine's living stone pieces, rules from chess.js and the engine's chess opponent picking its moves (fast, always legal, levels 1 to 5), while Claude reacts out loud to each move and a stretchy arm moves its pieces. Quiz: ten questions from the engine's bank of about 2,700 (`gs.trivia`, Open Trivia Database, CC BY-SA 4.0) on a card with four buzzers, starting easy and climbing; Reverie hosts, reading each question out and reacting to each answer, and is only told the answer once you've given yours. `src/games/index.js` says how to add another |
 
 Everyday chat goes to Claude Haiku 5.5 with low effort, for speed. When a question needs real thought, it calls
@@ -76,6 +78,7 @@ npm run smoke                 # wakes it, makes, changes and throws a prop, asks
 node tests/chess.mjs          # asks to play chess, taps a move, says a move, puts the board away
 node tests/kits.mjs           # rolls dice, plays three quiz questions (tap, button, said), draws a house and has it made
 node tests/room.mjs           # carries a lamp to the window, a teapot to the shelf, paints the room, reloads it
+node tests/pet.mjs            # its mood rises with play; makes a fox called Pip that wanders, is patted, chases a ball, plays dead, naps, and is still there after a reload
 node tests/perf.mjs --gpu --tier 2 --idle   # CPU time a frame, draw calls and triangles (the GPU here is software)
 node tests/look.mjs --seats front,top       # pictures of the light from the usual seat and from above, in tests/out/
 ```

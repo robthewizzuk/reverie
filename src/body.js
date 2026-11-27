@@ -28,12 +28,14 @@ const hourNow = () => { const d = new Date(); return d.getHours() + d.getMinutes
 
 /** The rules' choice, as a list best first: a weighted shuffle, so it isn't the same move every time. */
 function rules(s, r = Math.random) {
+  // (its mood, 0..1: happy, it hops and sways more and rests less; low, the other way round)
+  const c = s.cheer ?? .5;
   const w = {
-    rest: 1.5,
+    rest: 1.5 * (1.5 - c),
     glance: s.quiet < 30 ? 2.5 : 1.2,
     peek: s.holding ? 3 : s.props ? 1.2 : 0,
-    sway: s.quiet > 12 ? 2 : .6,
-    hop: s.pokes > .3 ? 2.2 : .35,
+    sway: (s.quiet > 12 ? 2 : .6) * (.6 + c * .8),
+    hop: (s.pokes > .3 ? 2.2 : .35) * (.3 + c * 1.8),
     stretch: s.holding ? 0 : s.quiet > 40 ? 1.6 + s.night : .15,
   };
   const left = IDLES.filter(a => w[a] > 0), out = [];
@@ -50,7 +52,7 @@ function rules(s, r = Math.random) {
  * makeBody({ creature, world }): call update(dt) every frame, poke() when the creature is tapped, notice() when the
  * person starts typing. `coach` is the Tiny Brains Coach, `last` the move it made last.
  */
-export function makeBody({ creature, world, hour = hourNow }) {
+export function makeBody({ creature, world, hour = hourNow, mood = null }) {
   const coach = new gs.brains.Coach(store, { name: 'idle', inputs: 5, actions: IDLES });
   let t = 0, quiet = 0, pokes = 0, next = 2, last = null, wasListening = false;
 
@@ -59,7 +61,7 @@ export function makeBody({ creature, world, hour = hourNow }) {
   function look() {
     const night = Math.cos((hour() - 3) / 24 * Math.PI * 2);
     const props = world.props;
-    const s = { quiet, holding: creature.holding, props, pokes, night: Math.max(0, night) };
+    const s = { quiet, holding: creature.holding, props, pokes, night: Math.max(0, night), cheer: mood ? mood.cheer : .5 };
     const see = [clamp(quiet / 60, 0, 1) * 2 - 1, s.holding ? 1 : -1, clamp(props / 3, 0, 1) * 2 - 1, clamp(pokes, 0, 1) * 2 - 1, night];
     return { s, see };
   }
@@ -88,7 +90,7 @@ export function makeBody({ creature, world, hour = hourNow }) {
       creature.idle(act);
       last = { act, see, at: t, taught: !!coach.recalled && !coach.recalled.not };
       const g = GAP[0] + Math.random() * (GAP[1] - GAP[0]);
-      next = g * (creature.drowsy ? 1.8 : 1) + (act === 'rest' ? 1 : 0);
+      next = g * (creature.drowsy ? 1.8 : 1) * (1.2 - s.cheer * .4) + (act === 'rest' ? 1 : 0);
     },
     /** A tap on it: a giggle, and "I liked that" for the move it has just made. True if it learnt something. */
     poke() {
