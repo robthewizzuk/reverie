@@ -6,8 +6,9 @@ import { prettyDay, daysBetween, dayOf } from './memory.js';
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const nice = ymd => new Date(ymd + 'T12:00').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
 
-/** el: the #diary element. memory: memory.js. onForget(): after anything is forgotten (so the chat reads it again). */
-export function makeDiary({ el, memory, today = () => ({}), onForget = () => {} }) {
+/** el: the #diary element. memory: memory.js. onForget(): after anything is forgotten (so the chat reads it again).
+ * extra(): more sections of the sheet as HTML (the lessons, from learn.js), or ''. */
+export function makeDiary({ el, memory, today = () => ({}), onForget = () => {}, extra = () => '' }) {
   const body = el.querySelector('.pages'), wipe = el.querySelector('[data-id="wipe"]');
   let armed = 0;
 
@@ -35,6 +36,7 @@ export function makeDiary({ el, memory, today = () => ({}), onForget = () => {} 
     const days = Object.keys(m.days).sort().reverse().slice(0, 14);
     if (days.length) parts.push(`<section><h3>Our days</h3>${days.map(k => `<div class="day"><b>${k === d ? 'Today' : daysBetween(k, d) === 1 ? 'Yesterday' : esc(nice(k))}</b><span>${esc(m.days[k].join(' · '))}</span></div>`).join('')}</section>`);
     if (m.chat.length) parts.push(`<section><h3>What we said lately</h3><ul class="chat">${m.chat.slice(-8).map(x => `<li class="${x.who === 'you' ? 'you' : 'me'}">${esc(x.text)}</li>`).join('')}</ul><button type="button" class="small" data-forget="the chats">Forget our chats</button></section>`);
+    try { const x = extra(); if (x) parts.push(x); } catch (e) { console.warn('[reverie] diary', e); }
     body.innerHTML = parts.join('');
   }
 
@@ -46,6 +48,7 @@ export function makeDiary({ el, memory, today = () => ({}), onForget = () => {} 
       if (Date.now() - armed > 4000) { armed = Date.now(); wipe.textContent = 'Tap again to forget everything'; wipe.classList.add('armed'); return; }
       memory.wipe(); armed = 0; disarm(); onForget('everything'); render(); return;
     }
+    if (b.dataset.unlearn) { onForget('lesson:' + b.dataset.unlearn); render(); return; }
     if (b.dataset.drop) { memory.drop(b.dataset.drop); onForget('a fact'); render(); }
     else if (b.dataset.forget) { memory.forget({ what: b.dataset.forget }); onForget(b.dataset.forget); render(); }
   });

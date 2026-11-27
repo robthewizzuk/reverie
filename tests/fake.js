@@ -10,6 +10,8 @@
 //   "roll ..."        -> roll;  "quiz me" -> play quiz;  "[quiz] ..." -> a quip;  "answer b" -> game_move;  "draw" -> doodle;  "[doodle] ..." -> a quip
 //   "square <x>"      -> game_move (noughts);  "[noughts|twenty|draw and guess] ..." -> a quip;  a counted question -> "Nope!"
 //   "make me a pet fox called pip" -> pet make;  "pet sit" -> pet trick;  "[pet] ..." / "[mood] ..." -> a quip
+//   "teach me about <x>" / "teach me <language>" -> teach start;  "board" -> teach board (with a picture prop);
+//   "new word" -> teach word;  "test me" -> teach quiz;  "[lesson] ..." -> a quip;  "end the lesson" -> teach end
 //   anything else     -> a friendly line with a wave
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const lastUser = messages => [...messages].reverse().find(m => m.role === 'user');
@@ -37,6 +39,9 @@ function plan(body) {
     if (/^Forgot /.test(r)) return { text: 'Poof, forgotten.', tools: [] };
     if (/^\[Their daily briefing/.test(r)) return { text: 'Here is your briefing: it is a lovely day for making things.', tools: [] };
     if (/diary is open/i.test(r)) return { text: 'There it is, my diary.', tools: [] };
+    if (/chalkboard is up/.test(r)) return { text: "Class is in session! Let's start with the big picture.", tools: [] };
+    if (/^Written on the board|is on the board|^The question is on the board/.test(r)) return { text: 'Have a look at that.', tools: [] };
+    if (/^The lesson is over/.test(r)) return { text: 'Gold star for you!', tools: [] };
     if (/^Answered /.test(r)) return { text: 'Ooh.', tools: [] };
     if (/noughts and crosses board is set up/i.test(r)) return { text: 'Crosses, your move.', tools: [] };
     if (/Twenty Questions is set up/.test(r)) return { text: "I'm thinking of something. Twenty questions, go!", tools: [] };
@@ -56,6 +61,14 @@ function plan(body) {
   if (/\(the die is being thrown/.test(said)) return { text: 'Here it goes...', tools: [] };
   if (/^\[chess\]/.test(said)) return { text: /taking your/.test(said) ? 'Hey! I needed that.' : /checkmate/.test(said) ? 'Good game!' : 'Hmm, interesting.', tools: [] };
   if (/^\[quiz\]/.test(said)) return { text: /: right!/.test(said) ? 'Correct, you clever thing!' : /last question/.test(said) ? 'What a round!' : 'Ooh, so close.', tools: [] };
+  if (/^\[lesson\]/.test(said)) return { text: /answered the quiz question right/.test(said) ? 'Yes! Spot on.' : 'Not quite, but close!', tools: [] };
+  if ((m0 = /^teach me (?:about )?(spanish|french|german|italian|japanese)(?: (?:food|words))?/.exec(said))) return { text: '¡Hola! Let us learn some words.', tools: [['teach', { action: 'start', language: m0[1][0].toUpperCase() + m0[1].slice(1), topic: 'food', level: 'beginner' }]] };
+  if ((m0 = /^teach me (?:about )?(.+)/.exec(said))) return { text: 'Ooh, I love this one.', tools: [['teach', { action: 'start', topic: m0[1] }]] };
+  if (/^board/.test(said)) return { text: 'Right, here is how it works.', tools: [['teach', { action: 'board', title: 'How a volcano erupts', lines: ['Hot rock melts deep down', 'It rises because it is light', 'Pressure builds up', 'Boom: lava comes out!'], emoji: '🌋', picture: 'a volcano' }]] };
+  if (/^new word/.test(said)) return { text: 'Here is a tasty one.', tools: [['teach', { action: 'word', word: 'la manzana', meaning: 'the apple', sounds_like: 'lah man-THAH-nah', example: 'Me gusta la manzana: I like the apple' }]] };
+  if (/^test me on the word/.test(said)) return { text: 'Quick one!', tools: [['teach', { action: 'quiz', question: 'What does la manzana mean?', choices: ['the bread', 'the apple', 'the cheese'], answer: 1, word: 'la manzana' }]] };
+  if (/^test me/.test(said)) return { text: 'Pop quiz!', tools: [['teach', { action: 'quiz', question: 'What comes out of a volcano?', choices: ['Lava', 'Water', 'Ice cream', 'Sand'], answer: 0 }]] };
+  if (/^end the lesson/.test(said)) return { text: 'What a lesson!', tools: [['teach', { action: 'end', learned: ['magma rises because it is light', 'pressure makes it erupt'], next: 'kinds of volcano' }]] };
   if (/^\[show\]/.test(said)) return /want a 3d copy/.test(said) ? { text: 'Ooh, one for the shelf!', tools: [['place', { item: 'a yellow rubber duck', spot: 'on the shelf' }]] }
     : { text: /surprise hatched/.test(said) ? 'A surprise, from a barcode!' : /photo is attached/.test(said) ? 'Ooh, what a lovely thing.' : 'Ha!', tools: [] };
   const sm = /^(?:show|look)(?: at)?(?: me)?(?: something)?(?: find (?:me )?(.+))?$/.exec(said);

@@ -128,6 +128,7 @@ function checkInput(name, input) {
   if (name === 'room_colours' && ['walls', 'floor', 'rug', 'wood'].some(k => input[k] != null && typeof input[k] !== 'string')) return 'colours must be text';
   if (name === 'remember' && ['fact', 'name', 'birthday'].some(k => input[k] != null && typeof input[k] !== 'string')) return 'fact, name and birthday must be text';
   if (name === 'forget' && (typeof input.what !== 'string' || !input.what.trim())) return 'what must say what to forget';
+  if (name === 'teach' && (!['start', 'board', 'word', 'quiz', 'end'].includes(input.action) || ['topic', 'language', 'level', 'title', 'emoji', 'picture', 'word', 'meaning', 'sounds_like', 'example', 'question', 'next'].some(k => input[k] != null && typeof input[k] !== 'string') || ['lines', 'choices', 'learned'].some(k => input[k] != null && !Array.isArray(input[k])) || (input.answer != null && typeof input.answer !== 'number'))) return 'action must be start, board, word, quiz or end; lines, choices and learned lists; answer a number';
   if (name === 'game_move' && (typeof input.move !== 'string' || !input.move.trim())) return 'move must be text';
   if (name === 'pet' && (!['make', 'trick', 'rename', 'away'].includes(input.action) || ['animal', 'name', 'colour', 'trick'].some(k => input[k] != null && typeof input[k] !== 'string'))) return 'action must be make, trick, rename or away, and the rest text';
   return null;
@@ -245,7 +246,8 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
     newsImage = null;
     // "let's play chess": the board goes up at once, before Claude has said a word (so it can't make a prop board instead)
     const wantsGame = !o.news && gameAsked(text);
-    if (wantsGame && (world.game?.id !== wantsGame.game || ['done', 'won', 'lost', 'over'].includes(world.game.state))) {
+    // ("quiz me" in a lesson is a question on the chalkboard, not the trivia quiz)
+    if (wantsGame && !(world.game?.id === 'lesson' && wantsGame.game === 'quiz') && (world.game?.id !== wantsGame.game || ['done', 'won', 'lost', 'over'].includes(world.game.state))) {
       const r = await world.play(wantsGame.game, { level: wantsGame.level });
       text += `\n(The ${(GAMES[wantsGame.game]?.title || wantsGame.game).toLowerCase()} ${wantsGame.game === 'draw_and_guess' ? 'game' : wantsGame.game === 'chess' ? 'board' : 'table'} was set up straight away when they asked: ${r} Don't call play or make for it; just react.)`;
     }
