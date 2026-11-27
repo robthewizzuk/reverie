@@ -12,7 +12,7 @@ export const LIMITS = { yaw: 1.2, pitchUp: .9, pitchDown: .35, lowest: -.05, hig
  * The inside of the room the camera stays in, in metres (Reverie stands at 0, 0; the back wall is at z -1.6 and the
  * window wall at x -2.1). A rounded room changes only this: inside(p) moves a point back inside it.
  */
-export const ROOM = { min: [-1.85, .15, -1.35], max: [1.95, 2.7, 2.25] };
+export const ROOM = { min: [-1.85, .15, -1.35], max: [1.95, 2.3, 2.25] };
 const WALL_GAP = .3;   // (how near the round wall the camera may come, metres)
 export function inside(p) {
   for (let i = 0; i < 3; i++) p[i] = Math.min(ROOM.max[i], Math.max(ROOM.min[i], p[i]));

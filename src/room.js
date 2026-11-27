@@ -14,8 +14,8 @@ export const PARTS = Object.keys(DEFAULT_ROOM);
 // board that follows the curve, from x0 to x1 at height y (its top), d deep. The desk floats on the wall like the shelf
 // (no legs: the floor curves up into the wall where they would stand).
 export const DESK = { x0: .25, x1: 1.6, y: .815, d: .5 };
-export const SHELF = { x0: -1.7, x1: -.6, y: 1.47, d: .24 };
-export const SILL = { x0: -.72, x1: .12, y: 1.22, d: .16 };
+export const SHELF = { x0: -1.72, x1: -.72, y: 1.24, d: .24 };
+export const SILL = { x0: -.72, x1: .12, y: .99, d: .16 };
 // the ledge along the bottom of the big left window: from the glass (x0) to a little into the room (x1), its top at y,
 // along the straight part of the window's bottom edge (z0 to z1)
 export const LEDGE = { x0: WINDOW.x, x1: sideX((WINDOW.z0 + WINDOW.z1) / 2, WINDOW.y0) + .12, y: WINDOW.y0 + .012, z0: WINDOW.z0 + WINDOW.r - .06, z1: WINDOW.z1 - WINDOW.r + .06 };

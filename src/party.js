@@ -6,7 +6,7 @@ import gs from '../engine/src/gamescroll.js';
 
 const FLECKS = 70;                         // spots of light thrown by the ball
 const HANG = { x: -.62, y: 1.02, z: -.85 };   // where the ball hangs, lowered (above and behind its left shoulder, in view)
-const ROOM = { min: [-1.98, 0, -1.58], max: [2.2, 3, 2.2] };   // where its flecks land (inside the walls)
+const ROOM = { min: [-1.98, 0, -1.58], max: [2.2, 2.55, 2.2] };   // where its flecks land (inside the walls)
 const COLOURS = ['#ff4fa3', '#4fb8ff', '#ffd23f', '#7cff6b', '#b46bff'];
 
 /** The ball's tiles: a grid of greys (one a face of the sphere) and the glints, a few bright tiles. */
