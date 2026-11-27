@@ -14,11 +14,12 @@ export const LIMITS = { yaw: 1.2, pitchUp: .9, pitchDown: .35, lowest: -.05, hig
  */
 export const ROOM = { min: [-1.85, .15, -1.35], max: [1.95, 2.7, 2.25] };
 const WALL_GAP = .3;   // (how near the round wall the camera may come, metres)
-export function inside(p) {
-  for (let i = 0; i < 3; i++) p[i] = Math.min(ROOM.max[i], Math.max(ROOM.min[i], p[i]));
+export function inside(p, seat = null) {
+  // (a seat a game chose is never pulled in: the camera may always go as far out as the seat it sits at)
+  for (let i = 0; i < 3; i++) p[i] = Math.min(Math.max(ROOM.max[i], seat?.[i] ?? -Infinity), Math.max(Math.min(ROOM.min[i], seat?.[i] ?? Infinity), p[i]));
   // the room is round (shell.js): a point too near its curved wall or dome is pulled back towards the middle
   const dx = p[0] - SHELL.cx, dz = p[2] - SHELL.cz, d = Math.hypot(dx, dz);
-  const r = shellR(Math.atan2(dz, dx), p[1]) - WALL_GAP;
+  const r = Math.max(shellR(Math.atan2(dz, dx), p[1]) - WALL_GAP, seat ? Math.hypot(seat[0] - SHELL.cx, seat[2] - SHELL.cz) : 0);
   if (d > Math.max(r, 0) && d > 1e-6) { const k = Math.max(r, 0) / d; p[0] = SHELL.cx + dx * k; p[2] = SHELL.cz + dz * k; }
   return p;
 }
@@ -121,7 +122,7 @@ export function makeLook({ el, onTap = () => {}, onMove = () => {} }) {
       const dx = px - lx, dy = py - ly, dz = pz - lz, r = Math.hypot(dx, dy, dz) || 1;
       const yaw = Math.atan2(dx, dz) + now.yaw;
       const pitch = Math.max(LIMITS.lowest, Math.min(LIMITS.highest, Math.asin(dy / r) + now.pitch)), d = r * now.zoom;
-      const pos = inside([lx + d * Math.cos(pitch) * Math.sin(yaw), ly + d * Math.sin(pitch), lz + d * Math.cos(pitch) * Math.cos(yaw)]);
+      const pos = inside([lx + d * Math.cos(pitch) * Math.sin(yaw), ly + d * Math.sin(pitch), lz + d * Math.cos(pitch) * Math.cos(yaw)], seat.pos);
       return { pos, look: seat.look };
     },
     stop() {
