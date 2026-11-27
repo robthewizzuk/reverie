@@ -13,6 +13,7 @@
     "test:show": "node tests/show.mjs",
     "test:body": "node tests/body.mjs",
     "helpers:sync": "node --env-file-if-exists=.env.local scripts/helpers-sync.mjs",
+    "test:sounds": "node tests/sounds.mjs",
     "worker:dev": "npm run build && cd worker && wrangler dev",
     "deploy": "npm run build && cd worker && wrangler deploy"
   },
