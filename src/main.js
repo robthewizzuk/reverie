@@ -15,6 +15,7 @@ import { makeShow } from './show.js';
 import { makeMemory } from './memory.js';
 import { surpriseFor, briefingNote, funDay } from './daily.js';
 import { makeDiary } from './diary.js';
+import { makeShaker } from './fun.js';
 
 const $ = s => document.querySelector(s);
 const stage = $('#stage'), canvas = $('#view'), ctx = canvas.getContext('2d');
@@ -23,13 +24,13 @@ const gamebar = $('#gamebar'), gameText = $('#gamebar span'), gameButtons = $('#
 const draw = $('#draw'), book = $('#book'), look = $('#look');
 const debug = new URLSearchParams(location.search).has('debug');
 
-let W = 0, H = 0, world, brain, body, voice, pad, diary, mood, show, last = 0, awake = false, captionT = 0, nextAt = 0;
+let W = 0, H = 0, world, brain, body, voice, pad, diary, mood, show, shaker, last = 0, awake = false, captionT = 0, nextAt = 0;
 // its diary, kept in this browser (memory.js), and today's surprise (daily.js): { surprise, holding, funDay }
 const memory = makeMemory();
 const today = { surprise: null, holding: null, funDay: funDay() };
 let overnight = Promise.resolve();
 // which kind of fun each of Claude's tools is, for its mood (mood.js FUN)
-const FUN_OF = { make: 'make', change: 'change', toss: 'toss', place: 'place', room_colours: 'room', colours: 'colours', roll: 'roll', doodle: 'doodle', play: 'game', game_move: 'move', voice: 'voice', show: 'show' };
+const FUN_OF = { make: 'make', change: 'change', toss: 'toss', place: 'place', room_colours: 'room', colours: 'colours', roll: 'roll', doodle: 'doodle', play: 'game', game_move: 'move', voice: 'voice', show: 'show', smash: 'smash', effect: 'effect' };
 
 // What the engine's speed kit is told is being played, so the 3D view paces and tunes itself as it does for a Next Gen
 // game in the app: 60 frames a second on a phone or a laptop's browser (not every refresh of a 120 Hz screen, which is
@@ -114,7 +115,7 @@ function frame(now) {
       }
     }
     captionT -= dt; if (captionT < 0 && !brain?.speaking) caption.hidden = true;
-    if (awake) body.update(dt);
+    if (awake) { body.update(dt); shaker?.update(dt); }
     mood.update(dt);
     const c = world.creature; c.cheer += (mood.cheer - c.cheer) * (1 - Math.exp(-dt * 1.5));   // (its body follows its mood, gently)
     brain.update();
@@ -172,14 +173,19 @@ async function boot() {
       forget: async input => { const r = memory.forget(input); brain.refreshMemo(); return r; },
       briefing: async () => { today.surprise ||= await surpriseFor(); return briefingNote(memory, { weather: await weatherHere(), surprise: today.surprise }); },
       show: input => show.open({ find: typeof input?.find === 'string' ? input.find : '' }),
+      effect: input => world.show(input.kind),
+      smash: input => world.smash(input.how),
       diary: async () => { diary.show(); return 'Your diary is open on their screen: everything you remember about them, and a way to forget any of it.'; },
     } });
   body = makeBody({ creature: world.creature, world, mood });
+  // the phone in their hands (fun.js): shaken, it gets dizzy and Claude hears of it; tilted, things on the floor roll
+  shaker = makeShaker({ world: world.physics, creature: world.creature, floaties: world.floaties, floor: world.floorBodies, pet: () => world.keeper,
+    onShaken: strength => { mood.fun('shake'); if (!world.game) brain.notice(`[phone] They just shook the phone ${strength > 220 ? 'really hard' : 'about'}: you are dizzy, and everything on the floor bounced.`, true); } });
   world.onNews = (text, loud) => { gameNews(text); if (/^\[(chess|quiz|noughts|twenty|draw and guess|quest)/.test(text)) mood.fun(/checkmate|you win|you won|they won|last question|well played|right!|guessed it|treasure/i.test(text) ? 'win' : 'move'); brain.notice(text, loud); };
   world.onSay = line => { if (brain.busy || brain.speaking) return false; brain.speak(line); return true; };
   world.pad = pad;
   voice = new Listener({ onProblem: () => listeningOff(), onNote: debug ? line => { timing.textContent = 'mic: ' + line; } : null });
-  window.__reverie = { world, brain, body, gs, voice, pad, memory, diary, today, mood, show };
+  window.__reverie = { world, brain, body, gs, voice, pad, memory, diary, today, mood, show, shaker };
   requestAnimationFrame(frame);
   // every shader the room needs, built in the background before it wakes (the driver's own threads), so none is built
   // in the middle of a chat: a whole room's shaders built in one frame was a stall of a second or more

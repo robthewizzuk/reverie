@@ -18,10 +18,17 @@ const heart = x => {
 // a "z" as three strokes (no font)
 const zed = x => { x.strokeStyle = '#ffffff'; x.lineWidth = 7; x.lineCap = x.lineJoin = 'round'; x.beginPath(); x.moveTo(18, 18); x.lineTo(46, 18); x.lineTo(18, 46); x.lineTo(46, 46); x.stroke(); };
 
+// a five-pointed star, for dizzy stars round its head
+const star = x => {
+  x.fillStyle = '#ffffff'; x.beginPath();
+  for (let i = 0; i < 10; i++) { const r = i % 2 ? 11 : 27, a = -Math.PI / 2 + i * Math.PI / 5; x.lineTo(32 + Math.cos(a) * r, 33 + Math.sin(a) * r); }
+  x.closePath(); x.fill();
+};
+
 /** makeFloaties(scene): burst(at, { kind, n, colour }), update(dt). */
 export function makeFloaties(scene) {
   const { THREE } = gs.hd;
-  const pics = { heart: picture(THREE, heart), z: picture(THREE, zed) };
+  const pics = { heart: picture(THREE, heart), z: picture(THREE, zed), star: picture(THREE, star) };
   const pool = [];
   for (let i = 0; i < POOL; i++) {
     const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: pics.heart, transparent: true, depthWrite: false }));
@@ -29,8 +36,8 @@ export function makeFloaties(scene) {
     pool.push({ s, t: 0, life: 0, vx: 0, vy: 0, vz: 0, size: 0, spin: 0 });
   }
   return {
-    /** Sends up n of them from a point ({ x, y, z }); kind 'heart' or 'z'. */
-    burst(at, { kind = 'heart', n = 5, colour = kind === 'z' ? '#cfe0ff' : '#ff7a9a', size = kind === 'z' ? .05 : .055, spread = .12, rise = .35 } = {}) {
+    /** Sends up n of them from a point ({ x, y, z }); kind 'heart', 'z' or 'star'. */
+    burst(at, { kind = 'heart', n = 5, colour = kind === 'z' ? '#cfe0ff' : kind === 'star' ? '#ffe27a' : '#ff7a9a', size = kind === 'z' ? .05 : .055, spread = .12, rise = .35 } = {}) {
       for (let i = 0; i < n; i++) {
         const p = pool.find(p => !p.life) || pool.reduce((a, b) => (a.t / a.life > b.t / b.life ? a : b));
         p.s.material.map = pics[kind]; p.s.material.color.set(colour); p.s.material.needsUpdate = true;

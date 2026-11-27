@@ -128,6 +128,8 @@ function checkInput(name, input) {
   if (name === 'room_colours' && ['walls', 'floor', 'rug', 'wood'].some(k => input[k] != null && typeof input[k] !== 'string')) return 'colours must be text';
   if (name === 'remember' && ['fact', 'name', 'birthday'].some(k => input[k] != null && typeof input[k] !== 'string')) return 'fact, name and birthday must be text';
   if (name === 'forget' && (typeof input.what !== 'string' || !input.what.trim())) return 'what must say what to forget';
+  if (name === 'effect' && typeof input.kind !== 'string') return 'kind must be a show, like fireworks';
+  if (name === 'smash' && input.how != null && !['smash', 'slice'].includes(input.how)) return 'how must be smash or slice';
   if (name === 'game_move' && (typeof input.move !== 'string' || !input.move.trim())) return 'move must be text';
   if (name === 'pet' && (!['make', 'trick', 'rename', 'away'].includes(input.action) || ['animal', 'name', 'colour', 'trick'].some(k => input[k] != null && typeof input[k] !== 'string'))) return 'action must be make, trick, rename or away, and the rest text';
   return null;
