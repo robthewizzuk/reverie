@@ -8,7 +8,7 @@ import { makeLook } from './look.js';
 import { makeBrain } from './brain.js';
 import { makeBody } from './body.js';
 import { Listener, sameWords } from './listen.js';
-import { askPlace, placeAt, weather } from './place.js';
+import { askPlace, placeAt, weather, contextLine } from './place.js';
 import { makePad, madeFrom } from './doodle.js';
 import { makeMood, toneOf } from './mood.js';
 import { setTone, sayOptions } from './looks.js';
@@ -16,21 +16,38 @@ import { makeShow } from './show.js';
 import { makeMemory } from './memory.js';
 import { surpriseFor, briefingNote, funDay } from './daily.js';
 import { makeDiary } from './diary.js';
+import { makeShaker } from './fun.js';
+import { makeMusic } from './music.js';
+import { makeHelpers, reportOf } from './helpers.js';
+import { makeWisps } from './helper-wisps.js';
+import { makeGoogle } from './google.js';
+import { makeLearning } from './learn.js';
+import { useLearning } from './games/lesson.js';
+import { makeReminders } from './reminders.js';
+import { makeTimers } from './timers.js';
+import { makeRecapper } from './recap.js';
 
 const $ = s => document.querySelector(s);
 const stage = $('#stage'), canvas = $('#view'), ctx = canvas.getContext('2d');
 const input = $('#say'), form = $('#bar'), mic = $('#mic'), caption = $('#caption'), status = $('#status'), wake = $('#wake'), timing = $('#timing');
 const gamebar = $('#gamebar'), gameText = $('#gamebar span'), gameButtons = $('#gamebar div');
-const draw = $('#draw'), book = $('#book'), look = $('#look'), recentre = $('#recentre');
+const draw = $('#draw'), book = $('#book'), look = $('#look'), recentre = $('#recentre'), helperList = $('#helpers');
 const debug = new URLSearchParams(location.search).has('debug');
 
-let W = 0, H = 0, world, brain, body, voice, pad, diary, mood, show, last = 0, awake = false, captionT = 0, nextAt = 0;
+let W = 0, H = 0, world, brain, body, voice, pad, diary, mood, show, shaker, music, helpers, wisps, google, timers, last = 0, awake = false, captionT = 0, nextAt = 0;
 // its diary, kept in this browser (memory.js), and today's surprise (daily.js): { surprise, holding, funDay }
 const memory = makeMemory();
+// what you are learning together (learn.js), kept beside the diary; the lessons write their days in the diary too
+const learning = makeLearning();
+useLearning(learning, { onDay: line => memory.note('day', { line }) });
+// reminders and timers, kept in this browser too (reminders.js), with their chips, chime and notifications (timers.js)
+const reminders = makeReminders();
+// (now and then the chat is boiled down into the diary: recap.js)
+const recapper = makeRecapper({ memory });
 const today = { surprise: null, holding: null, funDay: funDay() };
 let overnight = Promise.resolve(), hello = '';
 // which kind of fun each of Claude's tools is, for its mood (mood.js FUN)
-const FUN_OF = { make: 'make', change: 'change', toss: 'toss', place: 'place', room_colours: 'room', colours: 'colours', roll: 'roll', doodle: 'doodle', play: 'game', game_move: 'move', voice: 'voice', show: 'show' };
+const FUN_OF = { make: 'make', change: 'change', toss: 'toss', place: 'place', room_colours: 'room', colours: 'colours', roll: 'roll', doodle: 'doodle', play: 'game', game_move: 'move', voice: 'voice', show: 'show', smash: 'smash', effect: 'effect', music: 'music', dance: 'dance', teach: 'game' };
 
 // What the engine's speed kit is told is being played, so the 3D view paces and tunes itself as it does for a Next Gen
 // game in the app: 60 frames a second on a phone or a laptop's browser (not every refresh of a 120 Hz screen, which is
@@ -122,12 +139,14 @@ function frame(now) {
         const ok = brain.speaking ? deliberate(f) || (all && f.words.length >= 2)
           : brain.busy ? deliberate(f) || all
           : !f.words.length || f.yours.length / f.words.length > .3;
-        if (ok) brain.hear(said, { more: next.more, at: next.at });
+        if (ok && music && !music.heardOk(said)) console.info(`[reverie] music is on: took "${said}" for a lyric (say Reverie's name, or a music command)`);
+        else if (ok) brain.hear(said, { more: next.more, at: next.at });
         else { console.info(`[reverie] ignored its own voice: "${said}" (yours: ${f.yours.join(' ') || 'none'})`); if (debug) timing.textContent = 'ignored echo: ' + said; }
       }
     }
     captionT -= dt; if (captionT < 0 && !brain?.speaking) caption.hidden = true;
-    if (awake) body.update(dt);
+    if (awake) { body.update(dt); shaker?.update(dt); }
+    music.update(dt);
     mood.update(dt);
     const c = world.creature; c.cheer += (mood.cheer - c.cheer) * (1 - Math.exp(-dt * 1.5));   // (its body follows its mood, gently)
     brain.update();
@@ -135,6 +154,7 @@ function frame(now) {
     if (recentre.hidden === looking.moved) recentre.hidden = !looking.moved;
     canvas.classList.toggle('looking', looking.dragging);
     world.update(dt);
+    wisps?.update(dt); helpers?.tell();
     world.draw(ctx);
   } catch (e) {
     if (!e?.kitLoading) { console.error(e); setStatus('error: ' + e.message); }
@@ -168,7 +188,12 @@ async function boot() {
       // (a press of Show is them talking: it answers now, even mid-sentence)
       if (now) { brain.interrupt('shown something'); brain.hear(text, { at: performance.now(), news: true, image }); } else brain.notice(text, loud, image);
     } });
-  diary = makeDiary({ el: $('#diary'), memory, today: () => today, onForget: () => brain.refreshMemo() });
+  // Gmail and the calendar: read when asked; sending an email or adding an event only on a tap of Yes on its card
+  google = makeGoogle({ el: $('#ask'), onNews: (text, loud) => { console.info('[reverie] ' + text); brain.notice(text, loud); } });
+  google.check();
+  diary = makeDiary({ el: $('#diary'), memory, today: () => today, google, extra: () => lessonsHtml(learning),
+    onForget: what => { if (what === 'everything') learning.wipe(); else if (what.startsWith('lesson:')) learning.forget(what.slice(7)); brain.refreshMemo(); } });
+  learning.onChange(() => { if (diary.open) diary.show(); });
   // its mood: lifted by play, shown in its body, glow and voice, and told to Claude; a level up is a little burst of hearts
   mood = makeMood({ onLevel: (level, up) => {
     console.info(`[reverie] mood: ${level}`);
@@ -177,26 +202,71 @@ async function boot() {
     world.floaties.burst({ x: at.x, y: at.y + .3, z: at.z }, { n: 6 }); gs.sound.sounds.heart?.(); if (!c.busy) c.gesture('bounce');
   } });
   world.mood = mood; world.addLine(() => mood.line());
+  // music and dancing (music.js): Spotify plays, the mic hears the beat, and it dances
+  music = makeMusic({ world, el: $('#music'), onNews: (text, loud) => brain?.notice(text, loud) });
+  world.addLine(() => music.line());
+  // its helpers (helpers.js): little agents it sends off to look into things, shown as wisps over its head and pills on
+  // the stage; one that comes back is passed to Claude as news when Reverie is free, to tell you in its own words
+  wisps = makeWisps({ scene: world.view.scene, creature: world.creature, floaties: world.floaties });
+  helpers = makeHelpers({
+    ready: () => awake && !!brain && !brain.busy && !brain.speaking && !world.creature.state.listening,
+    onReport: h => { brain.hear(reportOf(h), { at: performance.now(), news: true }); if (h.status !== 'failed') mood.fun('chat'); return true; },
+    context: () => contextLine().replace(/^\[From the device, not said aloud: |\]$/g, ''),
+    onChange: list => { wisps.show(list); showHelpers(list); },
+  });
+  wisps.show(helpers.list); showHelpers(helpers.list);
+  world.addLine(() => helpers.line());
   world.creature.cheer = mood.cheer;
   setTone(() => toneOf(mood.cheer));
   brain = makeBrain({ world, onCaption: say, onStatus: setStatus, onTiming: showTiming,
-    memo: () => memory.summary(), onHeard: (text, again) => { memory.said('you', text, again); if (!again) mood.fun('chat'); },
+    memo: () => [memory.summary(), learning.summary()].filter(Boolean).join('\n'), onHeard: (text, again) => { memory.said('you', text, again); recapper.poke(); if (!again) mood.fun('chat'); timers?.heard(); },
     onTool: (name, input, r) => { noted(name, input, r); if (!r?.error && FUN_OF[name]) mood.fun(FUN_OF[name]); },
     tools: {
       window: input => world.daylight.set(input),
-      doodle: async () => { pad.show(); return 'The drawing pad is open on their screen. When they press Make it!, you will hear what they drew and it appears in your hands.'; },
+      doodle: async () => { if (world.game?.id === 'draw_and_guess') return { text: 'Not opened: the drawing pad is already in use for Draw and Guess.', error: true }; pad.show(); return 'The drawing pad is open on their screen. When they press Make it!, you will hear what they drew and it appears in your hands.'; },
       remember: async input => memory.remember(input),
-      forget: async input => { const r = memory.forget(input); brain.refreshMemo(); return r; },
-      briefing: async () => { today.surprise ||= await surpriseFor(); return briefingNote(memory, { weather: await weatherHere(), surprise: today.surprise }); },
+      recall: async input => memory.recall(input),
+      forget: async input => {
+        // (lessons are kept in their own book: "forget my Spanish lessons", or everything)
+        const lessons = /\b(lessons?|learning|learned|learnt|studies|words)\b/i.test(input.what || '') ? learning.forget(input.what) : '';
+        if (/^\s*(everything|all|it all|all of it|everything about me|the whole diary|your whole diary)\s*$/i.test(input.what || '')) learning.wipe();
+        const r = lessons ? `Forgot ${lessons}. They are gone from the diary.` : memory.forget(input);
+        brain.refreshMemo(); return r;
+      },
+      teach: async input => {
+        if (input.action === 'start') return world.play('lesson', { topic: input.topic, language: input.language, level: input.level });
+        return world.game?.id === 'lesson' ? world.game.teach(input) : { text: 'No lesson is on: start one with action start and a topic first.', error: true };
+      },
+      briefing: async () => { today.surprise ||= await surpriseFor(); const [wx, day] = await Promise.all([weatherHere(), googleDay()]); return briefingNote(memory, { weather: wx, surprise: today.surprise, google: day }); },
+      calendar: input => google.calendar(input),
+      email: input => google.email(input),
       show: input => show.open({ find: typeof input?.find === 'string' ? input.find : '' }),
+      effect: input => world.show(input.kind),
+      smash: input => world.smash(input.how),
+      ...music.tools,
+      send_helper: input => helpers.send(input),
+      helpers: input => helpers.manage(input),
       diary: async () => { diary.show(); return 'Your diary is open on their screen: everything you remember about them, and a way to forget any of it.'; },
+      reminder: input => timers.tool(input),
     } });
+  // reminders and timers: chips on the stage, a chime and Reverie saying so when one goes off (once it is free to talk)
+  world.addLine(() => reminders.line());
+  timers = makeTimers({ el: $('#timers'), reminders,
+    canTalk: () => awake && !brain.busy && !brain.speaking && !world.creature.state.listening,
+    announce: text => brain.hear(text, { at: performance.now(), news: true }),
+    onRing: () => { const c = world.creature; if (!c.busy) c.gesture('wave'); c.mood('excited'); const at = c.coreAt(new gs.hd.THREE.Vector3()); world.floaties.burst({ x: at.x, y: at.y + .3, z: at.z }, { n: 4 }); } });
   body = makeBody({ creature: world.creature, world, mood });
-  world.onNews = (text, loud) => { gameNews(text); if (/^\[(chess|quiz|noughts|twenty|draw and guess|quest)/.test(text)) mood.fun(/checkmate|you win|you won|they won|last question|well played|right!|guessed it|treasure/i.test(text) ? 'win' : 'move'); brain.notice(text, loud); };
+  // the phone in their hands (fun.js): shaken, it gets dizzy and Claude hears of it; tilted, things on the floor roll
+  shaker = makeShaker({ world: world.physics, creature: world.creature, floaties: world.floaties, floor: world.floorBodies, pet: () => world.keeper,
+    onShaken: strength => { mood.fun('shake'); if (!world.game) brain.notice(`[phone] They just shook the phone ${strength > 220 ? 'really hard' : 'about'}: you are dizzy, and everything on the floor bounced.`, true); } });
+  world.onNews = (text, loud) => { gameNews(text); if (/^\[(chess|quiz|noughts|twenty|draw and guess|quest|lesson)/.test(text)) mood.fun(/checkmate|you win|you won|they won|last question|well played|right!|guessed it|treasure/i.test(text) ? 'win' : 'move'); brain.notice(text, loud); };
   world.onSay = line => { if (brain.busy || brain.speaking) return false; brain.speak(line); return true; };
   world.pad = pad;
   voice = new Listener({ onProblem: () => listeningOff(), onNote: debug ? line => { timing.textContent = 'mic: ' + line; } : null });
-  window.__reverie = { world, brain, body, gs, voice, pad, memory, diary, today, mood, show };
+  // (which games they play most, for the diary's habits)
+  const play0 = world.play.bind(world);
+  world.play = (game, o) => { memory.note('play', { game }); return play0(game, o); };
+  window.__reverie = { world, brain, body, gs, voice, pad, memory, learning, diary, today, mood, show, shaker, music, helpers, google, reminders, timers, recapper };
   requestAnimationFrame(frame);
   // every shader the room needs, built in the background before it wakes (the driver's own threads), so none is built
   // in the middle of a chat: a whole room's shaders built in one frame was a stall of a second or more
@@ -260,17 +330,31 @@ function welcome(visit) {
 }
 
 const weatherHere = async () => placeAt() ? weather('').catch(() => null) : null;
+/** Today's calendar and new email, for the briefing ('' when Google isn't connected, or after 4 seconds). */
+const googleDay = () => Promise.race([google.briefing().catch(() => ''), wait(4000).then(() => '')]);
 const wait = ms => new Promise(r => setTimeout(r, ms));
 
 /** The first visit of a day: the briefing, said by Claude after its hello (with the weather once the place is known). */
 async function dailyBriefing(visit, asked) {
   await Promise.race([Promise.all([overnight, asked]), wait(7000)]);
-  const wx = await Promise.race([weatherHere(), wait(4000).then(() => null)]);
+  const [wx, day] = await Promise.all([Promise.race([weatherHere(), wait(4000).then(() => null)]), googleDay()]);
   if (!today.surprise) return;
   for (let i = 0; i < 40 && brain.busy; i++) await wait(500);   // (they got talking first: after that turn)
   memory.once('surprise');
   memory.note('day', { line: today.holding ? `found ${today.holding} waiting, and ${today.surprise.show}` : `the day's surprise was ${today.surprise.show}` });
-  brain.hear(briefingNote(memory, { weather: wx, surprise: today.surprise, firstToday: true, holding: today.holding, visit }), { at: performance.now(), news: true, keep: true });
+  brain.hear(briefingNote(memory, { weather: wx, surprise: today.surprise, firstToday: true, holding: today.holding, visit, google: day }), { at: performance.now(), news: true, keep: true });
+}
+
+/** The diary sheet's section on what you are learning together (learn.js): each subject, its words, and a ✕ for it. */
+function lessonsHtml(book) {
+  const subs = book.list(); if (!subs.length) return '';
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  return `<section><h3>Learning together</h3><ul class="facts">${subs.map(s => {
+    const due = s.kind === 'language' ? book.due(s.name, 99).length : 0;
+    const bits = [`${s.lessons} lesson${s.lessons === 1 ? '' : 's'}`, s.quiz.asked ? `quiz ${s.quiz.right}/${s.quiz.asked}` : '', s.words.length ? `${s.words.length} words${due ? `, ${due} to review` : ''}` : ''].filter(Boolean).join(' · ');
+    const more = s.kind === 'language' && s.words.length ? s.words.slice(-10).map(w => `${w.word} (${w.meaning})`).join(', ') : s.points.slice(-4).join(' · ');
+    return `<li><span><b>${esc(s.name)}</b> · ${esc(bits)}${more ? `<br><small>${esc(more)}</small>` : ''}${s.next ? `<br><small>Next time: ${esc(s.next)}</small>` : ''}</span><button type="button" data-unlearn="${esc(s.name)}" aria-label="Forget these lessons">✕</button></li>`;
+  }).join('')}</ul></section>`;
 }
 
 /** A tool Claude used, for the records: things it made, and dice. */
@@ -285,7 +369,7 @@ let lastEnd = '';
 function gameNews(text) {
   const g = world.game, key = (g?.id || '') + ':' + (g?.round ?? '');
   let end = null;
-  if (/^\[chess\]/.test(text)) end = /checkmate: they beat you/i.test(text) ? ['chess', { result: 'won' }] : /checkmate: you won/i.test(text) ? ['chess', { result: 'lost' }] : /stalemate|game is a draw/i.test(text) ? ['chess', { result: 'drawn' }] : null;
+  if (/^\[chess\]/.test(text)) { const level = g?.level; end = /checkmate: they beat you/i.test(text) ? ['chess', { result: 'won', level }] : /checkmate: you won/i.test(text) ? ['chess', { result: 'lost', level }] : /stalemate|game is a draw/i.test(text) ? ['chess', { result: 'drawn', level }] : null; }
   else if (/^\[quiz\] That was the last question/.test(text)) { const m = /scored (\d+) out of (\d+)/.exec(text); if (m) end = ['quiz', { score: +m[1], of: +m[2] }]; }
   if (!end) return;
   // (the same ending can be told twice; a new round is a new game object start)
@@ -333,6 +417,8 @@ wake.addEventListener('click', wakeUp);
 look.addEventListener('click', () => { if (!show) return; wakeUp(); if (show.isOpen) show.close(); else show.open(); });
 draw.addEventListener('click', () => { if (!pad) return; wakeUp(); if (pad.open) pad.hide(); else pad.show(); });
 book.addEventListener('click', () => { if (!diary) return; if (diary.open) diary.hide(); else diary.show(); });
+// (any tap lets Spotify's player make sound, on browsers that want one first)
+addEventListener('pointerdown', () => music?.tapped(), { capture: true });
 // a press on the room: a tap pokes Reverie, tosses what it holds or plays a game; a drag, pinch or scroll looks around
 // (look.js), and the button in the corner looks back at Reverie
 const looking = makeLook({
@@ -350,6 +436,24 @@ const looking = makeLook({
 canvas.addEventListener('pointerdown', () => { speed.inputAt = performance.now(); });
 recentre.addEventListener('click', () => looking.recentre());
 
+/** The helpers' pills on the stage: who is out and what each is doing; one with news can be tapped to hear it. */
+function showHelpers(list) {
+  const now = list.filter(h => h.status === 'working' || (!h.told && h.status !== 'stopped')).slice(-4);
+  helperList.hidden = !now.length;
+  helperList.replaceChildren(...now.map(h => {
+    const li = document.createElement('li'), dot = document.createElement('i'), name = document.createElement('b'), what = document.createElement('span');
+    li.className = h.status === 'working' ? 'working' : h.status === 'failed' ? 'failed news' : 'news';
+    li.style.setProperty('--c', h.colour || '#7fd8ff'); li.dataset.name = h.name;
+    name.textContent = h.name;
+    what.textContent = h.status === 'working' ? h.doing : h.status === 'failed' ? 'came back empty-handed' : 'is back: tap to hear';
+    li.title = h.task; li.append(dot, name, what); return li;
+  }));
+}
+helperList.addEventListener('click', e => {
+  const li = e.target.closest('li.news'); if (!li || !brain) return;
+  wakeUp(); helpers.tell();
+});
+
 // The line above the chat bar while a game is on: how it stands, and its buttons (Undo, New game, Done).
 let barKey = '';
 function showGame() {
@@ -362,8 +466,9 @@ function showGame() {
 }
 gamebar.addEventListener('click', e => {
   const id = e.target.closest('button')?.dataset.id, g = world?.game; if (!id || !g) return;
-  if (id === 'leave') world.stopGame();
-  else if (id === 'again') g.start();
+  // (Claude hears about both: a new round out loud, as when it calls play; a game put away with the next thing said)
+  if (id === 'leave') { const t = g.title; world.stopGame(); brain.notice(`[game] They pressed Done: ${t} is put away.`); }
+  else if (id === 'again') world.again();
   else g[id]?.();
   barKey = '';
 });

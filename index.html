@@ -17,10 +17,13 @@
     <canvas id="view" aria-label="A little creature in a cosy workshop corner"></canvas>
     <p id="caption" aria-live="polite" hidden></p>
     <button id="wake" type="button" hidden>Waking up…</button>
+    <div id="timers" hidden aria-live="polite"></div>
     <div id="gamebar" hidden><span></span><div></div></div>
     <button id="recentre" type="button" aria-label="Look back at Reverie" title="Look back at Reverie" hidden>
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm9 3h-2.07A7 7 0 0 0 13 5.07V3h-2v2.07A7 7 0 0 0 5.07 11H3v2h2.07A7 7 0 0 0 11 18.93V21h2v-2.07A7 7 0 0 0 18.93 13H21v-2Zm-9 6a5 5 0 1 1 0-10 5 5 0 0 1 0 10Z"/></svg>
     </button>
+    <div id="music" hidden><i aria-hidden="true">♪</i><span></span><button type="button" data-id="connect">Connect Spotify</button><button type="button" data-id="toggle" aria-label="Pause">❚❚</button><button type="button" data-id="next" aria-label="Next song">⏭</button></div>
+    <ul id="helpers" aria-label="Reverie's helpers" aria-live="polite" hidden></ul>
     <div id="pad" hidden>
       <p>Draw something, and Reverie will make it real</p>
       <canvas aria-label="Drawing pad"></canvas>
@@ -39,7 +42,12 @@
     <div id="diary" hidden>
       <header><h2>Reverie's diary</h2><button type="button" data-id="close" aria-label="Close the diary">✕</button></header>
       <div class="pages"></div>
-      <footer><p>Kept only in this browser. Nothing here leaves your device.</p><button type="button" data-id="wipe">Forget everything</button></footer>
+      <footer><p>Kept only in this browser, never stored on a server.</p><button type="button" data-id="wipe">Forget everything</button></footer>
+    </div>
+    <div id="ask" role="dialog" aria-modal="false" aria-labelledby="ask-title" hidden>
+      <h2 id="ask-title"></h2>
+      <div class="what"></div>
+      <footer><button type="button" data-id="yes"></button><button type="button" data-id="no"></button></footer>
     </div>
   </div>
   <p id="status" role="status"></p>

@@ -154,9 +154,17 @@ function checkInput(name, input) {
   if (name === 'place' && (typeof input.spot !== 'string' || !input.spot.trim())) return 'spot must be a place';
   if (name === 'place' && ['item', 'near', 'size'].some(k => input[k] != null && typeof input[k] !== 'string')) return 'item, near and size must be text';
   if (name === 'room_colours' && ['walls', 'floor', 'rug', 'wood'].some(k => input[k] != null && typeof input[k] !== 'string')) return 'colours must be text';
-  if (name === 'remember' && ['fact', 'name', 'birthday'].some(k => input[k] != null && typeof input[k] !== 'string')) return 'fact, name and birthday must be text';
+  if (name === 'remember' && ['fact', 'name', 'birthday', 'kind', 'when'].some(k => input[k] != null && typeof input[k] !== 'string')) return 'fact, kind, when, name and birthday must be text';
+  if (name === 'recall' && (typeof input.about !== 'string' || !input.about.trim())) return 'about must say what to look up';
   if (name === 'forget' && (typeof input.what !== 'string' || !input.what.trim())) return 'what must say what to forget';
+  if (name === 'effect' && typeof input.kind !== 'string') return 'kind must be a show, like fireworks';
+  if (name === 'smash' && input.how != null && !['smash', 'slice'].includes(input.how)) return 'how must be smash or slice';
+  if (name === 'teach' && (!['start', 'board', 'word', 'quiz', 'end'].includes(input.action) || ['topic', 'language', 'level', 'title', 'emoji', 'picture', 'word', 'meaning', 'sounds_like', 'example', 'question', 'next'].some(k => input[k] != null && typeof input[k] !== 'string') || ['lines', 'choices', 'learned'].some(k => input[k] != null && !Array.isArray(input[k])) || (input.answer != null && typeof input.answer !== 'number'))) return 'action must be start, board, word, quiz or end; lines, choices and learned lists; answer a number';
+  if (name === 'reminder' && (!['set', 'cancel', 'snooze', 'list'].includes(input.action) || ['what', 'at', 'repeat', 'kind'].some(k => input[k] != null && typeof input[k] !== 'string') || (input.minutes != null && typeof input.minutes !== 'number'))) return 'action must be set, cancel, snooze or list; minutes a number; what, at, kind and repeat text';
   if (name === 'game_move' && (typeof input.move !== 'string' || !input.move.trim())) return 'move must be text';
+  if (name === 'music' && (typeof input.action !== 'string' || (input.query != null && typeof input.query !== 'string') || (input.level != null && typeof input.level !== 'number'))) return 'action must be text, query text and level a number';
+  if (name === 'calendar' && (!['list', 'add'].includes(input.action) || ['day', 'title', 'start', 'end', 'where', 'notes'].some(k => input[k] != null && typeof input[k] !== 'string') || ['days', 'minutes'].some(k => input[k] != null && typeof input[k] !== 'number'))) return 'action must be list or add, days and minutes numbers, the rest text';
+  if (name === 'email' && (!['inbox', 'search', 'read', 'draft', 'send'].includes(input.action) || ['q', 'id', 'reply_to', 'to', 'subject', 'body', 'draft'].some(k => input[k] != null && typeof input[k] !== 'string') || input.max != null && typeof input.max !== 'number')) return 'action must be inbox, search, read, draft or send, max a number, the rest text';
   if (name === 'pet' && (!['make', 'trick', 'rename', 'away'].includes(input.action) || ['animal', 'name', 'colour', 'trick'].some(k => input[k] != null && typeof input[k] !== 'string'))) return 'action must be make, trick, rename or away, and the rest text';
   return null;
 }
@@ -273,7 +281,7 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
    * in the middle of a sentence is one question, not two.
    */
   async function hear(text, o = {}) {
-    text = String(text || '').trim().slice(0, 1000); if (!text) return;
+    text = String(text || '').trim().slice(0, o.news ? 2500 : 1000); if (!text) return;
     // the rest of a phrase whose first part has already been answered in full: nothing new, or a turn of its own
     if (o.more && ask && ask.my === turn && ask.done) {
       const before = new Set(wordsOf(ask.said));
@@ -290,6 +298,9 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
       if (ctl) { ctl.abort(); ctl = null; }
       speaker.stop();
     }
+    // (asking for a game is read from their own words only: news going along with them talks about games too, and
+    // "[quiz] ... offer another round" must not set a new quiz up when they then say "no thanks")
+    const own = text;
     if (!o.news) try { onHeard(text, !!prev); } catch { /* the diary's problem */ }
     const asked = { said: text, image: o.image || null, news: news.slice(), newsImage, cut };
     // a game hears what they said too (Twenty Questions counts a question, spots a guess) and may add a note
@@ -300,8 +311,9 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
     if (news.length) { text = news.join('\n') + '\n\n' + text; news = []; loudAt = 0; image ||= newsImage; }
     newsImage = null;
     // "let's play chess": the board goes up at once, before Claude has said a word (so it can't make a prop board instead)
-    const wantsGame = !o.news && gameAsked(text);
-    if (wantsGame && (world.game?.id !== wantsGame.game || ['done', 'won', 'lost', 'over'].includes(world.game.state))) {
+    const wantsGame = !o.news && gameAsked(own);
+    // ("quiz me" in a lesson is a question on the chalkboard, not the trivia quiz)
+    if (wantsGame && !(world.game?.id === 'lesson' && wantsGame.game === 'quiz') && (world.game?.id !== wantsGame.game || ['done', 'won', 'lost', 'over'].includes(world.game.state))) {
       const r = await world.play(wantsGame.game, { level: wantsGame.level });
       text += `\n(The ${(GAMES[wantsGame.game]?.title || wantsGame.game).toLowerCase()} ${wantsGame.game === 'draw_and_guess' ? 'game' : wantsGame.game === 'chess' ? 'board' : 'table'} was set up straight away when they asked: ${r} Don't call play or make for it; just react.)`;
     }

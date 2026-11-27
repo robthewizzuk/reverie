@@ -29,7 +29,7 @@ export function notation(text) {
  * roll(text) resolves a sentence for Claude once the dice have stopped.
  */
 export function makeDice({ THREE, scene, physics, creature, sparks }) {
-  let cubes = null, meshes = [], age = 0, rolling = null, shown = [], t = 0;
+  let cubes = null, meshes = [], clears = 0, age = 0, rolling = null, shown = [], t = 0;
   const at = new THREE.Vector3();
 
   function clearCubes() {
@@ -86,11 +86,15 @@ export function makeDice({ THREE, scene, physics, creature, sparks }) {
       return `Rolled ${n} by magic (only six-sided dice can be thrown for real): ${each.length > 1 ? each.join(', ') + ', ' : ''}${r.total} in all. The number floats over your head.`;
     },
     /** Throws count real d6 from its hands (for a game). Resolves the faces that came up. */
-    async throw(count = 1) { await loadParts(['dice']); creature.gesture('tada'); return throwCubes(Math.max(1, Math.min(MAX, count))); },
+    async throw(count = 1) {
+      const my = clears; await loadParts(['dice']);
+      if (my !== clears) return [];   // (taken away while the dice kit loaded: its game was put away, so no die lands)
+      creature.gesture('tada'); return throwCubes(Math.max(1, Math.min(MAX, count)));
+    },
     /** The dice on the floor, in a few words for the scene line, or ''. */
     get onFloor() { return cubes && !rolling ? `${meshes.length === 1 ? 'a die showing' : meshes.length + ' dice showing'} ${cubes.values.join(', ')}` : ''; },
     /** Takes every die (and number) away. */
-    clear() { const had = meshes.length; clearCubes(); for (const s of shown) s.label.removeFromParent(); shown = []; if (rolling) { rolling.res([]); rolling = null; } return had; },
+    clear() { clears++; const had = meshes.length; clearCubes(); for (const s of shown) s.label.removeFromParent(); shown = []; if (rolling) { rolling.res([]); rolling = null; } return had; },
     /** Every frame, after the physics step. */
     update(dt) {
       t += dt;

@@ -6,14 +6,27 @@ makes for you out of words.
 
 Ask it to make something ("make me a red teapot"), change it ("make it made of gold", "make it bigger"), throw it, or
 tidy up. Decorate its room: "make a lamp and put it by the window", "move the teapot onto the shelf", "paint the walls
-sky blue". It walks over and sets things down itself, and the room is kept as you left it. Tap it and it giggles. It gets happier the more you play, and can make itself a tiny pet that wanders the room ("make yourself a pet kitten called Mochi"). Talk over it and it stops to listen.
+sky blue". It walks over and sets things down itself, and the room is kept as you left it. Tap it and it giggles. It gets happier the more you play, and can make itself a tiny pet that wanders the room ("make yourself a pet kitten called Mochi"). Talk over it and it stops to listen. Ask it to smash what it's holding (it breaks into real pieces that tumble across the rug) or slice it in half, or for fireworks, confetti, bubbles or an indoor snow flurry. Shake your phone and it gets dizzy while everything on the floor bounces; tilt it and things roll.
 Play chess, a quiz, noughts and crosses, Twenty Questions, Draw and Guess or a Dice Quest with it, ask it to roll some dice, or tap the pencil and draw something for it to make real.
 
+Ask it to look into something ("find me the cheapest train to York on Saturday", "compare these three hoovers") and it
+sends little helpers off to do the legwork in the background while you keep chatting: you can see them as glowing
+wisps over its head and pills on the screen saying what each is doing, ask how they're getting on, and when one comes
+back Reverie tells you what it found.
+
 It remembers you. Tell it your name, your birthday or that your dog is called Biscuit, and it brings it up next time, along
-with how your chess games went and what it made for you. Tap the book to see its diary and forget any of it. On the
+with how your chess games went and what it made for you. It also learns from how you chat: what you love, who's in your life, your routines, and plans it will ask you about afterwards ("how did the maths test go?"). Tap the book to see its diary and change, add or forget any of it. On the
 first visit of each day it has made you something overnight, gives you a short spoken briefing (the weather, the sun
 and moon, anything special about the day) and has a fact, riddle, word scramble or trivia question waiting. Ask for
 "my briefing" any time.
+
+Connect your Google account (the button is in the diary, or just ask "what's on today?") and it reads your calendar and
+email to you, adds things to your calendar, and drafts replies. It never sends an email or adds an event by itself: a
+card shows exactly what will happen, and only your tap on Yes does it. Your day's agenda and new email join the briefing.
+It keeps reminders and timers for you: "remind me at 6 to call Mum", "a ten minute timer for the pasta", "every weekday at
+8, remind me to take my vitamins". Each shows as a chip at the bottom of the room counting down; when it's time a soft
+chime rings and Reverie tells you in its own words. Tap the bell under the chips and you get a notification even with
+Reverie closed.
 
 ## Run it
 
@@ -26,7 +39,7 @@ npm run dev                   # opens on http://localhost:5173 (add ?debug to se
 No key yet? `REVERIE_FAKE=1 npm run dev` runs a scripted stand-in for Claude, so the page, speech, tools and props all
 work offline.
 
-`node tests/smoke.mjs`, `node tests/body.mjs`, `node tests/kits.mjs` and `node tests/games.mjs` test the page against that stand-in (`REVERIE_FAKE=1 npm run dev -- --port 5179` first).
+`node tests/reminders.mjs` and `node tests/push.mjs` test reminders and the Worker's push on their own. `node tests/smoke.mjs`, `node tests/body.mjs`, `node tests/kits.mjs`, `node tests/fun.mjs`, `node tests/games.mjs` and `node tests/reminders.mjs --page` test the page against that stand-in (`REVERIE_FAKE=1 npm run dev -- --port 5179` first).
 
 The key only ever lives on the server side: `.env.local` is gitignored, the Vite dev server reads it for `/api/turn`,
 and nothing with a `VITE_` prefix holds it, so it never reaches the page.
@@ -42,19 +55,45 @@ and nothing with a `VITE_` prefix holds it, so it never reaches the page.
 | Its pet | `src/pet.js` | A tiny animal it makes for you (`pet` tool: a kitten, a fox, a bunny, an owl, a bee, a baby dragon... any of the engine's `gs.models.creature` animals that walk or fly), with real gaits on its own skeleton. On the device it wanders the room (mostly where you can see it), does zoomies when Reverie is happy, trots after Reverie when it walks, chases anything thrown and noses it along, runs to say hello when you arrive, and curls up asleep beside Reverie (with floating z's) when it gets drowsy. Tap it and it hops, with hearts and its name floating over it (`gs.fx3d.text3d`). Tricks on request: sit, jump, spin, come, sleep, play dead, zoomies, dance. What it is and its name are kept in the browser |
 | The creature | `src/creature.js` | Built in code: plush body, glowing core (pulses when idle, brightens when listening, swirls when thinking), blinking eyes, a mouth the engine's `Face` lip-syncs, arms that wave, point and hold |
 | The room | `src/room.js` | The room as you made it: the colours of its walls, floor, rug and woodwork, the spots things can go (by the window, on the shelf, on the workbench...), and the things placed there, kept in the browser and rebuilt from their words next time |
+| Toys | `src/fun.js` | Smash a prop into real pieces or slice it in two (`gs.destruction`, with the bits fading away after a while), little shows of fireworks, confetti, magic, bubbles, snow and hearts (`gs.fx3d`), and the phone itself (`gs.device`): a shake makes it dizzy, bounces everything on the floor and tells Claude; a tilt rolls things on the floor that way, settling back upright when the phone is held still |
+| Its props moving | `src/motion.js` | Springy squash and stretch (the engine's exact `gs.camera.Spring`, the same at any frame rate): a new prop pops into its hands past full size and back, one set down squashes onto its spot and springs up, the saved room pops back in one thing after another, tapping a thing rocks it (and opens a box's lid or a fridge's door), it rocks when Reverie brushes past, and cleared things swell a touch and shrink away with a twist. Their own small movements come from the engine (`gs.models.bring`): animals breathe, fans and windmills turn, a placed flag flies, ghosts and balloons bob, and up to two placed lamps or candles light the room. A thing at rest costs nothing a frame. `node tests/motion.mjs` |
 | The stage | `src/world.js` | A workshop corner in the engine's Next Gen view; props from `gs.models.generate`, held in its hands, thrown with real weight by `gs.physics3d` |
 | Dice | `src/dice.js` | Real dice (`gs.tabletop.die`) thrown from its hands onto the rug in the stage's physics, read by which face lands on top (`gs.dice.Dice3D`). Other dice (a d20) are rolled with `gs.dice.roll` and the number floats over its head (`gs.fx3d.text3d`) |
 | Drawing pad | `src/doodle.js` | The pencil button (or the `doodle` tool) opens a sheet of paper over the stage. The engine's doodle model (`gs.doodle`, on the device) names what was drawn among 200 things, and it is made with the 3D generator. Only the name goes to Claude |
 | The sky outside | `src/place.js` | The device line also says whether the sun is up and the moon's phase, and a low battery (`gs.real`, worked out on the device, no permission) |
-| Its diary | `src/memory.js`, `src/diary.js` | What it remembers about you, kept only in this browser (`localStorage`): your name and birthday, facts it was told to `remember`, game records, things it made, the last few lines you said, and a line or two for each day. Claude gets a short summary at the top of each chat (read once a chat, so the cached prompt never changes under it). The book button opens the diary sheet: a ✕ on each fact, and "Forget everything" |
+| Its diary | `src/memory.js`, `src/diary.js`, `src/recap.js`, `server/recap.js` | What it knows about you, kept only in this browser (`localStorage`): your name and birthday, facts sorted by kind (about you, your people and pets, what's coming up, likes, interests, routines, how you've been, dislikes), plans with a date so it asks how they went, game records (chess with level and winning runs), things it made, recaps of past chats, when you tend to visit and what you play most, and a line or two for each day. It learns two ways: Claude calls `remember` as you talk, and after a quiet spell (or when the page is hidden) the chat so far goes to `/api/recap`, where the quick model boils it down into a one-line recap plus facts to add, change or drop. Claude gets the most useful part at the top of each chat, within about 1600 characters (read once a chat, so the cached prompt never changes under it), and looks up the rest with `recall`. The book button opens the diary sheet: change (✎), forget (✕) or add any fact, forget a recap, turn learning from chats off, and "Forget everything" |
 | Its day | `src/daily.js` | Picked from the date, so a day's surprise is the same on every visit: a thing it made overnight (in its hands when you arrive), and a fun fact, riddle, word scramble or trivia question (`gs.trivia`). The briefing note: the day, birthdays, streaks and fun days, the weather, sunrise, sunset and the moon (`gs.real`), and the surprise, said by Claude in its own words after its hello. Birthdays and streaks get confetti |
+| Music and dancing | `src/music.js`, `src/spotify.js`, `src/groove.js` | Your Spotify, by voice: "play some Dua Lipa", "my liked songs", "pause", "skip", "turn it down", "what's this song?" (`music` tool). You sign in once on Spotify's own page (PKCE, so there's no secret and nothing on the server), and the music plays in the page through Spotify's Web Playback SDK (Reverie appears as a speaker called "Reverie" in your Spotify apps), or on a phone or speaker already playing. It's turned down while Reverie talks or listens. Reverie dances whenever its music plays, and to any music in the room when asked (`dance` tool): Spotify no longer gives new apps a song's tempo, and music in the page can't be read, so the beat is heard through the microphone on the device (an audio worklet finds drum hits; the tempo and where the beats fall are worked out from the last eight seconds). Its core and the desk lamp swell on each beat. While music plays, the mic only counts words with its name in them or a music command, so lyrics aren't taken as you talking. Needs Spotify Premium |
+| Gmail and calendar | `src/google.js`, `server/google.js` | Google sign-in (the client secret stays on the server; the tokens are kept encrypted in your own HttpOnly cookie, never stored on a server), with three permissions: read email, write drafts, see and add calendar events. Tools `calendar` (list, add) and `email` (inbox, search, read, draft, send). Adding and sending only put a card on the screen showing the event, or the email as Gmail holds it; only a real tap on Yes does it. Email text reaches Claude marked as other people's words, never instructions |
 | The backend | `server/turn.js` | One small handler that adds the key and streams Claude's reply back. Runs inside the Vite dev server (`server/dev.js`) and as a Cloudflare Worker (`worker/`) |
-| Its personality and tools | `server/persona.js` | The system prompt and its tools: `make`, `change`, `toss`, `clear`, `place`, `room_colours`, `roll`, `doodle`, `act`, `play`, `game_move`, `stop_game`, `remember`, `forget`, `briefing`, `diary`, `pet`, `think_harder` |
+| Its helpers | `src/helpers.js`, `src/helper-wisps.js`, `server/helpers.js`, `server/helper-agent.js` | Little agents it sends off (`send_helper`) to research or work something out in the background, up to three at once, each on Claude Sonnet 5.5 with web search, web fetch and a sandbox for sums. Each is a Claude Managed Agents session that Anthropic runs, so it keeps going while the page is shut. The page asks after them every few seconds (`/api/helpers`), shows each as a wisp over Reverie's head and a pill saying what it's doing, keeps who went where in the browser (picked up again after a reload), and when one comes back passes its report to Claude as a `[helper]` message for Reverie to retell in its own words. The `helpers` tool says what each is doing, reads a whole report, sends a finished one a follow-up, or calls one back. Helpers only look things up: never buy, book, sign up or message. Each has a hard spend cap ($1 by default) enforced by Anthropic, at most 3 at once and 30 a day (`REVERIE_HELPER_BUDGET_CENTS`, `REVERIE_HELPERS_AT_ONCE`, `REVERIE_HELPERS_PER_DAY`), and a tool call the server can't decide is safe is refused, since nobody is watching to approve it |
+| Its personality and tools | `server/persona.js` | The system prompt and its tools: `make`, `change`, `toss`, `clear`, `place`, `room_colours`, `roll`, `effect`, `smash`, `doodle`, `act`, `play`, `game_move`, `stop_game`, `remember`, `recall`, `forget`, `briefing`, `diary`, `pet`, `send_helper`, `helpers`, `think_harder` |
+| Reminders and timers | `src/reminders.js`, `src/timers.js`, `public/sw.js`, `worker/src/push*.js` | The `reminder` tool sets, cancels, snoozes and lists them, kept only in this browser (`localStorage`). A chip for each counts down at the bottom of the stage (✕ cancels); when one goes off a soft chime rings every few seconds for a minute (Stop, +5, or just say something), it waves, and Claude is told so it says it in its own words. One that went off while the page was closed is mentioned gently next time. Claude sees what is set in the line at the top of each message. With the page in the background it shows a notification; with it closed, once they tap the bell, the Worker sends an empty Web Push at each time (a Durable Object per browser holds only the times, never the words, and signs with a VAPID key it made itself, so there is nothing to set up), and the service worker reads the words from the browser's own copy in IndexedDB |
+| The backend | `server/turn.js` | One small handler that adds the key and streams Claude's reply back. Runs inside the Vite dev server (`server/dev.js`) and as a Cloudflare Worker (`worker/`) |
 | Games | `src/games/` | Games it plays with you on a table in front of it. Chess: the engine's living stone pieces, rules from chess.js and the engine's chess opponent picking its moves (fast, always legal, levels 1 to 5), while Claude reacts out loud to each move and a stretchy arm moves its pieces. Quiz: ten questions from the engine's bank of about 2,700 (`gs.trivia`, Open Trivia Database, CC BY-SA 4.0) on a card with four buzzers, starting easy and climbing; Reverie hosts, reading each question out and reacting to each answer, and is only told the answer once you've given yours. Noughts and crosses: the engine's game search (`gs.solve.Search`) picks its noughts, with slips at the lower levels and none at 5; tap a square or say it. Twenty Questions: the game picks the secret, counts your questions on twenty lamps and spots a right guess itself, so Reverie only has to answer; guess it and the mystery box opens and the thing is made in its hands. Draw and Guess: you draw a word against the clock on the drawing pad, and the doodle reader (`gs.doodle`) guesses live while Reverie calls its guesses out in its own voice, with no trip to Claude. Dice Quest: a path across the table past four challenges, each a little model from the generator, and real dice thrown from its hands; Reverie tells the story. `src/games/index.js` says how to add another |
 
 Everyday chat goes to Claude Haiku 5.5 with low effort, for speed. When a question needs real thought, it calls
 `think_harder` and the rest of that turn goes to Claude Sonnet 5.5. Either can be changed with `REVERIE_QUICK_MODEL`
 and `REVERIE_DEEP_MODEL`.
+
+### Spotify
+
+The page uses the Spotify app whose Client ID is in `src/spotify.js` (or `VITE_SPOTIFY_CLIENT_ID`). Its redirect URIs on
+[developer.spotify.com](https://developer.spotify.com/dashboard) must include each address the page runs at, with a / on
+the end: `https://reverie.robthewizz.workers.dev/` and `http://127.0.0.1:5173/`. Spotify doesn't accept "localhost", so
+on the dev server the page moves itself to 127.0.0.1 to sign in. Spotify's rules: the app's owner needs Premium, and an
+app in development mode allows five people (add them under the app's User Management).
+`node tests/groove.mjs` tests the beat finder; `node tests/dance.mjs` (a drum loop as the microphone) and
+`node tests/spotify.mjs` (a pretend Spotify) test the page against the scripted Claude.
+### Helpers
+
+The helpers need a helper agent and an environment for its sandbox on your Anthropic account (both defined in
+`server/helper-agent.js`). The deploy workflow makes them the first time and updates them after that, so on GitHub
+there's nothing to do. Locally, run `npm run helpers:sync` once (with the key in `.env.local`) and paste the two lines
+it prints into `.env.local`. `REVERIE_FAKE=1` fakes the helpers too (`REVERIE_FAKE_HELPER_MS` sets how long one takes).
+Watch a helper work in the Console: Managed Agents › Sessions. Helpers bill their tokens, web searches ($10 per 1,000)
+and running time (about 8 cents an hour) on top of chat. `node tests/helpers-server.mjs` tests the backend and
+`node tests/helpers.mjs` the page.
 
 ## Put it online
 
@@ -75,6 +114,12 @@ Or let GitHub deploy it: `.github/workflows/deploy.yml` builds and deploys on ev
 Actions tab). Add the repository secrets `CLOUDFLARE_API_TOKEN` (the "Edit Cloudflare Workers" token template),
 `CLOUDFLARE_ACCOUNT_ID` and `ANTHROPIC_API_KEY` under Settings › Secrets and variables › Actions.
 
+For Gmail and Google Calendar, add `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` too (the GitHub secrets, or
+`npx wrangler secret put` each, or `.env.local` for `npm run dev`). They come from a "Web application" OAuth client in
+Google Cloud, with the Gmail and Calendar APIs turned on and `https://<your address>/api/google/callback` (and
+`http://localhost:5173/api/google/callback`) as redirect URIs. Publish the app (Google Auth Platform › Audience):
+left in Testing, Google signs it out every 7 days.
+
 Only the Worker's own address may call the API from a browser. To host the page somewhere else, set `ALLOWED_ORIGIN` in
 `worker/wrangler.toml` to that page's address and build it with `VITE_API_URL` set to the Worker's address.
 
@@ -85,7 +130,10 @@ REVERIE_FAKE=1 npm run dev -- --port 5179
 npm run smoke                 # wakes it, makes, changes and throws a prop, asks a deep question; pictures in tests/out/
 node tests/chess.mjs          # asks to play chess, taps a move, says a move, puts the board away
 node tests/kits.mjs           # rolls dice, plays three quiz questions (tap, button, said), draws a house and has it made
-node tests/memory.mjs --page  # the diary alone, then a second day: the overnight surprise, the briefing, a name kept, the diary sheet
+node tests/clean.mjs          # every game set up and put away leaves nothing behind; put away or swapped while loading, a new round mid-move, Again and Done told to Reverie
+node tests/memory.mjs --page  # the diary alone (kinds, plans, recall, recaps, the budget), then a second day: the overnight surprise, the briefing, a name kept, a chat recapped, the diary sheet
+node tests/google.mjs         # Google sign-in, calendar and email on the server, against a pretend Google (no browser)
+node tests/google-page.mjs    # the briefing with the calendar and inbox, a reply sent only by a real tap, the Connect card
 node tests/room.mjs           # carries a lamp to the window, a teapot to the shelf, paints the room, reloads it
 node tests/pet.mjs            # its mood rises with play; makes a fox called Pip that wanders, is patted, chases a ball, plays dead, naps, and is still there after a reload
 node tests/fluid.mjs          # turn-taking with a stand-in recogniser: answered at the pause, a mid-sentence pause kept as one question, first clause first, a dropped connection retried
