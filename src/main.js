@@ -287,7 +287,7 @@ async function boot() {
   // its windowsill garden (garden.js): plants that grow over real days, watered by asking or by a tap on the pot
   garden = makeGarden({ world, onNews: (text, loud) => brain.notice(text, loud) });
   world.addLine(() => garden.line());
-  world.onNews = (text, loud) => { gameNews(text); gameBadges(text); if (/^\[(chess|quiz|noughts|twenty|draw and guess|quest|lesson)/.test(text)) mood.fun(/checkmate|you win|you won|they won|last question|well played|right!|guessed it|treasure/i.test(text) ? 'win' : 'move'); brain.notice(text, loud); };
+  world.onNews = (text, loud) => { gameNews(text); gameBadges(text); if (/^\[(chess|quiz|noughts|twenty|draw and guess|quest|lesson|escape)/.test(text)) mood.fun(/checkmate|you win|you won|they won|last question|well played|right!|guessed it|treasure|you escaped/i.test(text) ? 'win' : 'move'); brain.notice(text, loud); };
   world.onSay = line => { if (brain.busy || brain.speaking) return false; brain.speak(line); return true; };
   world.pad = pad;
   voice = new Listener({ onProblem: () => listeningOff(), onNote: debug ? line => { timing.textContent = 'mic: ' + line; } : null });
@@ -593,7 +593,7 @@ gamebar.addEventListener('click', e => {
   if (id === 'leave') { const t = g.title; world.stopGame(); brain.notice(`[game] They pressed Done: ${t} is put away.`); }
   else if (id === 'again') world.again();
   else g[id]?.();
-  barKey = '';
+  barKey = null;   // (shown afresh next frame, hidden too when that was Done)
 });
 
 boot().catch(e => { console.error(e); setStatus('error: ' + (e?.message || e)); });
