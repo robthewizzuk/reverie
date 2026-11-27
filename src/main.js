@@ -305,7 +305,7 @@ mic.addEventListener('click', async () => {
   if (await startListening()) setStatus('');
 });
 wake.addEventListener('click', wakeUp);
-look.addEventListener('click', () => { if (!show) return; wakeUp(); if (show.open) show.close(); else show.open(); });
+look.addEventListener('click', () => { if (!show) return; wakeUp(); if (show.isOpen) show.close(); else show.open(); });
 draw.addEventListener('click', () => { if (!pad) return; wakeUp(); if (pad.open) pad.hide(); else pad.show(); });
 book.addEventListener('click', () => { if (!diary) return; if (diary.open) diary.hide(); else diary.show(); });
 // (any tap lets Spotify's player make sound, on browsers that want one first)
