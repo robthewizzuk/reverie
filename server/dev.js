@@ -11,6 +11,8 @@ export function reverieApi(env) {
     name: 'reverie-api',
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
+        // (push for reminders runs on the Worker only: here the page keeps them while it is open)
+        if ((req.url || '').startsWith('/api/push')) { res.statusCode = 404; res.setHeader('content-type', 'application/json'); return res.end('{"error":"push runs on the Worker only"}'); }
         if (!(req.url || '').startsWith('/api/turn')) return next();
         const ac = new AbortController();
         res.on('close', () => { if (!res.writableEnded) ac.abort(); });

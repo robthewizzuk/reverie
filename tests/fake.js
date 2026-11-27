@@ -10,6 +10,8 @@
 //   "roll ..."        -> roll;  "quiz me" -> play quiz;  "[quiz] ..." -> a quip;  "answer b" -> game_move;  "draw" -> doodle;  "[doodle] ..." -> a quip
 //   "square <x>"      -> game_move (noughts);  "[noughts|twenty|draw and guess] ..." -> a quip;  a counted question -> "Nope!"
 //   "make me a pet fox called pip" -> pet make;  "pet sit" -> pet trick;  "[pet] ..." / "[mood] ..." -> a quip
+//   "set a timer for <n> seconds|minutes [for <x>]" / "remind me at <time> to <x>" / "cancel the <x>" / "snooze it" /
+//   "what reminders" -> reminder;  "[reminder|timer] ..." -> a line saying so
 //   anything else     -> a friendly line with a wave
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const lastUser = messages => [...messages].reverse().find(m => m.role === 'user');
@@ -37,6 +39,10 @@ function plan(body) {
     if (/^Forgot /.test(r)) return { text: 'Poof, forgotten.', tools: [] };
     if (/^\[Their daily briefing/.test(r)) return { text: 'Here is your briefing: it is a lovely day for making things.', tools: [] };
     if (/diary is open/i.test(r)) return { text: 'There it is, my diary.', tools: [] };
+    if (/^Set (a|an) /.test(r)) return { text: "Done, I'll give you a shout!", tools: [] };
+    if (/^Cancelled /.test(r)) return { text: 'Cancelled.', tools: [] };
+    if (/^Snoozed /.test(r)) return { text: 'Five more minutes, then.', tools: [] };
+    if (/timer \(|reminders or timers are set|a reminder to /.test(r) && results[0] && !/^Not /.test(r)) return { text: "Here's what's set.", tools: [] };
     if (/^Answered /.test(r)) return { text: 'Ooh.', tools: [] };
     if (/noughts and crosses board is set up/i.test(r)) return { text: 'Crosses, your move.', tools: [] };
     if (/Twenty Questions is set up/.test(r)) return { text: "I'm thinking of something. Twenty questions, go!", tools: [] };
@@ -50,6 +56,12 @@ function plan(body) {
   }
   let m0;
   const said = saidOf(u).replace(/^\[[a-z ]+[,:][^\]]*\]\s*/, '').toLowerCase().replace(/^(\[(pet|mood)\][^\n]*\n+)+(?=\S)/, '');
+  if (/^\[(reminder|timer)\]/.test(said)) return { text: /\[timer\]/.test(said) ? "Ding ding, time's up!" : 'Psst, it is time!', tools: [] };
+  if ((m0 = /set a timer for (\d+(?:\.\d+)?) (seconds?|minutes?)(?: for (?:the )?(.+))?/.exec(said))) return { text: 'Timer coming up.', tools: [['reminder', { action: 'set', kind: 'timer', minutes: +m0[1] / (m0[2][0] === 's' ? 60 : 1), what: m0[3] || '' }]] };
+  if ((m0 = /remind me at (\S+) to (.+)/.exec(said))) return { text: 'I will.', tools: [['reminder', { action: 'set', at: m0[1], what: m0[2] }]] };
+  if ((m0 = /^cancel (?:the )?(.+)/.exec(said))) return { text: 'Okay.', tools: [['reminder', { action: 'cancel', what: m0[1] }]] };
+  if (/^snooze/.test(said)) return { text: 'Fine.', tools: [['reminder', { action: 'snooze', minutes: 5 }]] };
+  if (/what reminders|what timers/.test(said)) return { text: 'Let me look.', tools: [['reminder', { action: 'list' }]] };
   if (/^\[(noughts|twenty|draw and guess|quest)\]/.test(said)) return { text: /they won/.test(said) ? 'No fair!' : /you won/.test(said) ? 'Three in a row!' : /round is over/.test(said) ? 'What a round of drawings!' : /treasure chest with/.test(said) ? 'And they lived happily ever after!' : /last heart/.test(said) ? 'And the owl flew them home.' : 'Hmm, interesting.', tools: [] };
   if (/\(they guessed it|\(they gave up/.test(said)) return { text: 'Ta-da, there it is!', tools: [] };
   if (/\(question \d+ of 20/.test(said)) return { text: 'Nope!', tools: [] };

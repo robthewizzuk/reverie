@@ -15,6 +15,8 @@ import { makeShow } from './show.js';
 import { makeMemory } from './memory.js';
 import { surpriseFor, briefingNote, funDay } from './daily.js';
 import { makeDiary } from './diary.js';
+import { makeReminders } from './reminders.js';
+import { makeTimers } from './timers.js';
 
 const $ = s => document.querySelector(s);
 const stage = $('#stage'), canvas = $('#view'), ctx = canvas.getContext('2d');
@@ -23,9 +25,11 @@ const gamebar = $('#gamebar'), gameText = $('#gamebar span'), gameButtons = $('#
 const draw = $('#draw'), book = $('#book'), look = $('#look');
 const debug = new URLSearchParams(location.search).has('debug');
 
-let W = 0, H = 0, world, brain, body, voice, pad, diary, mood, show, last = 0, awake = false, captionT = 0, nextAt = 0;
+let W = 0, H = 0, world, brain, body, voice, pad, diary, mood, show, timers, last = 0, awake = false, captionT = 0, nextAt = 0;
 // its diary, kept in this browser (memory.js), and today's surprise (daily.js): { surprise, holding, funDay }
 const memory = makeMemory();
+// reminders and timers, kept in this browser too (reminders.js), with their chips, chime and notifications (timers.js)
+const reminders = makeReminders();
 const today = { surprise: null, holding: null, funDay: funDay() };
 let overnight = Promise.resolve();
 // which kind of fun each of Claude's tools is, for its mood (mood.js FUN)
@@ -163,7 +167,7 @@ async function boot() {
   world.creature.cheer = mood.cheer;
   setTone(() => toneOf(mood.cheer));
   brain = makeBrain({ world, onCaption: say, onStatus: setStatus, onTiming: showTiming,
-    memo: () => memory.summary(), onHeard: text => { memory.said('you', text); mood.fun('chat'); },
+    memo: () => memory.summary(), onHeard: text => { memory.said('you', text); mood.fun('chat'); timers?.heard(); },
     onTool: (name, input, r) => { noted(name, input, r); if (!r?.error && FUN_OF[name]) mood.fun(FUN_OF[name]); },
     tools: {
       window: input => world.daylight.set(input),
@@ -173,13 +177,20 @@ async function boot() {
       briefing: async () => { today.surprise ||= await surpriseFor(); return briefingNote(memory, { weather: await weatherHere(), surprise: today.surprise }); },
       show: input => show.open({ find: typeof input?.find === 'string' ? input.find : '' }),
       diary: async () => { diary.show(); return 'Your diary is open on their screen: everything you remember about them, and a way to forget any of it.'; },
+      reminder: input => timers.tool(input),
     } });
+  // reminders and timers: chips on the stage, a chime and Reverie saying so when one goes off (once it is free to talk)
+  world.addLine(() => reminders.line());
+  timers = makeTimers({ el: $('#timers'), reminders,
+    canTalk: () => awake && !brain.busy && !brain.speaking && !world.creature.state.listening,
+    announce: text => brain.hear(text, { at: performance.now(), news: true }),
+    onRing: () => { const c = world.creature; if (!c.busy) c.gesture('wave'); c.mood('excited'); const at = c.coreAt(new gs.hd.THREE.Vector3()); world.floaties.burst({ x: at.x, y: at.y + .3, z: at.z }, { n: 4 }); } });
   body = makeBody({ creature: world.creature, world, mood });
   world.onNews = (text, loud) => { gameNews(text); if (/^\[(chess|quiz|noughts|twenty|draw and guess|quest)/.test(text)) mood.fun(/checkmate|you win|you won|they won|last question|well played|right!|guessed it|treasure/i.test(text) ? 'win' : 'move'); brain.notice(text, loud); };
   world.onSay = line => { if (brain.busy || brain.speaking) return false; brain.speak(line); return true; };
   world.pad = pad;
   voice = new Listener({ onProblem: () => listeningOff(), onNote: debug ? line => { timing.textContent = 'mic: ' + line; } : null });
-  window.__reverie = { world, brain, body, gs, voice, pad, memory, diary, today, mood, show };
+  window.__reverie = { world, brain, body, gs, voice, pad, memory, diary, today, mood, show, reminders, timers };
   requestAnimationFrame(frame);
   // every shader the room needs, built in the background before it wakes (the driver's own threads), so none is built
   // in the middle of a chat: a whole room's shaders built in one frame was a stall of a second or more
