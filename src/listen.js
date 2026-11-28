@@ -70,6 +70,7 @@ export class Listener {
       const t = this.stream.getAudioTracks()[0];
       this.micAllowed = true;
       this.note(`microphone allowed: "${t?.label || 'unnamed'}", ${t?.readyState}${t?.muted ? ', muted' : ''}`);
+      this._startVad(this.stream);
       // (only the first way listens to this stream: the others needed it just for the prompt)
       if (WAYS[this.way] !== 'track') this.release();
     } catch (e) {
@@ -87,8 +88,38 @@ export class Listener {
     return this.listen();
   }
 
+  /** Lightweight RMS energy meter on the echo-cancelled mic track (for instant acoustic ducking). */
+  _startVad(stream) {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC || !stream) return;
+      this._vadCtx = new AC();
+      const src = this._vadCtx.createMediaStreamSource(stream);
+      const an = this._vadCtx.createAnalyser(); an.fftSize = 256;
+      src.connect(an);
+      this._vad = { an, buf: new Uint8Array(an.fftSize) };
+    } catch { this._vad = null; }
+  }
+
+  /** Current mic RMS level (0..1) for instant barge-in ducking, or 0 if unavailable. */
+  get voiceLevel() {
+    if (!this._vad) return 0;
+    const { an, buf } = this._vad;
+    an.getByteTimeDomainData(buf);
+    let sum = 0;
+    for (let i = 0; i < buf.length; i++) { const v = (buf[i] - 128) / 128; sum += v * v; }
+    return Math.sqrt(sum / buf.length);
+  }
+
+  /** True when the user's voice energy is clearly above background noise. */
+  get speakingNow() { return this.voiceLevel > .045; }
+
   /** The microphone stream we hold is only for way 1; elsewhere it is let go so the recogniser has the mic to itself. */
-  release() { this.stream?.getTracks().forEach(t => t.stop()); this.stream = null; }
+  release() {
+    this.stream?.getTracks().forEach(t => t.stop()); this.stream = null;
+    if (this._vadCtx) { this._vadCtx.close?.().catch?.(() => {}); this._vadCtx = null; }
+    this._vad = null;
+  }
 
   /** This way isn't working: try the next one, or give up and say so. */
   stepDown(why) {

@@ -13,10 +13,10 @@ const API = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '') + '/api/tur
 const KEEP = 40;                 // messages kept in the conversation (older ones drop off, whole turns at a time)
 const KEEP_PHOTOS = 2;           // photos from show and tell sent along (the newest ones)
 const MAX_STEPS = 5;             // model calls in one turn (tool rounds)
-// The first thing it says after being quiet can be a clause (up to a comma) rather than the whole sentence: the voice
-// writes a line to sound before it plays it, so a short first line is heard sooner, and the rest is written while it
-// plays. Only a clause of 24 characters or more and 4 words or more, so it never stops after "Ooh,".
-const FIRST_CUT = /^([\s\S]{24,}?[,;:–—])\s+/;
+// The first thing it says after being quiet can be a short clause (up to a comma) rather than the whole sentence: the
+// voice writes a line to sound before it plays it, so a short first line is heard sooner, and the rest is written
+// while it plays. 14+ characters and 3+ words gets openings like "Ooh, good idea," speaking ~200 ms earlier.
+const FIRST_CUT = /^([\s\S]{14,}?[,;:–—])\s+/;
 const RETRY_WAIT = 400;          // ms before a turn that failed before it said or did anything is tried once more
 const GESTURES = ['none', 'wave', 'point', 'tada', 'shrug', 'think', 'nod', 'shake', 'bounce'];
 const MOODS = ['calm', 'happy', 'excited', 'curious', 'sad', 'surprised'];
@@ -24,11 +24,10 @@ const MOODS = ['calm', 'happy', 'excited', 'curious', 'sad', 'surprised'];
 // Text for the voice: no markdown, no stage directions.
 const spoken = s => s.replace(/[*_#`~>|]/g, '').replace(/\[(?!hmm|laugh|sigh|gasp)[^\]]*\]/gi, '').replace(/\s+/g, ' ').trim();
 
-// The mic hears the creature too, and the recogniser's last words about a line can come seconds after it was said
-// (while it makes a prop, say). So what is heard is always checked against everything it said in the last ECHO_KEEP
-// ms and everything it is about to say, loosely (a recogniser mishears its voice: "magic" as "magical"). Words of two
-// letters or fewer don't count either way.
-const ECHO_KEEP = 9000;
+// The mic hears the creature too, and the recogniser's last words about a line can arrive briefly after it was said.
+// While a line is actively speaking (until === Infinity), its words are filtered; once finished, echo clears after
+// ECHO_KEEP ms (1.8 s) so replying with similar words ("Yes, a red dragon!") is never swallowed as echo.
+const ECHO_KEEP = 1800;
 const wordsOf = s => String(s).toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter(w => w.length > 2);
 function near(a, b) {
   if (a === b) return true;
@@ -54,7 +53,7 @@ function cut(buf, take, quiet) {
     // quiet until now: a first clause goes to the voice at once (the rest of its sentence follows on)
     if (quiet()) {
       const c = FIRST_CUT.exec(buf);
-      if (c && c[1].trim().split(/\s+/).length >= 4) { take(c[1]); buf = buf.slice(c[0].length); continue; }
+      if (c && c[1].trim().split(/\s+/).length >= 3) { take(c[1]); buf = buf.slice(c[0].length); continue; }
     }
     // a long run with no full stop yet: say up to its last comma
     if (buf.length > 160) { const i = buf.lastIndexOf(', '); if (i > 40) { take(buf.slice(0, i + 1)); buf = buf.slice(i + 2); continue; } }

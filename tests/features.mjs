@@ -14,6 +14,7 @@ import { makeThemesState, THEME_NAMES } from '../src/themes-state.js';
 import { makeFocusState, formatClock } from '../src/focus-state.js';
 import { makeTinyBrains } from '../src/tiny-brains.js';
 import { describe, colourName } from '../src/describe.js';
+import { isBargeIn, isPureHush, settleDelay } from '../src/turn-taking.js';
 import { SYSTEM, TOOLS } from '../server/persona.js';
 
 const fail = msg => { console.error('FAIL:', msg); process.exitCode = 1; };
@@ -227,6 +228,34 @@ const ok = (cond, msg) => { if (!cond) fail(msg); };
   const playTool = TOOLS.find(t => t.name === 'play');
   for (const g of ['cards', 'words', 'battleships']) ok(playTool.input_schema.properties.game.enum.includes(g), `play tool includes ${g}`);
   console.log('persona: ok');
+}
+
+// 14. Conversational Turn-Taking & Barge-In (src/turn-taking.js)
+{
+  // Instant keyword barge-in even on 1 word
+  ok(isBargeIn('stop', { words: ['stop'], yours: ['stop'] }), '1-word "stop" barges in');
+  ok(isBargeIn('wait', { words: ['wait'], yours: [] }), 'keyword "wait" barges in even if in echo');
+  ok(isBargeIn('hold on', { words: ['hold', 'on'], yours: ['hold', 'on'] }), '"hold on" barges in');
+  // 2+ clean non-echo words barge in
+  ok(isBargeIn('make tea', { words: ['make', 'tea'], yours: ['make', 'tea'] }), '2 clean non-echo words barge in');
+  // 1 random non-keyword word or echo does NOT barge in
+  ok(!isBargeIn('dragon', { words: ['dragon'], yours: ['dragon'] }), '1 non-keyword word does not barge in');
+  ok(!isBargeIn('the dragon', { words: ['the', 'dragon'], yours: ['dragon'] }), '2 words with echo does not barge in');
+  // 3+ new words with >= 50% new barges in
+  ok(isBargeIn('make a tiny blue frog', { words: ['make', 'a', 'tiny', 'blue', 'frog'], yours: ['make', 'tiny', 'frog'] }), '3+ new words >=50% barges in');
+  // Pure hush detection
+  ok(isPureHush('stop'), '"stop" is pure hush');
+  ok(isPureHush('hey reverie stop talking!'), '"hey reverie stop talking!" is pure hush');
+  ok(isPureHush('never mind.'), '"never mind." is pure hush');
+  ok(!isPureHush('stop and make a cat'), 'hush + new request is NOT pure hush');
+  // Adaptive endpointing delays
+  ok(settleDelay('hit') === 320, 'snappy command "hit" -> 320 ms');
+  ok(settleDelay('B3') === 320, 'snappy Battleships coord "B3" -> 320 ms');
+  ok(settleDelay('make a dragon and') === 1100, 'trailing conjunction -> 1100 ms');
+  ok(settleDelay('can you make um') === 1100, 'trailing hesitation "um" -> 1100 ms');
+  ok(settleDelay('good morning') === 420, '2-word phrase -> 420 ms');
+  ok(settleDelay('make a little ceramic teacup') === 580, 'normal sentence -> 580 ms');
+  console.log('turn-taking: ok');
 }
 
 console.log(process.exitCode ? 'features: failed' : 'features: all passed');

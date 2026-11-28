@@ -9,6 +9,7 @@ import { makeLook } from './look.js';
 import { makeBrain } from './brain.js';
 import { makeBody } from './body.js';
 import { Listener, sameWords } from './listen.js';
+import { isBargeIn, isPureHush, settleDelay } from './turn-taking.js';
 import { askPlace, placeAt, weather, contextLine } from './place.js';
 import { makePad, madeFrom } from './doodle.js';
 import { makeMood, toneOf } from './mood.js';
@@ -132,12 +133,13 @@ function showTiming(t) {
   if (debug) timing.textContent = line;
 }
 
-// How long the words being heard must stand still before they are answered, without waiting for the recogniser to be
-// sure the phrase is over (it often takes a second or more after the last word). If they go on, the rest joins on.
-const SETTLE_MS = 650;
-
-/** Words heard that are clearly someone talking, not its voice coming back: 3 or more new words, most of what was heard. */
-const deliberate = h => !!h && h.yours.length >= 3 && h.yours.length / Math.max(1, h.words.length) >= .5;
+// Acoustic ducking while the user starts speaking over Reverie (Web Audio VAD from listen.js)
+let vadSpeakMs = 0, ducked = false;
+function setVoiceDuck(on) {
+  if (on === ducked) return;
+  ducked = on;
+  try { gs.sound.mixer?.volume?.('voice', on ? .32 : 1, .08); } catch { /* ok */ }
+}
 
 function frame(now) {
   requestAnimationFrame(frame);
@@ -150,38 +152,52 @@ function frame(now) {
   const dt = Math.min(.05, (now - (last || now)) / 1000); last = now;
   try {
     if (voice?.listening || voice?.want) {
+      // Web Audio VAD: duck Reverie's voice the moment the user's mic energy spikes so speech recognition hears them cleanly
+      if (brain?.speaking && voice.speakingNow) {
+        vadSpeakMs += dt * 1000;
+        setVoiceDuck(true);
+      } else {
+        vadSpeakMs = Math.max(0, vadSpeakMs - dt * 2000);
+        if (vadSpeakMs === 0) setVoiceDuck(false);
+      }
       // the mic hears its voice too: only words it has not just said (or is about to say) count as yours
       // (and while a video plays, it hears the video: that is neither you nor its voice: watch.js)
       const heard = voice.text.trim(), film = !!heard && watch.isVideo(heard), h = heard && !film ? brain.yours(heard) : null, mine = h ? h.yours.length : 0;
-      world.creature.state.listening = mine > 0;
+      world.creature.state.listening = mine > 0 || (vadSpeakMs > 80 && !brain?.speaking);
       if (mine) input.placeholder = heard;
       // still going after a pause it took as the end: it stops and waits for the rest (asked again whole, not cut short)
       const early = voice.early, rest = early && heard.startsWith(early + ' ') ? brain.yours(heard.slice(early.length)) : null;
       if (rest && rest.yours.length && (brain.speaking || brain.busy)) brain.interrupt(`they went on: "${heard}"`, { rest: true });
-      // talking over it: three or more words of yours, most of what was heard, stop it (less is its own voice misheard)
-      // (not the words it took at a pause and is answering now: the recogniser shows them until it gives its final)
-      else if (brain.speaking && !(early && sameWords(heard, early)) && deliberate(h)) brain.interrupt(`talked over by "${heard}"`);
-      // words that have stood still are answered now (not while it talks: that is talking over it, above); not in a game
-      // that counts what is said (Twenty Questions), where a phrase taken twice would count twice
-      if (mine && !brain.speaking && !world.game?.heard) voice.settle(SETTLE_MS);
+      // instant barge-in: 1-2 word interrupt phrases ("stop", "wait", "hey reverie") or 2+ clean new words
+      else if (brain.speaking && !(early && sameWords(heard, early)) && isBargeIn(heard, h)) {
+        setVoiceDuck(false);
+        brain.interrupt(`talked over by "${heard}"`);
+      }
+      // smart adaptive endpointing: snappy (320ms) for short commands, patient (1100ms) on trailing hesitations
+      if (mine && !brain.speaking && !world.game?.heard) voice.settle(settleDelay(heard));
       const next = voice.next(); let said = next?.text;
       if (said && watch.isVideo(said)) { watch.overheard(said); said = null; }
       if (said) {
         input.placeholder = 'Say something, or type…';
+        setVoiceDuck(false);
+        // pure hush while Reverie was talking: stop cleanly without sending a redundant LLM turn
+        if (isPureHush(said) && (brain.speaking || brain.busy)) {
+          brain.interrupt(`hushed by "${said}"`);
+          said = null;
+        }
+      }
+      if (said) {
         const f = brain.yours(said);
-        // while it talks, only a clear new ask counts (or two or more words, none of them its own); between its sentences
-        // in a reply (making something, thinking), anything with none of its words; when it is quiet, anything with
-        // some words of yours ("make it bigger" after it said "make it"), and short words alone ("hi")
         const all = f.words.length > 0 && f.yours.length === f.words.length;
-        const ok = brain.speaking ? deliberate(f) || (all && f.words.length >= 2)
-          : brain.busy ? deliberate(f) || all
+        const ok = brain.speaking ? isBargeIn(said, f)
+          : brain.busy ? isBargeIn(said, f) || all
           : !f.words.length || f.yours.length / f.words.length > .3;
         if (ok && karaoke && !karaoke.heardOk(said)) console.info(`[reverie] a song is on: took "${said}" for singing (say Reverie's name, or stop)`);
         else if (ok && music && !music.heardOk(said)) console.info(`[reverie] music is on: took "${said}" for a lyric (say Reverie's name, or a music command)`);
-        else if (ok) brain.hear(said, { more: next.more, at: next.at });
+        else if (ok) { body?.react?.('think'); brain.hear(said, { more: next.more, at: next.at }); }
         else { console.info(`[reverie] ignored its own voice: "${said}" (yours: ${f.yours.join(' ') || 'none'})`); if (debug) timing.textContent = 'ignored echo: ' + said; }
       }
-    }
+    } else if (ducked) setVoiceDuck(false);
     captionT -= dt; if (captionT < 0 && !brain?.speaking) caption.hidden = true;
     if (awake) { body.update(dt); shaker?.update(dt); }
     music.update(dt);
@@ -633,9 +649,13 @@ function listeningOff() {
 
 form.addEventListener('submit', async e => {
   e.preventDefault();
-  let text = input.value.trim(); if (!text || !brain) return;
+  let text = input.value.trim();
+  // pressing Enter on an empty input while Reverie is speaking hushes it immediately
+  if (!text) { if (brain?.speaking || brain?.busy) brain.interrupt('enter hush'); return; }
+  if (!brain) return;
   const at = performance.now();
   input.value = ''; wakeUp();
+  if (isPureHush(text) && (brain.speaking || brain.busy)) { brain.interrupt('typed hush'); return; }
   // a YouTube link: it goes up on the screen at once, and Claude hears it is on
   const v = videoOf(text);
   if (v) {
@@ -643,6 +663,7 @@ form.addEventListener('submit', async e => {
     text += `\n(The video was put on the screen straight away when they pasted it: ${typeof r === 'string' ? r : r.text} Don't call watch open; just react.)`;
     return brain.hear(text, { at });
   }
+  body?.react?.('think');
   brain.hear(text, { at });
 });
 
@@ -651,9 +672,12 @@ async function startWatching(v) {
   const r = await watch.open(v);
   brain.hear(`[watch] They picked ${v.kind === 'file' ? 'a video file from their device' : 'a video'} to watch together. ${typeof r === 'string' ? r : r.text}`, { at: performance.now(), news: true });
 }
-input.addEventListener('input', () => { speed.inputAt = performance.now(); if (input.value.length === 1) body?.notice(); if (input.value && brain?.speaking && input.value.length > 3) brain.interrupt(); });
+input.addEventListener('input', () => { speed.inputAt = performance.now(); if (input.value.length === 1) body?.notice(); if (input.value && brain?.speaking) brain.interrupt('started typing'); });
+addEventListener('keydown', e => { if (e.key === 'Escape' && (brain?.speaking || brain?.busy)) { brain.interrupt('escape key'); setVoiceDuck(false); } });
 mic.addEventListener('click', async () => {
   if (!awake) return wakeUp();   // (waking asks for the microphone itself)
+  // tapping the mic while Reverie is speaking hushes it and keeps listening ready for your next words
+  if (brain?.speaking || brain?.busy) { brain.interrupt('mic tap'); setVoiceDuck(false); if (!voice.listening && !voice.want) await startListening(); return; }
   if (voice.listening || voice.want) { voice.stop(); mic.classList.remove('on'); input.placeholder = 'Say something, or type…'; return; }
   // (denied before: the browser may let it ask again, or the person has to allow it in the site settings)
   // ('broken': try every way again from the top)
