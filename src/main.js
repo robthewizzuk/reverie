@@ -648,6 +648,8 @@ function gameNews(text) {
 
 async function startListening() {
   if (voice.listening) return true;
+  const hot = [memory?.name, world?.keeper?.pet?.name, ...(world?.room || []).map(i => i.short || i.words)].filter(Boolean);
+  if (hot.length) voice.setHotwords?.(hot);
   const ok = await voice.start();
   mic.classList.toggle('on', !!ok);
   if (ok) input.placeholder = 'Listening… or type';
