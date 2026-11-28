@@ -280,7 +280,33 @@ async function boot() {
   // Gmail and the calendar: read when asked; sending an email or adding an event only on a tap of Yes on its card
   google = makeGoogle({ el: $('#ask'), onNews: (text, loud) => { console.info('[reverie] ' + text); brain.notice(text, loud); } });
   google.check();
-  diary = makeDiary({ el: $('#diary'), memory, achievements, today: () => today, google, extra: () => lessonsHtml(learning),
+  // Lazy-loaded Gaussian Splat Room controller (zero boot cost until a .splat/.ply file is dropped or picked)
+  let splatRoom = null;
+  const ensureSplat = async () => {
+    if (splatRoom) return splatRoom;
+    const { makeSplatRoom } = await import('./splat-room.js');
+    splatRoom = makeSplatRoom({ world, roomGroup: world.roomGroup });
+    return splatRoom;
+  };
+  const splatController = {
+    get active() { return !!splatRoom?.active; },
+    get name() { return splatRoom?.name || ''; },
+    async loadFile(file) { const sr = await ensureSplat(); return sr.loadFile(file); },
+    unload() { splatRoom?.unload?.(); },
+    adjust(p) { splatRoom?.adjust?.(p); },
+  };
+  stage.addEventListener('dragover', e => { if (e.dataTransfer?.types?.includes('Files')) e.preventDefault(); });
+  stage.addEventListener('drop', e => {
+    const file = [...(e.dataTransfer?.files || [])].find(f => /\.(splat|ply)$/i.test(f.name));
+    if (!file) return;
+    e.preventDefault();
+    setStatus('Loading Gaussian Splat room…');
+    splatController.loadFile(file).then(r => {
+      setStatus('');
+      if (r?.ok) brain?.notice?.(`[room] They loaded a photo-scanned Gaussian Splat room ("${r.name}", ${r.count.toLocaleString()} splats)! React with excitement!`, true);
+    }).catch(err => setStatus('Could not load splat: ' + String(err?.message || err).slice(0, 60)));
+  });
+  diary = makeDiary({ el: $('#diary'), memory, achievements, today: () => today, google, splat: splatController, extra: () => lessonsHtml(learning),
     onForget: what => { if (what === 'everything') { learning.wipe(); achievements.wipe(); trophies.show([]); } else if (what.startsWith('lesson:')) learning.forget(what.slice(7)); brain.refreshMemo(); } });
   learning.onChange(() => { if (diary.open) diary.show(); });
   // its mood: lifted by play, shown in its body, glow and voice, and told to Claude; a level up is a little burst of hearts
@@ -403,6 +429,7 @@ async function boot() {
   focus = makeFocus({ world, body, radio, memory, aquarium, onNews: (text, loud) => brain.notice(text, loud) });
   world.addLine(() => focus.line());
   world.addLine(() => body?.brains?.contextLine?.() || '');
+  world.addLine(() => splatRoom?.line?.() || '');
   // watching a video together: a screen in the room; only words about it (title, captions) ever reach Claude
   const sheet = makeWatchSheet({ el: $('#watching'), onPick: v => { wakeUp(); startWatching(v); } });
   watch = makeWatch({ host: $('#screen'), sheet, world, memory, state: () => ({ speaking: brain.speaking, busy: brain.busy, listening: world.creature.state.listening }),

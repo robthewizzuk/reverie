@@ -18,6 +18,7 @@ import { makeFloaties } from './floaties.js';
 import { breakApart, makeShows } from './fun.js';
 import { makeMotion, flexFor } from './motion.js';
 import { DESK, SHELF, SILL, LEDGE, onBoard, SPOTS, SPOT_NAMES, spotOf, roomColours, roomItems, tidyRoomColours, keepRoomColours, keepItem, forgetItem, forgetAll, freePlace, findItem, roomLine, inRoom, MAX_ITEMS } from './room.js';
+import { plasterMaps, weaveMaps, brushedBrassMaps, ceramicBump } from './photoreal-mats.js';
 
 const HOLD_SIZE = .4;            // metres: the longest side of a prop in its hands
 const SIZE_WORDS = [[/\b(giant|huge|enormous)\b/, 1.8], [/\b(bigger|big|large)\b/, 1.4], [/\b(smaller|small|little)\b/, .7], [/\b(tiny|teeny)\b/, .5]];
@@ -28,11 +29,28 @@ let v, light, creature, outfits, fx, world, room, embers, motes, body, daylight,
 // the room's recolourable parts: the meshes made of each, and the recipe they are made from
 const ROOM_LOOK = { walls: null, floor: ['wood', [8, 8]], rug: null, wood: ['wood', [1, 1]] };
 const roomParts = { walls: [], floor: [], rug: [], wood: [] }, relight = [];
-// soft felt, with a sheen like Reverie's own plush (for the rug and the pouf)
-const felt = colour => { const c = new gs.hd.THREE.Color(colour); return gs.hd.pbr(colour, { rough: .95, sheen: .7, sheenColor: '#' + c.clone().lerp(new gs.hd.THREE.Color('#ffffff'), .55).getHexString(), sheenRoughness: .6 }); };
-// (the walls are smooth matte paint and the rug felt, made here: the recipes' textures read as blotchy plaster and a
-// straw mat up close)
-const roomMat = (part, colour) => ROOM_LOOK[part] ? gs.models.material(ROOM_LOOK[part][0], { colour, repeat: ROOM_LOOK[part][1] }) : Object.assign(part === 'rug' ? felt(colour) : gs.hd.pbr(colour, { rough: .9 }), { name: 'room:' + part });
+// soft woven wool/felt, with tactile yarn weave bump/roughness and plush sheen (for the rug and the pouf)
+const felt = (colour, repeat = [10, 10]) => {
+  const { THREE } = gs.hd;
+  const c = new THREE.Color(colour);
+  const w = weaveMaps(THREE, repeat);
+  return Object.assign(gs.hd.pbr(colour, { rough: .95, sheen: .72, sheenColor: '#' + c.clone().lerp(new THREE.Color('#ffffff'), .55).getHexString(), sheenRoughness: .62 }), {
+    bumpMap: w.bumpMap, bumpScale: .009, roughnessMap: w.roughnessMap,
+  });
+};
+// walls get subtle limewash plaster micro-grain; rug gets woven wool; floor/wood get satin oiled oak
+const roomMat = (part, colour) => {
+  if (ROOM_LOOK[part]) {
+    const m = gs.models.material(ROOM_LOOK[part][0], { colour, repeat: ROOM_LOOK[part][1] });
+    if (part === 'floor' || part === 'wood') { m.clearcoat = .22; m.clearcoatRoughness = .42; }
+    return m;
+  }
+  if (part === 'rug') return Object.assign(felt(colour, [14, 14]), { name: 'room:rug' });
+  const pm = plasterMaps(gs.hd.THREE);
+  return Object.assign(gs.hd.pbr(colour, { rough: .92 }), {
+    name: 'room:' + part, bumpMap: pm.bumpMap, bumpScale: .006, roughnessMap: pm.roughnessMap,
+  });
+};
 
 function setup() {
   const { HDView, pbr, rbox, THREE } = gs.hd, { material, prop } = gs.models;
@@ -112,8 +130,46 @@ function setup() {
   const stem = new THREE.Mesh(new THREE.CylinderGeometry(.006, .006, L.y - DESK.y - .07, 12), pale); stem.position.set(L.x, (DESK.y + L.y - .07) / 2, L.z); add(stem);
   const globeMat = pbr('#fff6e8', { rough: .35, glow: 1.6, glowCol: '#ffe2b8' });
   const globe = new THREE.Mesh(new THREE.SphereGeometry(.075, 40, 24), globeMat); globe.position.set(L.x, L.y, L.z); room.add(globe);
+  const cb = ceramicBump(THREE), bb = brushedBrassMaps(THREE);
   const vaseShape = [[0, 0], [.045, 0], [.055, .03], [.05, .09], [.03, .13], [.026, .16], [.032, .17], [0, .17]].map(([x, y]) => new THREE.Vector2(x, y));
-  const vase = new THREE.Mesh(new THREE.LatheGeometry(vaseShape, 40), pbr('#d9b8a4', { rough: .45, clear: .4 })); vase.position.set(...onBoard(SHELF, -1.5)); add(vase);
+  const vaseMat = Object.assign(pbr('#d9b8a4', { rough: .34, clear: .65 }), { bumpMap: cb, bumpScale: .003 });
+  const vase = new THREE.Mesh(new THREE.LatheGeometry(vaseShape, 40), vaseMat); vase.position.set(...onBoard(SHELF, -1.5)); add(vase);
+  // workshop dressing: cloth-bound books + framed sketch on the floating shelf, ceramic coffee mug on the workbench
+  {
+    const bookCols = ['#7b3f36', '#3d5a52', '#c89b52'];
+    const [bx0, by0, bz0] = onBoard(SHELF, -.95);
+    let yAcc = by0;
+    bookCols.forEach((col, i) => {
+      const bw = .17 - i * .014, bh = .028, bd = .12 - i * .008;
+      const bm = new THREE.Mesh(rbox(bw, bh, bd, .003), pbr(col, { rough: .82, sheen: .35 }));
+      bm.position.set(bx0 + (i - 1) * .006, yAcc + bh / 2, bz0);
+      bm.rotation.y = (i - 1) * .08;
+      add(bm);
+      yAcc += bh;
+    });
+    // leaning framed botanical print on the shelf
+    const [fx, fy, fz] = onBoard(SHELF, -1.24);
+    const frameG = new THREE.Group();
+    frameG.position.set(fx, fy + .11, fz - .02);
+    frameG.rotation.set(-.12, .14, 0);
+    const outerF = new THREE.Mesh(rbox(.16, .21, .016, .004), wood);
+    const matBoard = new THREE.Mesh(new THREE.PlaneGeometry(.13, .18), pbr('#f5f0e6', { rough: .9 }));
+    matBoard.position.z = .0085;
+    const leafArt = new THREE.Mesh(new THREE.CircleGeometry(.038, 24), pbr('#6e8c68', { rough: .88 }));
+    leafArt.scale.set(.7, 1.35, 1); leafArt.position.set(0, .005, .0092);
+    frameG.add(outerF, matBoard, leafArt);
+    room.add(frameG);
+    // warm ceramic coffee mug on the workbench
+    const [mx0, my0, mz0] = onBoard(DESK, .38);
+    const mugMat = Object.assign(pbr('#e9dfd1', { rough: .28, clear: .7 }), { bumpMap: cb, bumpScale: .002 });
+    const mug = new THREE.Mesh(new THREE.CylinderGeometry(.038, .034, .085, 28), mugMat);
+    mug.position.set(mx0, my0 + .0425, mz0 + .06);
+    const coffee = new THREE.Mesh(new THREE.CircleGeometry(.034, 24), pbr('#2c1810', { rough: .08, clear: .9 }));
+    coffee.rotation.x = -Math.PI / 2; coffee.position.set(mx0, my0 + .081, mz0 + .06);
+    const handle = new THREE.Mesh(new THREE.TorusGeometry(.024, .006, 10, 20, Math.PI), mugMat);
+    handle.position.set(mx0 + .036, my0 + .045, mz0 + .06); handle.rotation.z = -Math.PI / 2;
+    add(mug); room.add(coffee); add(handle);
+  }
   // workshop wall mirror above the workbench: arched brass frame + true ray-traced mirror glass facing Reverie & the room
   const mirrorGroup = new THREE.Group();
   const mx = .74, my = 1.44, mz = backZ(mx, my) + .032;
@@ -136,19 +192,20 @@ function setup() {
   const frameOuter = archShape(.70, .88);
   const frameHole = archShape(.635, .815);
   frameOuter.holes.push(frameHole);
-  const brassMat = pbr('#d4af6a', { metal: .88, rough: .22 });
+  const brassMat = Object.assign(pbr('#d4af6a', { metal: .9, rough: .24 }), { bumpMap: bb.bumpMap, bumpScale: .002, roughnessMap: bb.roughnessMap });
   const mirrorFrame = new THREE.Mesh(new THREE.ExtrudeGeometry(frameOuter, { depth: .028, bevelEnabled: true, bevelThickness: .006, bevelSize: .006, bevelSegments: 3, curveSegments: 24 }), brassMat);
   const mirrorBack = new THREE.Mesh(new THREE.ShapeGeometry(archShape(.68, .86), 24), wood);
   mirrorBack.position.z = -.002;
   mirrorBack.rotation.y = Math.PI;
   mirrorGroup.add(mirrorBack, mirrorFrame, mirrorGlass);
   room.add(mirrorGroup);
-  // a round pouf in the back left corner, soft like Reverie
-  const pouf = new THREE.Mesh(new THREE.SphereGeometry(.26, 48, 24), felt('#b4bfa8'));
+  // a round pouf in the back left corner, soft woven linen like Reverie
+  const pouf = new THREE.Mesh(new THREE.SphereGeometry(.26, 48, 24), felt('#b4bfa8', [8, 8]));
   pouf.scale.set(1, .62, 1); pouf.position.set(-1.15, .16, -.85); add(pouf);
-  // a plant on the right, in a tall matte pot
+  // a plant on the right, in a tall matte ceramic pot
   const potShape = [[0, 0], [.13, 0], [.16, .04], [.17, .38], [.165, .4], [0, .4]].map(([x, y]) => new THREE.Vector2(x, y));
-  const pot = new THREE.Mesh(new THREE.LatheGeometry(potShape, 48), pbr('#efeae3', { rough: .8 })); pot.position.set(1.85, 0, -.6); add(pot);
+  const potMat = Object.assign(pbr('#efeae3', { rough: .72, clear: .18 }), { bumpMap: cb, bumpScale: .003 });
+  const pot = new THREE.Mesh(new THREE.LatheGeometry(potShape, 48), potMat); pot.position.set(1.85, 0, -.6); add(pot);
   const plant = gs.models.tree('fan', { seed: 7 }); fitTo(plant, 1.05); standAt(plant, 1.85, .37, -.6); shade(plant); room.add(plant);
   // a little dust drifting in the daylight
   motes = new gs.fx3d.Particles3D(v.scene);
@@ -240,6 +297,7 @@ export function makeWorld() {
   let playSeq = 0;
   function endGame() {
     playSeq++;
+    light?.setDof?.(true);
     if (!game) return;
     const g = game; game = null;
     try { g.stop(); } catch (e) { console.warn('[reverie] a game would not stop:', e); }
@@ -461,6 +519,8 @@ export function makeWorld() {
 
   const api = {
     get view() { return v; },
+    /** The procedural workshop room group (hidden when a Gaussian Splat room backdrop is active). */
+    get roomGroup() { return room; },
     /** The room's light (light.js). */
     get light() { return light; },
     /** Karaoke's party lights (party.js): on, beat(phase). */
@@ -580,6 +640,7 @@ export function makeWorld() {
       }
       if (seq !== playSeq) return `The ${def.title.toLowerCase()} was put away before it finished loading.`;
       const g = game = games[name] ||= makeFn(stage);
+      light?.setDof?.(false);
       creature.gesture('tada'); creature.mood('excited');
       let r;
       try { r = await g.start(o); } catch (e) {
