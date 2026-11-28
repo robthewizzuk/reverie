@@ -223,6 +223,10 @@ export function makeDaylight({ v, light, outside, glass, side, globe, motes }) {
     return goal;
   }
 
+  const ALL_NUMBERS = [...NUMBERS, 'night', 'cloud', 'rain', 'snow', 'fog', 'stars'];
+  const LAMP_COL = new THREE.Color();
+  let hadFlash = false, dropsActive = false;
+
   function apply() {
     const s = light.sun;
     s.color.copy(now.sun); s.intensity = now.sunI;
@@ -232,7 +236,7 @@ export function makeDaylight({ v, light, outside, glass, side, globe, motes }) {
     if (v.scene.background) v.scene.background.copy(BG).lerp(now.low, now.night);
     light.lamp.i = now.lamp; light.lamp.reach = now.reach;
     // (at night the lamp is a softer warm white and the core's own light is turned down: the room cosy, not orange)
-    light.lamp.col = '#' + LAMP_DAY.clone().lerp(LAMP_NIGHT, now.night).getHexString(); light.coreK = 1 - .25 * now.night; light.night = now.night;
+    light.lamp.col = '#' + LAMP_COL.copy(LAMP_DAY).lerp(LAMP_NIGHT, now.night).getHexString(); light.coreK = 1 - .25 * now.night; light.night = now.night;
     // (the round room is closed all round, so at night a little more of the soft light by the camera keeps its face read)
     if (v.faceLit) v.faceLit.strength = .16 + .24 * now.night;
     globe.emissiveIntensity = now.globe;
@@ -248,18 +252,20 @@ export function makeDaylight({ v, light, outside, glass, side, globe, motes }) {
       f.m.opacity = falling * (snow ? .95 : .8);
       f.m.color.set(snow ? '#ffffff' : '#7d8a99').lerp(C('#c9d6ea'), now.night);
     }
-    drops.visible = D.some(d => d.k > 0); dropMat.opacity = .5 + .4 * (1 - now.night * .5);
+    drops.visible = dropsActive || D.some(d => d.k > 0);
+    dropsActive = drops.visible;
+    dropMat.opacity = .5 + .4 * (1 - now.night * .5);
   }
 
   function ease(dt, fast) {
     const k = 1 - Math.exp(-dt / (fast ? 1.2 : 6));
     let moved = 0;
     for (const c of COLOURS) { const a = now[c], b = goal[c]; moved += Math.abs(a.r - b.r) + Math.abs(a.g - b.g) + Math.abs(a.b - b.b); a.lerp(b, k); }
-    for (const n of [...NUMBERS, 'night', 'cloud', 'rain', 'snow', 'fog', 'stars']) { moved += Math.abs(now[n] - goal[n]) * (n === 'up' ? .02 : 1); now[n] += (goal[n] - now[n]) * k; }
+    for (const n of ALL_NUMBERS) { moved += Math.abs(now[n] - goal[n]) * (n === 'up' ? .02 : 1); now[n] += (goal[n] - now[n]) * k; }
     dirNow.lerp(dirGoal, k).normalize();
     return moved;
   }
-  const snap = () => { for (const c of COLOURS) now[c].copy(goal[c]); for (const n of [...NUMBERS, 'night', 'cloud', 'rain', 'snow', 'fog', 'stars']) now[n] = goal[n]; dirNow.copy(dirGoal); };
+  const snap = () => { for (const c of COLOURS) now[c].copy(goal[c]); for (const n of ALL_NUMBERS) now[n] = goal[n]; dirNow.copy(dirGoal); };
   // how far the light is from what the bounce light and the reflections were baked with
   const drift = () => baked.sunI == null ? 1 : Math.abs(now.sunI - baked.sunI) / 3 + Math.abs(now.lamp - baked.lamp) / 3 + Math.abs(now.glow - baked.glow) + Math.abs(now.hemiI - baked.hemiI) * 3 + (Math.abs(now.sun.r - baked.sun.r) + Math.abs(now.sun.g - baked.sun.g) + Math.abs(now.sun.b - baked.sun.b)) + dirNow.distanceTo(baked.dir) * .6;
   const rebake = () => { light.bounce?.bake?.(); light.room?.bake?.(); Object.assign(baked, { sunI: now.sunI, lamp: now.lamp, glow: now.glow, hemiI: now.hemiI, sun: now.sun.clone(), dir: dirNow.clone() }); };
@@ -287,15 +293,26 @@ export function makeDaylight({ v, light, outside, glass, side, globe, motes }) {
       if (storm && now.rain > .5) { if ((nextFlash -= dt) <= 0) { flashT = .35; nextFlash = 7 + Math.random() * 12; thunderIn = .6 + Math.random() * 2; } }
       if (flashT > 0) flashT = Math.max(0, flashT - dt);
       if (thunderIn > 0 && (thunderIn -= dt) <= 0 && soundOn) gs.sound.sounds.thunder?.(.8 + Math.random() * .3);
-      apply();
-      // the sky pictures: painted again when what they show has moved on, a few times a second at most while changing
-      const key = [now.top.getHexString(), now.low.getHexString(), (now.stars * 20 | 0), (now.cloud * 20 | 0), (now.fog * 10 | 0), (t / 4 | 0) * (now.cloud > .05 ? 1 : 0), moon.phase.toFixed(2)].join();
-      if ((paintT -= dt) <= 0 && key !== painted) { painted = key; paintT = .25; for (const s of skies) paintSky(s); }
+      // Only re-apply lights, sun direction, and window materials when lighting moved or lightning flashed
+      if (moved > 1e-4 || flashT > 0 || hadFlash) {
+        apply();
+        hadFlash = flashT > 0;
+      }
+      // the sky pictures: check & repaint at most 4x/sec instead of allocating hex strings every frame
+      if ((paintT -= dt) <= 0) {
+        paintT = .25;
+        const key = `${now.top.getHexString()},${now.low.getHexString()},${now.stars * 20 | 0},${now.cloud * 20 | 0},${now.fog * 10 | 0},${(t / 4 | 0) * (now.cloud > .05 ? 1 : 0)},${moon.phase.toFixed(2)}`;
+        if (key !== painted) { painted = key; for (const s of skies) paintSky(s); }
+      }
       for (const f of falls) if (f.mesh.visible) { const map = f.m.map; map.offset.y += dt * (now.snow > now.rain ? .05 : .9); map.offset.x += dt * (now.snow > now.rain ? .01 : 0); }
-      if (now.rain > 0 || drops.visible) updateDrops(dt);
+      if (now.rain > 0 || drops.visible) {
+        updateDrops(dt);
+        dropsActive = D.some(d => d.k > 0);
+        drops.visible = dropsActive;
+      }
       // the bounce light and reflections, baked again once the light has settled somewhere new
       if ((bakeAt -= dt) <= 0 && drift() > .25 && moved < .08) { bakeAt = 3; rebake(); }
-      rainSound();
+      if (soundOn && (now.rain > .01 || storm || bed)) rainSound();
     },
     /** Shows another sky: time ('live', 'sunset', 'night'...) and/or weather ('live', 'rain', 'snow'...). Resolves a sentence. */
     async set({ time, weather } = {}) {

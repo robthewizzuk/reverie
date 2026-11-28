@@ -69,6 +69,7 @@ export function lightRoom(v, creature, roomBox) {
 
   // soft warm front-fill lamp that fades in at night so props in Reverie's hands and on the rug never fall into silhouette
   const propFill = { x: -.3, y: 1.05, z: 1.35, col: '#ffebd6', i: 0, reach: 3.2 };
+  const lamps1 = [lamp], lamps2 = [lamp, propFill];
 
   return {
     sun: s,
@@ -88,14 +89,17 @@ export function lightRoom(v, creature, roomBox) {
       creature.coreAt(at); core.at(at.x, at.y - .04, at.z + .2); core.i0 = (.2 + creature.coreGlow * .5) * this.coreK * (1 + this.pulse * .8);
       // (a gentle swell, not a disco: the lamp is a little brighter on each beat)
       const mainLamp = this.pulse ? Object.assign(swell, lamp, { i: lamp.i * (1 + this.pulse * .35) }) : lamp;
-      const lamps = [mainLamp];
       if (this.night > .05) {
         propFill.x = at.x - .3; propFill.z = at.z + 1.35;
         propFill.i = 1.45 * this.night;
-        lamps.push(propFill);
+        lamps2[0] = mainLamp;
+        v.placeLamps(lamps2, 0, .4, 0, t);
+      } else {
+        lamps1[0] = mainLamp;
+        v.placeLamps(lamps1, 0, .4, 0, t);
       }
-      v.placeLamps(lamps, 0, .4, 0, t);
-      s.follow(at.x, 0, at.z);
+      // Keep the 4m shadow frustum centered on the room instead of jittering with Reverie's breathing
+      s.follow(0, 0, 0);
     },
     /** The core's light, after its glow colour changed. */
     recolour() { core.s.col = creature.glowed(CORE_LAMP); },

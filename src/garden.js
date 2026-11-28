@@ -207,7 +207,7 @@ export function makeGarden({ world, sill = room.SILL || OLD_SILL, onNews = () =>
     },
     cactus(base, s) {
       const grow = sm((s.g - .04) / .7), r = .012 + .026 * grow, hs = sm((s.g - .6) / .25), sq = 1 - s.droop * .15;
-      const body = mul(base, T(0, r * .95 * sq, 0)), green = mix('#5f9e6e', '#a8a35c', s.droop * .6), c3 = new THREE.Color().copy(green);
+      const body = mul(base, T(0, r * .95 * sq, 0)), green = mix('#5f9e6e', '#a8a35c', s.droop * .6), c3 = cCactus.copy(green);
       if (s.g < .04) return .01;
       ball(body, r * 1.9, r * 2.2 * sq, r * 1.9, c3);
       for (let j = 0; j < 8; j++) ball(mul(body, Ry(j * Math.PI / 4), T(r * .72, 0, 0)), r * .45, r * 2.05 * sq, r * .45, c2.copy(c3).multiplyScalar(1.06));
@@ -229,9 +229,16 @@ export function makeGarden({ world, sill = room.SILL || OLD_SILL, onNews = () =>
     leaf(top, Math.PI, 1.15 + s.droop * .4, .012 * c, .01 * c, C('#9ccf6e'));
   }
 
-  // ---- drawn each frame
+  // ---- drawn each frame (reusing scratch colours and skipping GPU buffer uploads when all pots are empty & still)
+  const cPetal = new THREE.Color(), cLeaf = new THREE.Color(), cStem = new THREE.Color(), cCactus = new THREE.Color();
+  const partList = Object.values(parts);
+  let drawnStaticEmpty = false;
   function draw(dt) {
-    pi = 0; for (const p of Object.values(parts)) p.n = 0;
+    const anyPlant = plants.pots.some(Boolean);
+    const anyAnim = drops.length > 0 || looks.some(L => L.shake > 0 || L.cloud > 0 || Math.abs(L.pop - 1) > 1e-3 || L.wet > 1e-3);
+    if (!anyPlant && !anyAnim && drawnStaticEmpty) return;
+    drawnStaticEmpty = !anyPlant && !anyAnim;
+    pi = 0; for (const p of partList) { p.prevN = p.n; p.n = 0; }
     const night = world.daylight?.state?.night ?? 0;
     plants.pots.forEach((p, i) => {
       const L = looks[i], base0 = at[i];
@@ -250,19 +257,23 @@ export function makeGarden({ world, sill = room.SILL || OLD_SILL, onNews = () =>
       const d = droopOf(p); L.droop = ease(L.droop, d, dt, d < L.droop ? .9 : 4);
       const closes = p.kind === 'tulip' || p.kind === 'daisy' || p.kind === 'strawberry';
       const open = sm((L.g - .8) / .2) * (closes ? 1 - .75 * night : 1) * (1 - L.droop * .45);
-      const petal = p.colour || k.petals, petalC = new THREE.Color().copy(mix(petal, '#b89a6a', L.droop * .35));
-      const s = { g: L.g, open, droop: L.droop, night, ripe: L.ripe, phase: L.phase, petal, petalC,
-        leaf: new THREE.Color().copy(mix(p.kind === 'glowbloom' ? '#5e9e8c' : LEAF, LEAF_DRY, L.droop * .55)),
-        stem: new THREE.Color().copy(mix(STEM, LEAF_DRY, L.droop * .4)) };
+      const petal = p.colour || k.petals;
+      cPetal.copy(mix(petal, '#b89a6a', L.droop * .35));
+      cLeaf.copy(mix(p.kind === 'glowbloom' ? '#5e9e8c' : LEAF, LEAF_DRY, L.droop * .55));
+      cStem.copy(mix(STEM, LEAF_DRY, L.droop * .4));
+      const s = { g: L.g, open, droop: L.droop, night, ripe: L.ripe, phase: L.phase, petal, petalC: cPetal, leaf: cLeaf, stem: cStem };
       // the seed, sitting on the soil until it sprouts
       const base = mul(T(base0.x, soilY + .003, base0.z), Rz(wob), S(pop * BIG, pop * BIG, pop * BIG));
       if (L.g < .07) ball(base, .009, .006, .007, C('#7a5634'));
       lean = [1, .7, -1][i];
       L.top = (DRAW[p.kind](base, s) || .05) * BIG;
     });
-    for (const p of Object.values(parts)) {
-      p.mesh.count = p.n; p.mesh.instanceMatrix.needsUpdate = true;
-      if (p.mesh.instanceColor) p.mesh.instanceColor.needsUpdate = true;
+    for (const p of partList) {
+      p.mesh.count = p.n;
+      if (p.n > 0 || p.prevN > 0) {
+        p.mesh.instanceMatrix.needsUpdate = true;
+        if (p.mesh.instanceColor) p.mesh.instanceColor.needsUpdate = true;
+      }
     }
   }
 
@@ -270,13 +281,14 @@ export function makeGarden({ world, sill = room.SILL || OLD_SILL, onNews = () =>
   const cloudY = i => at[i].y + POT_H + clamp(looks[i].top * (1 - looks[i].droop * .3), .1, .3) + .04;
   function rainOn(i) {
     const L = looks[i];
-    L.cloud = 2.6; L.shake = .3;
+    L.cloud = 2.6; L.shake = .3; drawnStaticEmpty = false;
     gs.sound.sounds.splash?.();
     setTimeout(() => gs.sound.sounds.splash?.(), 700);
   }
   function clouds(dt) {
+    if (!drops.length && !looks.some(L => L.cloud > 0)) return;
     for (const d of drops) { d.vy -= 3 * dt; d.y += d.vy * dt; if (d.y > d.end) ball(T(d.x, d.y, d.z), .008, .018, .008, C('#6aa6e8')); }
-    drops = drops.filter(d => d.y > d.end);
+    if (drops.length) drops = drops.filter(d => d.y > d.end);
     looks.forEach((L, i) => {
       if (L.cloud <= 0) return;
       L.cloud -= dt;
@@ -287,6 +299,9 @@ export function makeGarden({ world, sill = room.SILL || OLD_SILL, onNews = () =>
       const base = T(p.x + Math.sin(time * 2) * .004, y, p.z);
       for (const [x, yy, r] of [[-.028, 0, .026], [.026, .002, .028], [0, .016, .034], [.006, -.005, .03]]) ball(mul(base, T(x * k, yy * k, 0)), r * 2.1 * k, r * 1.7 * k, r * 1.8 * k, C('#f6f8fb'));
     });
+    parts.balls.mesh.count = parts.balls.n;
+    parts.balls.mesh.instanceMatrix.needsUpdate = true;
+    if (parts.balls.mesh.instanceColor) parts.balls.mesh.instanceColor.needsUpdate = true;
   }
 
   // ---- what happens, told to Reverie
@@ -400,7 +415,6 @@ export function makeGarden({ world, sill = room.SILL || OLD_SILL, onNews = () =>
       time += dt;
       if ((tickIn -= dt) < 0) { tickIn = 10; const ev = plants.tick(); if (ev.length) tell(ev, ev.some(e => e.what === 'bloomed' || e.what === 'ripe')); }
       draw(dt); clouds(dt);
-      for (const p of Object.values(parts)) p.mesh.count = p.n;
       fx.update(dt);
     },
     tap, command,
