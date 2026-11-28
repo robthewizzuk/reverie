@@ -189,6 +189,14 @@ export class LocalStt {
     if (this._worker && this.ready) this._worker.postMessage({ type: 'hotwords', words: this._hotwords });
   }
 
+  /** Tell the worker whether Reverie is currently speaking so VAD raises its echo-bleed guard. */
+  setBotSpeaking(on) {
+    const b = !!on;
+    if (b === this._botSpeaking) return;
+    this._botSpeaking = b;
+    if (this._worker) this._worker.postMessage({ type: 'speaking', on: b });
+  }
+
   /** Reset VAD + Zipformer streaming buffers (e.g. after barge-in or stop). */
   reset() {
     this.vadProb = 0; this.speaking = false;

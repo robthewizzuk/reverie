@@ -149,6 +149,7 @@ function frame(now) {
   const dt = Math.min(.05, (now - (last || now)) / 1000); last = now;
   try {
     if (voice?.listening || voice?.want) {
+      voice.setBotSpeaking?.(!!brain?.speaking);
       // Web Audio VAD: duck Reverie's voice the moment the user's mic energy spikes so speech recognition hears them cleanly
       const lvl = voice.voiceLevel || 0, hearing = !!voice.speakingNow;
       if (hearing !== wasHearing) { wasHearing = hearing; mic.classList.toggle('hearing', hearing); }
