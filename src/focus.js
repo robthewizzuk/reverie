@@ -9,7 +9,7 @@ export { makeFocusState, formatClock };
 
 Object.assign(FUN, { focus: FUN.focus || [.045, .7] });
 
-export function makeFocus({ world, body = null, radio = null, memory = null, onNews = () => {} }) {
+export function makeFocus({ world, body = null, radio = null, memory = null, aquarium = null, onNews = () => {} }) {
   const state = makeFocusState();
   let putOnGlasses = false;
 
@@ -42,7 +42,8 @@ export function makeFocus({ world, body = null, radio = null, memory = null, onN
       world.creature?.gesture('tada');
       world.creature?.mood('excited');
       world.mood?.fun('focus');
-      memory?.note('day', { line: `finished a ${done.minutes}-minute focus session (${done.label})` });
+      aquarium?.command?.({ action: 'feed' }).catch?.(() => {});
+      memory?.note('focus', { minutes: done.minutes });
       onNews(`[focus] Their ${done.minutes}-minute focus session ("${done.label}") just finished! Total completed: ${done.stats.sessions}. Celebrate warmly and offer a 5-minute break!`, true);
     } else {
       world.creature?.gesture('wave');

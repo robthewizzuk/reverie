@@ -4,7 +4,7 @@
 // (pressed twice) wipes the whole diary. It lives in this browser only: nothing here is sent anywhere, except that
 // chat lines are boiled down into recaps by the same thinking that answers you (recap.js), while learning is on.
 // At the bottom, Gmail and the calendar can be connected or disconnected.
-import { prettyDay, daysBetween, dayOf, KINDS } from './memory.js';
+import { prettyDay, daysBetween, dayOf, KINDS, exportBackup, importBackup } from './memory.js';
 import { FAMILIES, ICONS } from './achievements.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -48,6 +48,12 @@ export function makeDiary({ el, memory, achievements = null, today = () => ({}),
     const c = r.chess, cg = c.won + c.lost + c.drawn, rec = [];
     if (cg) rec.push(`Chess: you ${c.won}, me ${c.lost}${c.drawn ? `, ${c.drawn} drawn` : ''}${c.run >= 2 ? ` (you've won ${c.run} in a row!)` : c.run <= -2 ? ` (I've won ${-c.run} in a row)` : ''}`);
     if (r.quiz.rounds) rec.push(`Quiz: ${r.quiz.rounds} round${r.quiz.rounds > 1 ? 's' : ''}, best ${r.quiz.best}/10, ${r.quiz.right} right in all`);
+    for (const [gn, s] of Object.entries(r.games || {})) {
+      const n = (s.won | 0) + (s.lost | 0) + (s.drawn | 0); if (!n) continue;
+      const title = gn.replace(/_/g, ' ').replace(/^\w/, ch => ch.toUpperCase());
+      rec.push(`${title}: you ${s.won | 0}, me ${s.lost | 0}${s.drawn ? `, ${s.drawn} drawn` : ''}${s.run >= 2 ? ` (${s.run} in a row!)` : ''}`);
+    }
+    if (r.focus?.sessions) rec.push(`Focus sprints: ${r.focus.sessions} (${r.focus.minutes} min total)`);
     if (r.made) rec.push(`Things I've made you: ${r.made}${m.made.length ? ` (lately ${[...new Set(m.made.slice(-4).map(x => x.what))].join(', ')})` : ''}`);
     if (r.doodles) rec.push(`Drawings turned real: ${r.doodles}`);
     if (r.rolls) rec.push(`Dice rolled: ${r.rolls}`);
@@ -57,6 +63,7 @@ export function makeDiary({ el, memory, achievements = null, today = () => ({}),
     if (days.length) parts.push(`<section><h3>Our days</h3>${days.map(x => `<div class="day"><b>${k(x, d)}</b><span>${esc(m.days[x].join(' · '))}</span></div>`).join('')}</section>`);
     if (m.chat.length) parts.push(`<section><h3>What we said lately</h3><ul class="chat">${m.chat.slice(-8).map(x => `<li class="${x.who === 'you' ? 'you' : 'me'}">${esc(x.text)}</li>`).join('')}</ul><button type="button" class="small" data-forget="the chats">Forget our chats</button></section>`);
     parts.push(`<section><label class="learn"><input type="checkbox" data-id="learn"${m.learn ? ' checked' : ''}> Learn about me from our chats</label><p class="soft">${m.learn ? 'Every so often I jot down what we talked about and anything new about you. The diary stays in this browser.' : "I only keep what you ask me to remember, and I don't keep our chats."}</p></section>`);
+    parts.push(`<section class="backup"><h3>Backup &amp; restore</h3><p class="soft">Save a copy of your diary, room, pet, aquarium, capsules and badges to a file, or restore one on another browser.</p><div style="display:flex;gap:.5rem;flex-wrap:wrap"><button type="button" class="small" data-id="backup-export">Export backup (.json)</button><button type="button" class="small" data-id="backup-import">Import backup</button><input type="file" accept=".json,application/json" data-id="backup-file" hidden></div><p class="soft" data-id="backup-msg"></p></section>`);
     // Gmail and the calendar: connect or disconnect (the sign-in is kept by Google and an encrypted cookie, not here)
     const g = google?.status;
     if (g?.ready) parts.push(`<section class="google"><h3>Gmail and calendar</h3>${g.connected
@@ -88,6 +95,22 @@ export function makeDiary({ el, memory, achievements = null, today = () => ({}),
     if (b.dataset.id === 'close') return hide();
     if (b.dataset.id === 'google-on') { google.connect().then(render); return; }
     if (b.dataset.id === 'google-off') { google.disconnect().then(render); return; }
+    if (b.dataset.id === 'backup-export') {
+      const payload = JSON.stringify(exportBackup(), null, 2);
+      const blob = new Blob([payload], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `reverie-backup-${dayOf()}.json`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      const msg = body.querySelector('[data-id="backup-msg"]');
+      if (msg) msg.textContent = 'Backup downloaded.';
+      return;
+    }
+    if (b.dataset.id === 'backup-import') {
+      body.querySelector('[data-id="backup-file"]')?.click();
+      return;
+    }
     if (b.dataset.id === 'wipe') {
       // pressed twice within a few seconds: there's no undo
       if (Date.now() - armed > 4000) { armed = Date.now(); wipe.textContent = 'Tap again to forget everything'; wipe.classList.add('armed'); return; }
@@ -110,7 +133,25 @@ export function makeDiary({ el, memory, achievements = null, today = () => ({}),
     const f = new FormData(e.target), text = String(f.get('text') || '').trim(); if (!text) return;
     memory.remember({ fact: text, kind: String(f.get('kind')) }); document.activeElement?.blur?.(); onForget('a new fact'); render();
   });
-  el.addEventListener('change', e => { if (e.target.dataset?.id === 'learn') { memory.learn = e.target.checked; render(); } });
+  el.addEventListener('change', e => {
+    if (e.target.dataset?.id === 'learn') { memory.learn = e.target.checked; render(); return; }
+    if (e.target.dataset?.id === 'backup-file') {
+      const file = e.target.files?.[0]; if (!file) return;
+      file.text().then(txt => {
+        const res = importBackup(txt);
+        const msg = body.querySelector('[data-id="backup-msg"]');
+        if (!res.ok) { if (msg) msg.textContent = res.error || 'Could not restore backup.'; return; }
+        memory.reload?.();
+        onForget('a restored backup');
+        render();
+        const msg2 = body.querySelector('[data-id="backup-msg"]');
+        if (msg2) msg2.textContent = `Restored ${res.restored} saved entries. Reload the page to refresh the 3D room.`;
+      }).catch(() => {
+        const msg = body.querySelector('[data-id="backup-msg"]');
+        if (msg) msg.textContent = 'Could not read that file.';
+      });
+    }
+  });
   const disarm = () => { wipe.textContent = 'Forget everything'; wipe.classList.remove('armed'); };
   // (the diary changes as they chat: it shows that, but never under a box they're typing in)
   memory.onChange(() => { if (!el.hidden && !editing && !el.contains(document.activeElement?.closest?.('input[type="text"], select'))) render(); });

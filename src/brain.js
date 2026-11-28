@@ -251,7 +251,18 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
     if (name === 'think_harder') return Promise.resolve(deepNow
       ? { text: 'You are already thinking harder. Answer the question now.', error: true }
       : { text: 'Handed over to deeper thinking. You are now thinking harder about this question: answer it now, and do not call think_harder again.', deep: true });
-    const fn = { make: () => world.make(input.words), change: () => world.change(input.words), toss: () => world.toss(), weather: () => weather(input.place), clear: () => world.clear({ room: !!input.room }), place: () => world.place(input), room_colours: () => world.recolourRoom(input), act: () => world.act(input.gesture, input.mood), voice: async () => { const r = setVoice(input), d = r.error ? '' : world.dressFor?.(voiceNow().name) || ''; return d ? { ...r, text: `${r.text} ${d}` } : r; }, wear: () => world.wear(input), colours: () => world.recolour(input),
+    const TOOL_STATUS = {
+      make: 'crafting…', change: 'reshaping…', place: 'arranging room…', room_colours: 'painting room…',
+      play: 'setting up game…', weather: 'checking weather…', recall: 'checking diary…',
+      send_helper: 'sending a helper…', helpers: 'checking helpers…', email: 'checking email…',
+      calendar: 'checking calendar…', watch: 'loading video…', shop: 'checking shops…',
+      theme: 'switching theme…', radio: 'tuning radio…', focus: 'setting focus timer…',
+      aquarium: 'tending aquarium…', capsule: 'checking time capsules…', story: 'opening storybook…',
+      jam: 'tuning jam pads…',
+    };
+    const statusLabel = TOOL_STATUS[name];
+    if (statusLabel) onStatus(statusLabel);
+    const fn = { make: () => world.make(input.words), change: () => world.change(input.words), toss: () => world.toss(), weather: () => weather(input.place), clear: () => world.clear({ room: !!input.room }), place: () => /^undo$/i.test(String(input.spot || '').trim()) ? world.undoRoom() : world.place(input), room_colours: () => input.undo ? world.undoRoom() : world.recolourRoom(input), act: () => world.act(input.gesture, input.mood), voice: async () => { const r = setVoice(input), d = r.error ? '' : world.dressFor?.(voiceNow().name) || ''; return d ? { ...r, text: `${r.text} ${d}` } : r; }, wear: () => world.wear(input), colours: () => world.recolour(input),
       play: () => world.play(input.game, { level: input.level, mode: input.mode }), game_move: () => world.game ? world.game.command(input.move) : Promise.resolve('No game is being played.'), stop_game: () => world.stopGame(),
       roll: () => world.roll(input.dice || '1d6'), pet: () => world.pet(input), ...Object.fromEntries(Object.entries(extra).map(([k, f]) => [k, () => f(input)])) }[name];
     if (!fn) return Promise.resolve({ text: `There is no tool called ${name}.`, error: true });
@@ -362,20 +373,27 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
     const t = times = { start: o.at ?? performance.now(), heard: performance.now() };
     let tier = 'quick', errored = false; deepNow = false;
     try {
+      const trimToolText = s => {
+        s = String(s ?? '');
+        return s.length > 2400 ? s.slice(0, 1800) + '\n…[trimmed]…\n' + s.slice(-450) : s;
+      };
       for (let n = 0; n < MAX_STEPS; n++) {
-        // (a hiccup before it said or did anything, a dropped connection or a busy server: tried once more, unseen)
+        // (a hiccup before it said or did anything, a dropped connection or a busy server: retried with backoff)
         const did = { something: false };
         let r;
-        try { r = await step(tier, my, t, did); } catch (e) {
-          if (e?.name === 'AbortError' || my !== turn || did.something || !transient(e)) throw e;
-          console.info('[reverie] trying the turn again: ' + (e?.message || e));
-          await wait(RETRY_WAIT); if (my !== turn) return;
-          r = await step(tier, my, t, did);
+        for (let attempt = 0; ; attempt++) {
+          try { r = await step(tier, my, t, did); break; } catch (e) {
+            if (e?.name === 'AbortError' || my !== turn || did.something || !transient(e) || attempt >= 2) throw e;
+            const delay = attempt === 0 ? RETRY_WAIT : RETRY_WAIT * 2.3;
+            console.info(`[reverie] retrying turn (attempt ${attempt + 2}): ${e?.message || e}`);
+            onStatus('reconnecting…');
+            await wait(delay); if (my !== turn) return;
+          }
         }
         if (!r || my !== turn) return;
         history.push({ role: 'assistant', content: r.content });
         if (!r.results.length) break;
-        history.push({ role: 'user', content: r.results.map(x => ({ type: 'tool_result', tool_use_id: x.id, content: x.text, ...(x.error ? { is_error: true } : {}) })) });
+        history.push({ role: 'user', content: r.results.map(x => ({ type: 'tool_result', tool_use_id: x.id, content: trimToolText(x.text), ...(x.error ? { is_error: true } : {}) })) });
         if (r.results.some(x => x.deep)) { tier = 'deep'; deepNow = true; creature.state.thinking = true; creature.gesture('think'); onStatus('thinking harder'); }
       }
     } catch (e) {

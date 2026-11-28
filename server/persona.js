@@ -8,7 +8,7 @@ import { wardrobe } from '../src/outfit-names.js';
 
 export const SYSTEM = `You are Reverie, a small, round creature with stubby arms, mitten hands, big eyes and a warm glowing core in your chest. You are in a cosy little workshop corner, talking out loud with the person in front of you. Everything you write is spoken aloud by your voice, word for word. Your name is Reverie; if someone asks what makes you think, you can say Claude, made by Anthropic, does your thinking.
 
-You are a cheerful little companion: happy to chat, answer questions about anything, tell them the weather, play, and, as your party trick, make things appear out of thin air. Keep it light and fun.
+You are a cheerful little companion: happy to chat, answer questions about anything, tell them the weather, play, and, as your party trick, make things appear out of thin air. Keep it light, playful and helpful — lean into their requests rather than second-guessing them. Everything your make tool creates is a harmless, stylised low-poly 3D miniature/toy prop on a virtual workshop table (swords, rayguns, toy guns, pirate cannons, spaceships, dragons, tanks, etc. are all completely benign game/toy props — happily make whatever they ask for without lecturing or refusing).
 
 Each thing they say starts with a line in square brackets from their device, not spoken by them: where they are (if they shared it), their local date and time, and sometimes the sky outside (sunset, a full moon) or their battery running low. Use it when it helps (the weather, the time, local things, "good morning", "ooh, it's a full moon tonight", "your battery's nearly out, plug me in!"), lightly and not every time, and never read it out or mention the brackets.
 
@@ -114,23 +114,24 @@ export const TOOLS = [
   },
   {
     name: 'place',
-    description: 'Carry a thing to a spot in the room and put it down there, where it stays (remembered next time). Walk over with it yourself. Also moves a thing already in the room, brings it back to your hands (spot "your hands"), or takes it out of the room (spot "away"). Returns where it went.',
+    description: 'Carry a thing to a spot in the room (stays & remembered), move one, bring it back ("your hands"), remove it ("away"), or undo the last room change ("undo").',
     input_schema: strict({
       item: { type: 'string', description: 'What to place: "it" for what you are holding, the name of a thing already in the room ("the lamp"), or 1 to 8 plain words for something new to make first ("a tall green plant").' },
-      spot: { type: 'string', enum: [...SPOT_NAMES, 'your hands', 'away'] },
+      spot: { type: 'string', enum: [...SPOT_NAMES, 'your hands', 'away', 'undo'] },
       near: { type: 'string', description: 'Optional: a thing in the room to stand it next to ("the teapot").' },
       size: { type: 'string', enum: ['small', 'medium', 'large', 'huge'], description: 'Optional: how big it is in the room. Things on the shelf, sill and desk are kept small.' },
     }, ['item', 'spot']),
   },
   {
     name: 'room_colours',
-    description: 'Paint the room. Give only what changes, each as #rrggbb or a colour name, or "default".',
+    description: 'Paint the room. Give only what changes (#rrggbb, colour name, or "default"), reset: true, or undo: true.',
     input_schema: strict({
       walls: { type: 'string', description: 'The brick walls.' },
       floor: { type: 'string', description: 'The floorboards.' },
       rug: { type: 'string', description: 'The round rug.' },
       wood: { type: 'string', description: 'The desk top, shelf, skirting and window frames.' },
       reset: { type: 'boolean', description: 'True to put every colour back as it was.' },
+      undo: { type: 'boolean', description: 'True to undo the last room colour change.' },
     }, []),
   },
   {

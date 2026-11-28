@@ -103,13 +103,21 @@ export function keepItem(item) {
 export function forgetItem(id) { now.items = now.items.filter(i => i.id !== id); save(); }
 export function forgetAll() { now.items = []; save(); }
 
+// Fixed workshop props (desk aquarium, radio, lamp) so placed items don't clip into them.
+export const FIXTURES = [
+  { name: 'aquarium', x: 1.24, y: DESK.y, z: -1.12, r: .26 },
+  { name: 'radio',    x: .52,  y: DESK.y, z: -1.16, r: .18 },
+  { name: 'lamp',     x: 1.48, y: DESK.y, z: -1.25, r: .14 },
+];
+
 /**
  * Where a new thing of radius r goes at a spot, among what is already in the room: the spot itself if it is free,
  * else the next free place along its spread. near: a placed item to stand it beside instead. Returns { x, y, z }.
  */
 export function freePlace(spot, r, items, near = null) {
   const S = SPOTS[spot];
-  const clear = (x, z) => items.every(i => Math.abs(i.y - S.at[1]) > .2 || Math.hypot(i.x - x, i.z - z) > (i.r || .15) + r + .03);
+  const obstacles = [...items, ...FIXTURES];
+  const clear = (x, z) => obstacles.every(i => Math.abs(i.y - S.at[1]) > .2 || Math.hypot(i.x - x, i.z - z) > (i.r || .15) + r + .03);
   if (near) {
     // beside it, on the side towards the middle of the room first, then round it
     const a0 = Math.atan2(-near.z, -near.x);
@@ -119,7 +127,7 @@ export function freePlace(spot, r, items, near = null) {
     }
   }
   const [sx, sz] = S.spread;
-  for (let k = 0; k < 8; k++) {
+  for (let k = 0; k < 10; k++) {
     // 0, +1, -1, +2, -2... steps along the spread
     const n = k === 0 ? 0 : Math.ceil(k / 2) * (k % 2 ? 1 : -1);
     const x = S.at[0] + sx * n, z = S.board ? onBoard(S.board, x)[2] : S.at[2] + sz * n;
@@ -137,7 +145,7 @@ export function findItem(words, items) {
   if (!t) return null;
   const ws = t.split(/\s+/).filter(w => w.length > 2);
   for (let i = items.length - 1; i >= 0; i--) if (items[i].words.toLowerCase().includes(t) || items[i].short?.toLowerCase().includes(t)) return items[i];
-  for (let i = items.length - 1; i >= 0; i--) if (ws.some(w => (items[i].words + ' ' + (items[i].short || '')).toLowerCase().includes(w))) return items[i];
+  for (let i = items.length - 1; i >= 0; i--) if (ws.some(w => (items[i].words + ' ' + (items[i].short || '') + ' ' + (items[i].desc || '')).toLowerCase().includes(w))) return items[i];
   return null;
 }
 

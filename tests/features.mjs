@@ -15,6 +15,8 @@ import { makeFocusState, formatClock } from '../src/focus-state.js';
 import { makeTinyBrains } from '../src/tiny-brains.js';
 import { describe, colourName } from '../src/describe.js';
 import { isBargeIn, isPureHush, settleDelay } from '../src/turn-taking.js';
+import { makeMemory, exportBackup, importBackup } from '../src/memory.js';
+import { freePlace, FIXTURES } from '../src/room.js';
 import { SYSTEM, TOOLS } from '../server/persona.js';
 
 const fail = msg => { console.error('FAIL:', msg); process.exitCode = 1; };
@@ -256,6 +258,49 @@ const ok = (cond, msg) => { if (!cond) fail(msg); };
   ok(settleDelay('good morning') === 420, '2-word phrase -> 420 ms');
   ok(settleDelay('make a little ceramic teacup') === 580, 'normal sentence -> 580 ms');
   console.log('turn-taking: ok');
+}
+
+// 15. Smarter Memory (fuzzy/synonym recall, expanded records, JSON backup) & Fixture-Aware Placement
+{
+  const bag = new Map();
+  const store = {
+    get length() { return bag.size; },
+    key: i => [...bag.keys()][i] ?? null,
+    getItem: k => bag.get(k) ?? null,
+    setItem: (k, v) => bag.set(k, String(v)),
+    removeItem: k => bag.delete(k),
+  };
+  const mem = makeMemory({ store, clock: () => new Date('2026-11-27T12:00:00') });
+  mem.remember({ fact: 'has a golden puppy called Biscuit', kind: 'people' });
+  mem.remember({ fact: 'loves building Lego dinosaurs', kind: 'interests' });
+  ok(/Biscuit/.test(mem.recall({ about: 'my dog' })), 'synonym recall ("dog" -> "puppy") finds Biscuit');
+  ok(/dinosaurs/.test(mem.recall({ about: 'dinosar' })), '1-edit fuzzy recall ("dinosar" -> "dinosaurs") matches');
+  mem.note('game_result', { game: 'battleships', result: 'won' });
+  mem.note('game_result', { game: 'battleships', result: 'won' });
+  mem.note('focus', { minutes: 25 });
+  const sum = mem.summary();
+  ok(/battleships: they won 2, you won 0/.test(sum), 'summary includes expanded battleships record');
+  ok(/Focus sprints: 1 completed \(25 min total\)/.test(sum), 'summary includes focus sprint record');
+  // Backup export & restore
+  store.setItem('reverie.test.extra', 'hello');
+  store.setItem('other.key', 'ignore-me');
+  const snap = exportBackup(store);
+  ok(snap.app === 'reverie' && snap.keys['reverie.test.extra'] === 'hello' && !snap.keys['other.key'], 'exportBackup snapshots only reverie.* keys');
+  bag.clear();
+  const res = importBackup(JSON.stringify(snap), store);
+  ok(res.ok && res.restored >= 2 && store.getItem('reverie.test.extra') === 'hello', 'importBackup restores saved keys');
+  mem.reload();
+  ok(/Biscuit/.test(mem.summary()), 'memory.reload() reads restored diary');
+  // Fixture-aware freePlace avoids desk aquarium/radio/lamp
+  const aq = FIXTURES.find(f => f.name === 'aquarium');
+  const p = freePlace('on the workbench', .12, []);
+  ok(Math.hypot(p.x - aq.x, p.z - aq.z) > aq.r + .12, 'freePlace keeps desk props clear of aquarium');
+  // Undo schema check
+  const placeTool = TOOLS.find(t => t.name === 'place');
+  const roomColTool = TOOLS.find(t => t.name === 'room_colours');
+  ok(placeTool.input_schema.properties.spot.enum.includes('undo'), 'place tool supports undo');
+  ok(roomColTool.input_schema.properties.undo?.type === 'boolean', 'room_colours tool supports undo');
+  console.log('existing-systems: ok');
 }
 
 console.log(process.exitCode ? 'features: failed' : 'features: all passed');

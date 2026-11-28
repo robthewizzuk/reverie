@@ -6,7 +6,7 @@ import { makeCreature } from './creature.js';
 import { makeOutfits } from './outfits.js';
 import { colours, tidyColours, keepColours } from './looks.js';
 import { describe } from './describe.js';
-import { GAMES } from './games/index.js';
+import { GAMES, loadGameMaker, prefetchGames } from './games/index.js';
 import { lightRoom, WINDOW, LAMP } from './light.js';
 import { SHELL, shellR, backZ, wallNormal, buildShell, roundRect, circle } from './shell.js';
 import { makeDaylight } from './daylight.js';
@@ -207,7 +207,9 @@ export function makeWorld() {
     onGameResult: won => onGameResult(won),
   };
   // the game on is put away: its things off the table (each game's stop), and Reverie's hands and mood back to normal
+  let playSeq = 0;
   function endGame() {
+    playSeq++;
     if (!game) return;
     const g = game; game = null;
     try { g.stop(); } catch (e) { console.warn('[reverie] a game would not stop:', e); }
@@ -290,13 +292,15 @@ export function makeWorld() {
     // what it really is, in words: Claude can't see it, so it hears the recipe the generator used
     let read = null; try { read = gs.models.generate.understood(words); } catch { /* still loading: none */ }
     const d = describe(thing, words, { size: HOLD_SIZE * k, read, asked: o.asked ?? words });
-    const entry = { words, seed: s, sizeK: k, density, short: d.short, pivot: pivotFor(thing, HOLD_SIZE * k), body: null };
+    const entry = { words, seed: s, sizeK: k, density, short: d.short, desc: d.text, pivot: pivotFor(thing, HOLD_SIZE * k), body: null };
     hold(entry); motion.appear(entry); poof(entry.pivot); gs.sound.sounds.pop();
     return o.said ?? `Made ${d.text}`;
   }
 
   // ---- the room: things carried to a spot and kept there
   const SIZES = { small: .25, medium: .45, large: .8, huge: 1.2 };
+  const roomUndo = [];
+  const pushUndo = u => { roomUndo.push(u); if (roomUndo.length > 12) roomUndo.shift(); };
   let ids = 0;
   const newId = () => `i${Date.now().toString(36)}${(ids++).toString(36)}`;
   const footprint = p => Math.max(p.userData.size.x, p.userData.size.z) * p.scale.x / 2;
@@ -313,7 +317,15 @@ export function makeWorld() {
       let thing = null;
       try { thing = await gs.models.generate.make(i.words, { seed: i.seed }); } catch { /* the generator could not: leave it out this time */ }
       if (!thing) continue;
-      const pivot = pivotFor(thing, i.size), e = { ...i, pivot, body: null };
+      let desc = i.desc, short = i.short;
+      if (!desc) {
+        try {
+          const d = describe(thing, i.words, { size: i.size });
+          desc = d.text; short ||= d.short;
+          keepItem({ ...i, short, desc });
+        } catch { /* fine */ }
+      }
+      const pivot = pivotFor(thing, i.size), e = { ...i, short, desc, pivot, body: null };
       pivot.position.set(i.x, i.y + pivot.userData.size.y / 2, i.z); pivot.rotation.set(0, i.ry || 0, 0);
       v.scene.add(pivot); settle(e); placed.push(e);
       motion.life(e, { still: true }); motion.appear(e, Math.min(n++, 8) * .09);   // (each pops in where it was left, one after another)
@@ -373,7 +385,7 @@ export function makeWorld() {
 
     // a thing in the room: walk over, pick it up
     if (from === 'room') {
-      if (away) { vanish(entry); placed = placed.filter(e => e !== entry); forgetItem(entry.id); return `Took ${name} out of the room.`; }
+      if (away) { pushUndo({ kind: 'removed', item: { id: entry.id, words: entry.words, seed: entry.seed, sizeK: entry.sizeK, density: entry.density, size: entry.size, spot: entry.spot, x: entry.x, y: entry.y, z: entry.z, ry: entry.ry, r: entry.r, short: entry.short, desc: entry.desc } }); vanish(entry); placed = placed.filter(e => e !== entry); forgetItem(entry.id); return `Took ${name} out of the room.`; }
       if (held) release(held, false);
       const [sx, sz] = standFor(entry.x, entry.z, entry.r || .15);
       await walkTo(sx, sz); await pause(.15, Math.atan2(entry.x - sx, entry.z - sz));
@@ -384,7 +396,7 @@ export function makeWorld() {
       const hp = creature.hold.localToWorld(new THREE.Vector3(0, entry.pivot.userData.size.y * .3, 0));
       await glide(entry.pivot, hp, .4, Math.min(entry.pivot.scale.x, 1));
       creature.reach(null);
-      const e2 = { words: entry.words, seed: entry.seed, sizeK: entry.sizeK, density: entry.density ?? 300, short: entry.short, pivot: entry.pivot, body: null };
+      const e2 = { words: entry.words, seed: entry.seed, sizeK: entry.sizeK, density: entry.density ?? 300, short: entry.short, desc: entry.desc, pivot: entry.pivot, body: null };
       e2.pivot.scale.setScalar(1); hold(e2); entry = e2;
       if (toHands) { await goHome(); return `Fetched ${name} back into your hands.`; }
     } else if (away) { held = null; creature.holding = false; vanish(entry); return `Made ${name} vanish.`; }
@@ -409,8 +421,9 @@ export function makeWorld() {
     await glide(pivot, goal, .45, k, e => pivot.quaternion.slerpQuaternions(q0, q1, e));   // (turned upright as it goes)
     pivot.quaternion.copy(q1);
     creature.reach(null); gs.sound.sounds.pop(); fx.sparks({ x: p.x, y: p.y + .02, z: p.z }, { color: '#ffe2b0', count: 14, power: .4, light: false });
-    const item = { id: entry.id || newId(), words: entry.words, seed: entry.seed, sizeK: entry.sizeK, density: entry.density, size, spot, x: +p.x.toFixed(3), y: +p.y.toFixed(3), z: +p.z.toFixed(3), ry: +ry.toFixed(3), r: +r.toFixed(3), short: entry.short };
+    const item = { id: entry.id || newId(), words: entry.words, seed: entry.seed, sizeK: entry.sizeK, density: entry.density, size, spot, x: +p.x.toFixed(3), y: +p.y.toFixed(3), z: +p.z.toFixed(3), ry: +ry.toFixed(3), r: +r.toFixed(3), short: entry.short, desc: entry.desc };
     const e = { ...item, pivot, body: null }; settle(e); placed.push(e); keepItem(item);
+    pushUndo({ kind: 'placed', id: item.id });
     motion.land(e); motion.life(e, { still: true }); if (near) motion.wobble(near, motion.FEEL.bump);   // (it squashes down onto the spot, and its neighbour rocks)
     await pause(.25, face); await goHome(); creature.gesture('nod');
     return `Carried ${name} over and put it ${S.about}${near ? `, next to ${near.short || near.words}` : ''}, at ${Math.round(size * 100)} cm. It stays in the room, and is remembered next time.`;
@@ -530,7 +543,13 @@ export function makeWorld() {
       if (!def) return `There is no game called "${name}". Games here: ${Object.keys(GAMES).join(', ')}.`;
       if (game && game.id !== name) endGame();
       clearTheTable();   // (hands free to play, and room on the floor for its table)
-      const g = game = games[name] ||= def.make(stage);
+      const seq = ++playSeq;
+      let makeFn;
+      try { makeFn = games[name] ? null : await loadGameMaker(name); } catch (e) {
+        return `The game could not load (${String(e?.message || e).slice(0, 80)}).`;
+      }
+      if (seq !== playSeq) return `The ${def.title.toLowerCase()} was put away before it finished loading.`;
+      const g = game = games[name] ||= makeFn(stage);
       creature.gesture('tada'); creature.mood('excited');
       let r;
       try { r = await g.start(o); } catch (e) {
@@ -629,8 +648,10 @@ export function makeWorld() {
     place(input) { const job = carrying.then(() => placeIt(input)); carrying = job.catch(() => {}); return job; },
     /** The colours of the room's walls, floor, rug and woodwork ({ walls, floor, rug, wood, reset }), kept for next time. */
     async recolourRoom(input) {
+      const prev = roomColours();
       const r = tidyRoomColours(input, THREE);
       if (r.error) return { text: `Not changed: ${r.error}.`, error: true };
+      pushUndo({ kind: 'colours', colours: prev });
       for (const k of r.changed) {
         const meshes = roomParts[k]; if (!meshes.length) continue;
         const old = new Set(meshes.map(m => m.material)), m = roomMat(k, r.colours[k]);
@@ -641,6 +662,84 @@ export function makeWorld() {
       setTimeout(() => { for (const r of relight) r?.bake?.(); }, 600);   // (once the new materials' pictures are painted)
       creature.gesture('tada'); gs.sound.sounds.pop();
       return { text: `The room's ${r.changed.join(', ')} ${r.changed.length > 1 ? 'are' : 'is'} now ${r.changed.map(k => r.colours[k]).join(', ')}. It is remembered next time.` };
+    },
+    /** Undoes the last room colour change, kept prop placement, or prop removal. */
+    async undoRoom() {
+      const u = roomUndo.pop();
+      if (!u) return 'Nothing in the room to undo.';
+      if (u.kind === 'colours') {
+        for (const [k, hex] of Object.entries(u.colours)) {
+          const meshes = roomParts[k]; if (!meshes?.length) continue;
+          const old = new Set(meshes.map(m => m.material)), m = roomMat(k, hex);
+          for (const mesh of meshes) mesh.material = m;
+          for (const o of old) o.dispose?.();
+        }
+        keepRoomColours(u.colours);
+        setTimeout(() => { for (const r of relight) r?.bake?.(); }, 600);
+        gs.sound.sounds.pop();
+        return 'Undid the last room colour change.';
+      }
+      if (u.kind === 'placed') {
+        const e = placed.find(x => x.id === u.id);
+        if (!e) return 'That item is already gone.';
+        vanish(e); placed = placed.filter(x => x !== e); forgetItem(e.id);
+        return `Undid placing ${e.short || e.words}.`;
+      }
+      if (u.kind === 'removed' && u.item) {
+        const i = u.item;
+        let thing = null;
+        try { thing = await gs.models.generate.make(i.words, { seed: i.seed }); } catch {}
+        if (!thing) return 'Could not restore that item.';
+        const pivot = pivotFor(thing, i.size), e = { ...i, pivot, body: null };
+        pivot.position.set(i.x, i.y + pivot.userData.size.y / 2, i.z); pivot.rotation.set(0, i.ry || 0, 0);
+        v.scene.add(pivot); settle(e); placed.push(e); keepItem(i);
+        motion.life(e, { still: true }); motion.appear(e); gs.sound.sounds.pop();
+        return `Put ${i.short || i.words} back in the room.`;
+      }
+      return 'Nothing to undo.';
+    },
+    /** Drag-to-rearrange kept props: pickKept(x, y) starts dragging a kept item on its surface plane. */
+    pickKept(x, y) {
+      if (game) return null;
+      ndc.set(x / W * 2 - 1, -(y / H) * 2 + 1); ray.setFromCamera(ndc, v.cam);
+      const hit = placed.find(e => !motion.going(e) && ray.intersectObject(e.pivot, true).length);
+      if (!hit) return null;
+      return hit;
+    },
+    dragKept(e, x, y) {
+      if (!e || !placed.includes(e)) return false;
+      ndc.set(x / W * 2 - 1, -(y / H) * 2 + 1); ray.setFromCamera(ndc, v.cam);
+      const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -e.y);
+      const pt = new THREE.Vector3();
+      if (!ray.ray.intersectPlane(plane, pt)) return false;
+      const S = SPOTS[e.spot], r = e.r || .15;
+      let nx = pt.x, nz = pt.z;
+      if (S?.board) {
+        nx = clamp(nx, S.board.x0 + r, S.board.x1 - r);
+        nz = onBoard(S.board, nx)[2];
+      } else {
+        nx = clamp(nx, -1.75, 1.85); nz = clamp(nz, -1.15, 1.15);
+        if (!inRoom(nx, nz, r, e.y)) return false;
+      }
+      e.x = +nx.toFixed(3); e.z = +nz.toFixed(3);
+      e.pivot.position.set(e.x, e.y + e.pivot.userData.size.y * e.pivot.scale.x / 2, e.z);
+      return true;
+    },
+    rotateKept(e, deltaRad) {
+      if (!e || !placed.includes(e)) return;
+      e.ry = +((e.ry || 0) + deltaRad).toFixed(3);
+      e.pivot.rotation.y = e.ry;
+      settle(e);
+      const { pivot, body, life, open, ...saved } = e;
+      keepItem(saved);
+    },
+    dropKept(e) {
+      if (!e || !placed.includes(e)) return;
+      settle(e);
+      motion.wobble(e, motion.FEEL.bump);
+      gs.sound.sounds.pop();
+      const { pivot, body, life, open, ...saved } = e;
+      keepItem(saved);
     },
     /** Breaks the prop it holds (or the last one thrown on the floor): how 'smash' into real pieces that tumble, or
      *  'slice' in two. Resolves a sentence. */
@@ -692,5 +791,6 @@ export function makeWorld() {
     /** Adds a line to what Claude is told of the scene each turn (fn returns text starting with a space, or ''). */
     addLine(fn) { lines.push(fn); },
   };
+  prefetchGames();
   return api;
 }

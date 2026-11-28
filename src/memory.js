@@ -36,8 +36,45 @@ const addDays = (ymd, n) => dayOf(new Date(Date.parse(ymd + 'T12:00') + n * 864e
 const clean = (s, n = 160) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
 const words = s => clean(s, 400).toLowerCase().replace(/[^a-z0-9' ]+/g, ' ').split(/\s+/).filter(w => w.length > 2 && !STOP.has(w));
 const STOP = new Set(['the', 'and', 'that', 'this', 'about', 'with', 'they', 'them', 'their', 'are', 'was', 'for', 'have', 'has', 'you', 'your', 'like', 'likes', 'loves', 'love', 'what', 'did', 'does', 'who', 'when', 'remember', 'tell', 'know', 'any', 'anything', 'something']);
-// a word matches another loosely: the same, or the same first five letters (dinosaur / dinosaurs, piano / pianos)
-const match = (a, b) => a === b || (a.length > 4 && b.length > 4 && a.slice(0, 5) === b.slice(0, 5));
+// Tiny synonym groups so recall("dog") finds "puppy", recall("mum") finds "mother", recall("bday") finds "birthday", etc.
+const SYN_GROUPS = [
+  ['dog', 'puppy', 'pup', 'hound', 'doggo'],
+  ['cat', 'kitten', 'kitty'],
+  ['mum', 'mom', 'mother', 'mama'],
+  ['dad', 'father', 'papa'],
+  ['gran', 'nan', 'grandma', 'grandmother', 'granny'],
+  ['grandad', 'grandpa', 'grandfather'],
+  ['birthday', 'bday'],
+  ['film', 'movie', 'cinema'],
+  ['game', 'games', 'gaming'],
+  ['music', 'song', 'songs', 'tune', 'tunes', 'band'],
+  ['work', 'job', 'office'],
+  ['school', 'class', 'uni', 'university', 'college'],
+  ['holiday', 'vacation', 'trip'],
+  ['bike', 'bicycle', 'cycling'],
+];
+const SYN_MAP = new Map();
+for (const g of SYN_GROUPS) for (const w of g) SYN_MAP.set(w, g);
+
+const oneEdit = (a, b) => {
+  if (Math.abs(a.length - b.length) > 1) return false;
+  let i = 0, j = 0, diff = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { i++; j++; }
+    else {
+      if (++diff > 1) return false;
+      if (a.length > b.length) i++;
+      else if (b.length > a.length) j++;
+      else { i++; j++; }
+    }
+  }
+  return diff + (a.length - i) + (b.length - j) <= 1;
+};
+
+// a word matches another loosely: exact, same 5-letter stem, synonym group, or 1-char typo (for 5+ letter words)
+const match = (a, b) => a === b
+  || (a.length > 4 && b.length > 4 && (a.slice(0, 5) === b.slice(0, 5) || oneEdit(a, b)))
+  || (SYN_MAP.has(a) && SYN_MAP.get(a).includes(b));
 const overlap = (a, b) => a.filter(x => b.some(y => match(x, y))).length;
 
 /** The kind a fact most likely is, from its words, when Claude didn't say. */
@@ -83,7 +120,7 @@ const blankHabits = () => ({ parts: { morning: 0, afternoon: 0, evening: 0, nigh
 const blank = () => ({
   v: 2, name: null, birthday: null, facts: [], learn: true,
   visits: { first: null, last: null, days: 0, streak: 0, best: 0, count: 0 },
-  records: { chess: { won: 0, lost: 0, drawn: 0, last: null, run: 0 }, quiz: { rounds: 0, best: 0, right: 0, asked: 0 }, made: 0, rolls: 0, doodles: 0 },
+  records: { chess: { won: 0, lost: 0, drawn: 0, last: null, run: 0 }, quiz: { rounds: 0, best: 0, right: 0, asked: 0 }, games: {}, focus: { sessions: 0, minutes: 0 }, made: 0, rolls: 0, doodles: 0 },
   made: [], days: {}, chat: [], talks: [], recapAt: 0, habits: blankHabits(), seen: {},
 });
 const partOf = h => h < 5 ? 'night' : h < 12 ? 'morning' : h < 17 ? 'afternoon' : h < 22 ? 'evening' : 'night';
@@ -103,7 +140,7 @@ export function makeMemory({ store = globalThis.localStorage, clock = () => new 
       const h = obj(o.habits);
       return { ...b, ...o, v: 2, learn: o.learn !== false,
         visits: { ...b.visits, ...obj(o.visits) },
-        records: { ...b.records, ...obj(o.records), chess: { ...b.records.chess, ...obj(o.records?.chess) }, quiz: { ...b.records.quiz, ...obj(o.records?.quiz) } },
+        records: { ...b.records, ...obj(o.records), chess: { ...b.records.chess, ...obj(o.records?.chess) }, quiz: { ...b.records.quiz, ...obj(o.records?.quiz) }, games: obj(o.records?.games), focus: { ...b.records.focus, ...obj(o.records?.focus) } },
         // (a v1 fact has no kind: it gets the one its words suggest)
         facts: arr(o.facts).filter(f => f && typeof f.text === 'string').map(f => ({ ...f, kind: KINDS[f.kind] ? f.kind : guessKind(f.text) })),
         made: arr(o.made), talks: arr(o.talks).filter(t => t && typeof t.text === 'string'),
@@ -221,14 +258,23 @@ export function makeMemory({ store = globalThis.localStorage, clock = () => new 
       }
       const w = words(about); if (!w.length) return { text: 'Say what to look up, in a few words.', error: true };
       const hits = [];
-      const add = (text, day, extra = 0) => { const n = overlap(words(text), w); if (n) hits.push({ text: day ? `${text} (${whenWas(day, d)})` : text, n: n + extra, day: day || '' }); };
-      for (const f of m.facts) add(f.text + (f.when ? `, ${whenSaid(f.when, d)}` : ''), null, 1);
+      const recency = day => {
+        if (!day) return 0;
+        const age = daysBetween(day, d);
+        return age >= 0 && age <= 14 ? .35 * (1 - age / 15) : 0;
+      };
+      const add = (text, day, extra = 0) => { const n = overlap(words(text), w); if (n) hits.push({ text: day ? `${text} (${whenWas(day, d)})` : text, n: n + extra + recency(day), day: day || '' }); };
+      for (const f of m.facts) add(f.text + (f.when ? `, ${whenSaid(f.when, d)}` : ''), f.said || f.day || null, 1);
       for (const t of m.talks) add(t.text, t.day);
       for (const k of Object.keys(m.days)) for (const l of m.days[k]) add(l, k);
       for (const x of m.made) add(`you made them ${x.what}`, x.day);
       for (const x of m.chat) add(`${x.who === 'you' ? 'they said' : 'you said'} "${x.text}"`, x.day);
       if (/\bchess\b/.test(about)) { const c = m.records.chess; hits.push({ text: chessLine(c), n: 9, day: '' }); }
       if (/\b(quiz|trivia)\b/.test(about) && m.records.quiz.rounds) hits.push({ text: `quiz: ${m.records.quiz.rounds} rounds, best ${m.records.quiz.best} out of 10`, n: 9, day: '' });
+      if (/\b(focus|pomodoro|sprint)\b/.test(about) && m.records.focus?.sessions) hits.push({ text: `focus sessions: ${m.records.focus.sessions} (${m.records.focus.minutes} min total)`, n: 9, day: '' });
+      for (const [g, s] of Object.entries(m.records.games || {})) {
+        if (about.includes(g.replace(/_/g, ' ')) || about.includes(g)) hits.push({ text: `${g.replace(/_/g, ' ')}: they won ${s.won}, you won ${s.lost}${s.drawn ? `, ${s.drawn} drawn` : ''}`, n: 9, day: '' });
+      }
       if (!hits.length) return `Nothing in the diary about "${input.about}". If it matters, ask them, and remember the answer.`;
       hits.sort((a, b) => b.n - a.n || (b.day > a.day ? 1 : -1));
       return `From your diary: ${[...new Set(hits.slice(0, 8).map(x => x.text))].join(' / ')}.`;
@@ -293,6 +339,19 @@ export function makeMemory({ store = globalThis.localStorage, clock = () => new 
       } else if (kind === 'quiz') {
         r.quiz.rounds++; r.quiz.right += o.score | 0; r.quiz.asked += o.of | 0; r.quiz.best = Math.max(r.quiz.best, o.score | 0);
         log(`scored ${o.score} out of ${o.of} in the quiz`);
+      } else if (kind === 'game_result' && o.game) {
+        const g = clean(o.game, 30).toLowerCase(), res = ['won', 'lost'].includes(o.result) ? o.result : 'drawn';
+        r.games ||= {};
+        const rec = r.games[g] ||= { won: 0, lost: 0, drawn: 0, run: 0 };
+        rec[res]++;
+        rec.run = res === 'won' ? Math.max(0, rec.run) + 1 : res === 'lost' ? Math.min(0, rec.run) - 1 : 0;
+        const label = g.replace(/_/g, ' ');
+        log(res === 'won' ? `they won at ${label}` : res === 'lost' ? `Reverie won at ${label}` : `a draw at ${label}`);
+      } else if (kind === 'focus') {
+        r.focus ||= { sessions: 0, minutes: 0 };
+        const mins = Math.max(1, Math.round(+o.minutes || 25));
+        r.focus.sessions++; r.focus.minutes += mins;
+        log(`finished a ${mins}-minute focus sprint`);
       } else if (kind === 'play' && o.game) { const g = clean(o.game, 30); m.habits.games[g] = (m.habits.games[g] || 0) + 1; }
       else if (kind === 'roll') r.rolls++;
       else if (kind === 'doodle' && o.what) { r.doodles++; log(`drew ${clean(o.what, 40)}`); }
@@ -404,7 +463,12 @@ export function makeMemory({ store = globalThis.localStorage, clock = () => new 
       const c = r.chess, cg = c.won + c.lost + c.drawn;
       if (cg) games.push(chessLine(c, d));
       if (r.quiz.rounds) games.push(`quiz: ${r.quiz.rounds} round${r.quiz.rounds > 1 ? 's' : ''}, best ${r.quiz.best} out of 10`);
+      for (const [g, s] of Object.entries(r.games || {})) {
+        const n = (s.won | 0) + (s.lost | 0) + (s.drawn | 0); if (!n) continue;
+        games.push(`${g.replace(/_/g, ' ')}: they won ${s.won | 0}, you won ${s.lost | 0}${s.drawn ? `, ${s.drawn} drawn` : ''}`);
+      }
       if (games.length) add(`Games so far: ${games.join('; ')}.`);
+      if (r.focus?.sessions) add(`Focus sprints: ${r.focus.sessions} completed (${r.focus.minutes} min total).`);
       if (m.made.length) add(`Things you have made for them lately: ${[...new Set(m.made.slice(all ? -24 : -5).map(x => x.what))].join(', ')}.`);
       // past chats, as recaps (newest first)
       const talks = m.talks.slice(all ? -12 : -3).reverse();
@@ -425,8 +489,48 @@ export function makeMemory({ store = globalThis.localStorage, clock = () => new 
       const more = cut.length && !all ? ' There is more in your diary: use recall to look something up when it comes up.' : ' Use recall to look up anything older.';
       return `[Your diary, kept on their device, not said aloud: ${bits.join(' ')}${more}]`;
     },
+    /** Re-reads the diary from storage (e.g. after importing a backup). */
+    reload() { m = load(); for (const f of listeners) try { f(); } catch {} },
   };
   return api;
+}
+
+/**
+ * Exports all Reverie state stored in localStorage (`reverie.*` keys) as a portable JSON backup object.
+ * Works with browser localStorage or a custom Map-like store in Node tests.
+ */
+export function exportBackup(store = globalThis.localStorage) {
+  const data = {};
+  if (store) {
+    const keys = typeof store.length === 'number' && typeof store.key === 'function'
+      ? Array.from({ length: store.length }, (_, i) => store.key(i))
+      : Object.keys(store);
+    for (const k of keys) {
+      if (typeof k === 'string' && k.startsWith('reverie.')) {
+        const v = store.getItem(k);
+        if (v != null) data[k] = v;
+      }
+    }
+  }
+  return { app: 'reverie', v: 1, exportedAt: new Date().toISOString(), keys: data };
+}
+
+/**
+ * Restores a JSON backup produced by exportBackup() into `store`.
+ * Only writes keys starting with `reverie.` whose values are strings. Returns { ok, restored, error? }.
+ */
+export function importBackup(raw, store = globalThis.localStorage) {
+  let obj;
+  try { obj = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { return { ok: false, restored: 0, error: 'Invalid JSON file.' }; }
+  if (!obj || obj.app !== 'reverie' || !obj.keys || typeof obj.keys !== 'object') {
+    return { ok: false, restored: 0, error: 'Not a Reverie backup file.' };
+  }
+  let restored = 0;
+  for (const [k, v] of Object.entries(obj.keys)) {
+    if (!k.startsWith('reverie.') || typeof v !== 'string') continue;
+    try { store?.setItem(k, v); restored++; } catch { /* quota */ }
+  }
+  return { ok: true, restored };
 }
 
 const chessLine = (c, d) => {

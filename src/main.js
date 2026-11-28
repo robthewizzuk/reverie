@@ -138,6 +138,7 @@ let vadSpeakMs = 0, ducked = false;
 function setVoiceDuck(on) {
   if (on === ducked) return;
   ducked = on;
+  mic.classList.toggle('ducking', on);
   try { gs.sound.mixer?.volume?.('voice', on ? .32 : 1, .08); } catch { /* ok */ }
 }
 
@@ -153,6 +154,9 @@ function frame(now) {
   try {
     if (voice?.listening || voice?.want) {
       // Web Audio VAD: duck Reverie's voice the moment the user's mic energy spikes so speech recognition hears them cleanly
+      const lvl = voice.voiceLevel || 0;
+      mic.classList.toggle('hearing', !!voice.speakingNow);
+      mic.style.setProperty('--vad', Math.min(1, lvl * 6).toFixed(2));
       if (brain?.speaking && voice.speakingNow) {
         vadSpeakMs += dt * 1000;
         setVoiceDuck(true);
@@ -372,20 +376,21 @@ async function boot() {
   shaker = makeShaker({ world: world.physics, creature: world.creature, floaties: world.floaties, floor: world.floorBodies, pet: () => world.keeper,
     onShaken: strength => { mood.fun('shake'); if (!world.game) brain.notice(`[phone] They just shook the phone ${strength > 220 ? 'really hard' : 'about'}: you are dizzy, and everything on the floor bounced.`, true); } });
   // its windowsill garden (garden.js): plants that grow over real days, watered by asking or by a tap on the pot
-  garden = makeGarden({ world, onNews: (text, loud) => brain.notice(text, loud) });
+  const quietNotice = (text, loud) => brain.notice(text, loud && !focus?.focusing);
+  garden = makeGarden({ world, onNews: quietNotice });
   world.addLine(() => garden.line());
   // mini desk aquarium, time capsule jars, bedtime storytime, workshop radio, room themes, and focus buddy
-  aquarium = makeAquarium({ world, onNews: (text, loud) => brain.notice(text, loud) });
+  aquarium = makeAquarium({ world, onNews: quietNotice });
   world.addLine(() => aquarium.line());
-  capsules = makeCapsules({ world, memory, onNews: (text, loud) => brain.notice(text, loud) });
+  capsules = makeCapsules({ world, memory, onNews: quietNotice });
   world.addLine(() => capsules.line());
   storytime = makeStorytime({ world, memory, onNews: (text, loud) => brain.notice(text, loud) });
   world.addLine(() => storytime.line());
-  radio = makeRadio({ world, onNews: (text, loud) => brain.notice(text, loud) });
+  radio = makeRadio({ world, onNews: quietNotice });
   world.addLine(() => radio.line());
   themes = makeThemes({ world, radio });
   world.addLine(() => themes.line());
-  focus = makeFocus({ world, body, radio, memory, onNews: (text, loud) => brain.notice(text, loud) });
+  focus = makeFocus({ world, body, radio, memory, aquarium, onNews: (text, loud) => brain.notice(text, loud) });
   world.addLine(() => focus.line());
   // watching a video together: a screen in the room; only words about it (title, captions) ever reach Claude
   const sheet = makeWatchSheet({ el: $('#watching'), onPick: v => { wakeUp(); startWatching(v); } });
@@ -619,6 +624,12 @@ function gameNews(text) {
   let end = null;
   if (/^\[chess\]/.test(text)) { const level = g?.level; end = /checkmate: they beat you/i.test(text) ? ['chess', { result: 'won', level }] : /checkmate: you won/i.test(text) ? ['chess', { result: 'lost', level }] : /stalemate|game is a draw/i.test(text) ? ['chess', { result: 'drawn', level }] : null; }
   else if (/^\[quiz\] That was the last question/.test(text)) { const m = /scored (\d+) out of (\d+)/.exec(text); if (m) end = ['quiz', { score: +m[1], of: +m[2] }]; }
+  else if (/^\[(battleships|cards|words|noughts)\]/.test(text)) {
+    const tag = /^\[(\w+)\]/.exec(text)[1];
+    if (/fleet cleared|they won|you win|solved|spot on|blackjack! they win|dealer busts|they beat you/i.test(text)) end = ['game_result', { game: tag, result: 'won' }];
+    else if (/reverie won|dealer wins|out of guesses|they lost|busted|sank their last ship|you won/i.test(text)) end = ['game_result', { game: tag, result: 'lost' }];
+    else if (/draw|push|tie/i.test(text)) end = ['game_result', { game: tag, result: 'drawn' }];
+  }
   if (!end) return;
   // (the same ending can be told twice; a new round is a new game object start)
   const id = end[0] + JSON.stringify(end[1]) + key + Math.floor(performance.now() / 15000);
@@ -711,7 +722,32 @@ const looking = makeLook({
   },
   onMove() { speed.inputAt = performance.now(); },
 });
-canvas.addEventListener('pointerdown', () => { speed.inputAt = performance.now(); });
+let draggedProp = null, dragStart = null, didDragProp = false;
+canvas.addEventListener('pointerdown', e => {
+  speed.inputAt = performance.now();
+  if (!world || world.game) return;
+  const r = canvas.getBoundingClientRect();
+  const hit = world.pickKept?.(e.clientX - r.left, e.clientY - r.top);
+  if (hit) { draggedProp = hit; dragStart = { x: e.clientX, y: e.clientY }; didDragProp = false; }
+});
+canvas.addEventListener('pointermove', e => {
+  if (!draggedProp || !dragStart) return;
+  if (!didDragProp && Math.hypot(e.clientX - dragStart.x, e.clientY - dragStart.y) < 7) return;
+  didDragProp = true;
+  const r = canvas.getBoundingClientRect();
+  world.dragKept?.(draggedProp, e.clientX - r.left, e.clientY - r.top);
+});
+const finishPropDrag = () => {
+  if (draggedProp && didDragProp) world.dropKept?.(draggedProp);
+  draggedProp = null; dragStart = null; didDragProp = false;
+};
+canvas.addEventListener('pointerup', finishPropDrag);
+canvas.addEventListener('pointercancel', finishPropDrag);
+canvas.addEventListener('wheel', e => {
+  if (!draggedProp) return;
+  e.preventDefault();
+  world.rotateKept?.(draggedProp, (e.deltaY > 0 ? 1 : -1) * .25);
+}, { passive: false });
 recentre.addEventListener('click', () => looking.recentre());
 
 /** The helpers' pills on the stage: who is out and what each is doing; one with news can be tapped to hear it. */
