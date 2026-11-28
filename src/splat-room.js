@@ -3,7 +3,7 @@
 // `.ply`, SuperSplat compressed `.ply`, `.spz`, `.splat`, `.sog`, and `.ksplat` — on a dedicated WebGL2 canvas
 // composited directly behind Reverie's transparent WebGPU stage (v.clearBg = true), camera-synced every frame.
 import * as THREE from 'three';
-import { SplatMesh } from '@sparkjsdev/spark';
+import { SparkRenderer, SplatMesh } from '@sparkjsdev/spark';
 import gs from '../engine/src/gamescroll.js';
 
 const AXES = [
@@ -48,6 +48,8 @@ export function makeSplatRoom({ world, stageEl, setWorkshopVisible = () => {} })
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
   const splatScene = new THREE.Scene();
   splatScene.background = new THREE.Color('#141820');
+  const spark = new SparkRenderer({ renderer });
+  splatScene.add(spark);
   const splatCam = new THREE.PerspectiveCamera(45, 1, .05, 500);
 
   // Invisible shadow catcher in Reverie's scene so Reverie, pets, and props cast real shadows onto the splat floor
@@ -62,7 +64,7 @@ export function makeSplatRoom({ world, stageEl, setWorkshopVisible = () => {} })
   hdScene.add(catcher);
 
   let splatMesh = null, currentName = '', active = false, savedBg = null;
-  let opts = { axisIdx: 0, scale: 1, yOffset: -1.1, yaw: 0 };
+  let opts = { axisIdx: 0, scale: 1, xOffset: 0, yOffset: -1.1, zOffset: 0, yaw: 0 };
   let roamTimer = 8, lastW = 0, lastH = 0;
   const ray = new hdThree.Raycaster(), ndc = new hdThree.Vector2();
   const floorPlane = new hdThree.Plane(new hdThree.Vector3(0, 1, 0), 0), hitPt = new hdThree.Vector3();
@@ -72,7 +74,7 @@ export function makeSplatRoom({ world, stageEl, setWorkshopVisible = () => {} })
   hud.id = 'splat-hud';
   Object.assign(hud.style, {
     position: 'absolute', top: '64px', right: '12px', zIndex: '25', display: 'none',
-    gap: '4px', flexWrap: 'wrap', alignItems: 'center', maxWidth: 'min(92vw, 420px)',
+    gap: '4px', flexWrap: 'wrap', alignItems: 'center', maxWidth: 'min(92vw, 440px)',
     padding: '6px 8px', borderRadius: '14px', background: 'rgba(20,16,14,.78)',
     backdropFilter: 'blur(10px)', color: '#f7efe6', font: '500 12px system-ui, sans-serif',
     boxShadow: '0 4px 18px rgba(0,0,0,.35)',
@@ -89,8 +91,8 @@ export function makeSplatRoom({ world, stageEl, setWorkshopVisible = () => {} })
     return b;
   };
   const axisBtn = mkBtn('Axis: Y-down', () => { opts.axisIdx = (opts.axisIdx + 1) % AXES.length; applyTransform(); });
-  mkBtn('Floor −', () => { opts.yOffset -= .25; applyTransform(); });
-  mkBtn('Floor +', () => { opts.yOffset += .25; applyTransform(); });
+  mkBtn('Floor −', () => { opts.yOffset -= .3; applyTransform(); });
+  mkBtn('Floor +', () => { opts.yOffset += .3; applyTransform(); });
   mkBtn('Scale −', () => { opts.scale = Math.max(.1, +(opts.scale / 1.25).toFixed(3)); applyTransform(); });
   mkBtn('Scale +', () => { opts.scale = Math.min(10, +(opts.scale * 1.25).toFixed(3)); applyTransform(); });
   mkBtn('⟲', () => { opts.yaw -= Math.PI / 8; applyTransform(); });
@@ -104,7 +106,7 @@ export function makeSplatRoom({ world, stageEl, setWorkshopVisible = () => {} })
     if (!splatMesh) return;
     splatMesh.rotation.set(AXES[opts.axisIdx].rx, opts.yaw, 0, 'YXZ');
     splatMesh.scale.setScalar(opts.scale);
-    splatMesh.position.set(0, opts.yOffset, 0);
+    splatMesh.position.set(opts.xOffset, opts.yOffset, opts.zOffset);
   }
 
   function clearMesh() {
@@ -122,6 +124,14 @@ export function makeSplatRoom({ world, stageEl, setWorkshopVisible = () => {} })
     world.creature?.mood?.('excited');
   }
 
+  function rebuildGpuChain() {
+    // Force HDView.drawGPU() to recreate GpuChain with the new clearBg alpha mode (transparent vs opaque)
+    try {
+      world.view._gpuChain?.dispose?.();
+      world.view._gpuChain = null;
+    } catch { world.view._gpuChain = null; }
+  }
+
   function setActive(on, { silent = false } = {}) {
     const next = !!on && !!splatMesh;
     if (next !== active && !silent) teleportEffect(next);
@@ -136,12 +146,14 @@ export function makeSplatRoom({ world, stageEl, setWorkshopVisible = () => {} })
       if (savedBg === null) savedBg = hdScene.background ? hdScene.background.clone() : new hdThree.Color('#e9e3da');
       world.view.clearBg = true;
       hdScene.background = null;
+      rebuildGpuChain();
       world.light?.setDof?.(false);
       roamTimer = 7;
       world.goHome?.();
     } else {
       world.view.clearBg = false;
       if (savedBg) { hdScene.background = savedBg; savedBg = null; }
+      rebuildGpuChain();
       world.light?.setDof?.(true);
       world.goHome?.();
     }
@@ -150,7 +162,7 @@ export function makeSplatRoom({ world, stageEl, setWorkshopVisible = () => {} })
   async function loadOptions(meshOpts, name) {
     clearMesh();
     const isSpz = /\.spz$/i.test(name);
-    opts = { axisIdx: isSpz ? 1 : 0, scale: 1, yOffset: -1.1, yaw: 0 };
+    opts = { axisIdx: isSpz ? 1 : 0, scale: 1, xOffset: 0, yOffset: -1.1, zOffset: 0, yaw: 0 };
 
     await new Promise((resolve, reject) => {
       try {
@@ -162,7 +174,6 @@ export function makeSplatRoom({ world, stageEl, setWorkshopVisible = () => {} })
         splatMesh = m;
         splatScene.add(m);
         applyTransform();
-        // Fallback resolve if SplatMesh initializes synchronously or onLoad isn't awaited
         if (m.initialized && typeof m.initialized.then === 'function') {
           m.initialized.then(() => resolve(m), reject);
         }
