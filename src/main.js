@@ -233,7 +233,13 @@ function frame(now) {
     radio?.update(dt);
     focus?.update(dt);
     watch.update(dt);
-    if (!document.hidden) world.draw(ctx);
+    if (!document.hidden) {
+      if (splatRoom?.active) {
+        splatRoom.render(W, H);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+      world.draw(ctx);
+    }
   } catch (e) {
     if (!e?.kitLoading) { console.error(e); setStatus('error: ' + e.message); }
   }
@@ -293,26 +299,27 @@ async function boot() {
   const ensureSplat = async () => {
     if (splatRoom) return splatRoom;
     const { makeSplatRoom } = await import('./splat-room.js');
-    splatRoom = makeSplatRoom({ world, setWorkshopVisible });
+    splatRoom = makeSplatRoom({ world, stageEl: stage, setWorkshopVisible });
     return splatRoom;
   };
   const splatController = {
     get active() { return !!splatRoom?.active; },
     get name() { return splatRoom?.name || ''; },
     async loadFile(file) { const sr = await ensureSplat(); return sr.loadFile(file); },
+    async loadUrl(url) { const sr = await ensureSplat(); return sr.loadUrl(url); },
     unload() { splatRoom?.unload?.(); },
     adjust(p) { splatRoom?.adjust?.(p); },
   };
   stage.addEventListener('dragover', e => { if (e.dataTransfer?.types?.includes('Files')) e.preventDefault(); });
   stage.addEventListener('drop', e => {
-    const file = [...(e.dataTransfer?.files || [])].find(f => /\.(splat|ply|spz)$/i.test(f.name));
+    const file = [...(e.dataTransfer?.files || [])].find(f => /\.(splat|ply|spz|sog|ksplat)$/i.test(f.name));
     if (!file) return;
     e.preventDefault();
     setStatus('Teleporting to Gaussian Splat room…');
     splatController.loadFile(file).then(r => {
       setStatus('');
-      if (r?.ok) brain?.notice?.(`[room] You just teleported together into their Gaussian Splat room ("${r.name}", ${r.count.toLocaleString()} splats)! React with wonder!`, true);
-    }).catch(err => setStatus('Could not load splat: ' + String(err?.message || err).slice(0, 60)));
+      if (r?.ok) brain?.notice?.(`[room] You just teleported together into their photorealistic Gaussian Splat room ("${r.name}")! React with wonder!`, true);
+    }).catch(err => setStatus('Could not load splat: ' + String(err?.message || err).slice(0, 80)));
   });
   diary = makeDiary({ el: $('#diary'), memory, achievements, today: () => today, google, splat: splatController, extra: () => lessonsHtml(learning),
     onForget: what => { if (what === 'everything') { learning.wipe(); achievements.wipe(); trophies.show([]); } else if (what.startsWith('lesson:')) learning.forget(what.slice(7)); brain.refreshMemo(); } });
