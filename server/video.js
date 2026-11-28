@@ -116,22 +116,114 @@ export async function videoInfo(id, lang = 'en', fetcher = fetch) {
   } catch (e) { return { ...info, why: 'the captions could not be fetched' }; }
 }
 
-/** YouTube search, with the YouTube Data API (only when YOUTUBE_API_KEY is set: 100 searches a day free). */
-export async function search(words, env, fetcher = fetch) {
-  if (!env.YOUTUBE_API_KEY) return { error: 'search is not set up' };
-  const u = new URL('https://www.googleapis.com/youtube/v3/search');
-  for (const [k, v] of Object.entries({ part: 'snippet', type: 'video', maxResults: '5', videoEmbeddable: 'true', safeSearch: 'strict', q: words.slice(0, 120), key: env.YOUTUBE_API_KEY })) u.searchParams.set(k, v);
-  const r = await fetcher(u.toString());
-  if (!r.ok) return { error: `search said ${r.status}` };
-  const j = await r.json();
-  return { results: (j.items || []).filter(x => x.id?.videoId).map(x => ({ id: x.id.videoId, title: tidy(x.snippet?.title || ''), channel: tidy(x.snippet?.channelTitle || '') })) };
+const WEB_CLIENT = { clientName: 'WEB', clientVersion: '2.20250214.00.00', hl: 'en', gl: 'GB' };
+
+/** Walks YouTube Innertube / ytInitialData JSON and pulls out playable videoRenderer items. */
+export function extractSearchResults(data, limit = 8) {
+  const out = [], seen = new Set();
+  const textOf = x => {
+    if (!x) return '';
+    if (typeof x === 'string') return x;
+    if (x.simpleText) return x.simpleText;
+    if (Array.isArray(x.runs)) return x.runs.map(r => r.text || '').join('');
+    return '';
+  };
+  const walk = node => {
+    if (!node || typeof node !== 'object' || out.length >= limit) return;
+    if (Array.isArray(node)) { for (const item of node) { walk(item); if (out.length >= limit) return; } return; }
+    const vr = node.videoRenderer;
+    if (vr && ID.test(vr.videoId || '') && !seen.has(vr.videoId)) {
+      const title = tidy(textOf(vr.title));
+      const channel = tidy(textOf(vr.ownerText) || textOf(vr.longBylineText) || textOf(vr.shortBylineText));
+      const duration = tidy(textOf(vr.lengthText));
+      // Skip live-only streams with no duration when normal videos are wanted unless title is clear
+      if (title) {
+        seen.add(vr.videoId);
+        out.push({ id: vr.videoId, title, channel, ...(duration ? { duration } : {}) });
+      }
+      return;
+    }
+    for (const k of Object.keys(node)) {
+      const v = node[k];
+      if (v && typeof v === 'object') { walk(v); if (out.length >= limit) return; }
+    }
+  };
+  walk(data);
+  return out;
+}
+
+/** Extracts a balanced JSON object starting after `marker` in an HTML string. */
+function extractJsonAfter(html, marker) {
+  const at = html.indexOf(marker);
+  if (at < 0) return null;
+  const start = html.indexOf('{', at + marker.length);
+  if (start < 0) return null;
+  let depth = 0, inStr = false, esc = false, end = -1;
+  for (let i = start; i < html.length; i++) {
+    const ch = html[i];
+    if (inStr) { if (esc) esc = false; else if (ch === '\\') esc = true; else if (ch === '"') inStr = false; }
+    else if (ch === '"') inStr = true;
+    else if (ch === '{') depth++;
+    else if (ch === '}' && --depth === 0) { end = i + 1; break; }
+  }
+  return end > start ? JSON.parse(html.slice(start, end)) : null;
+}
+
+/** YouTube search: uses YouTube Data API v3 when YOUTUBE_API_KEY is set, otherwise keyless Innertube + web search. */
+export async function search(words, env = {}, fetcher = fetch) {
+  const query = String(words || '').trim().slice(0, 120);
+  if (!query) return { error: 'nothing to search for' };
+
+  // 1. Official YouTube Data API v3 (if key configured)
+  if (env?.YOUTUBE_API_KEY) {
+    try {
+      const u = new URL('https://www.googleapis.com/youtube/v3/search');
+      for (const [k, v] of Object.entries({ part: 'snippet', type: 'video', maxResults: '6', videoEmbeddable: 'true', safeSearch: 'strict', q: query, key: env.YOUTUBE_API_KEY })) u.searchParams.set(k, v);
+      const r = await fetcher(u.toString());
+      if (r.ok) {
+        const j = await r.json();
+        const results = (j.items || []).filter(x => x.id?.videoId).map(x => ({ id: x.id.videoId, title: tidy(x.snippet?.title || ''), channel: tidy(x.snippet?.channelTitle || '') }));
+        if (results.length) return { results };
+      }
+    } catch { /* fall through to keyless search */ }
+  }
+
+  // 2. Keyless YouTube Innertube search (params EgIQAQ== filters strictly to videos)
+  try {
+    const r = await fetcher('https://www.youtube.com/youtubei/v1/search?prettyPrint=false', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', 'user-agent': WEB_UA, 'accept-language': 'en-GB,en;q=0.9' },
+      body: JSON.stringify({ context: { client: WEB_CLIENT }, query, params: 'EgIQAQ%3D%3D' }),
+    });
+    if (r.ok) {
+      const results = extractSearchResults(await r.json(), 6);
+      if (results.length) return { results };
+    }
+  } catch { /* fall through to web page */ }
+
+  // 3. Keyless YouTube search page fallback (ytInitialData)
+  try {
+    const u = `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&sp=EgIQAQ%253D%253D&hl=en`;
+    const r = await fetcher(u, { headers: { 'user-agent': WEB_UA, 'accept-language': 'en-GB,en;q=0.9' } });
+    if (r.ok) {
+      const html = await r.text();
+      const data = extractJsonAfter(html, 'var ytInitialData = ') || extractJsonAfter(html, 'ytInitialData = ');
+      const results = extractSearchResults(data, 6);
+      if (results.length) return { results };
+    }
+  } catch { /* fall through */ }
+
+  return { error: 'no matching YouTube videos found' };
 }
 
 /** Handles GET /api/video. */
 export async function handleVideo(request, env = {}, fetcher = fetch) {
   if (request.method !== 'GET') return json(405, { error: 'GET only' });
   const q = new URL(request.url).searchParams;
-  if (q.get('q')) return json(200, await search(String(q.get('q')), env, fetcher).catch(() => ({ error: 'search failed' })));
+  if (q.get('q')) {
+    const res = await search(String(q.get('q')), env, fetcher).catch(() => ({ error: 'search failed' }));
+    return json(200, res, res.results?.length ? 600 : 0);
+  }
   const id = q.get('v') || '', lang = (q.get('lang') || 'en').slice(0, 12);
   if (!ID.test(id)) return json(400, { error: 'v must be a YouTube video id' });
   const info = await videoInfo(id, lang, fetcher).catch(() => ({ id, lines: [], why: 'it went wrong' }));

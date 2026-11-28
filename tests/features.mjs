@@ -356,4 +356,32 @@ const ok = (cond, msg) => { if (!cond) fail(msg); };
   console.log('stt-fbank: ok');
 }
 
+// 17. Keyless YouTube search (Innertube + ytInitialData fallback)
+{
+  const { extractSearchResults, search } = await import('../server/video.js');
+  const fakeInnertube = {
+    contents: {
+      twoColumnSearchResultsRenderer: {
+        primaryContents: {
+          sectionListRenderer: {
+            contents: [{
+              itemSectionRenderer: {
+                contents: [
+                  { videoRenderer: { videoId: 'dQw4w9WgXcQ', title: { runs: [{ text: 'Cats Playing Piano' }] }, ownerText: { runs: [{ text: 'CatTV' }] }, lengthText: { simpleText: '3:12' } } },
+                  { videoRenderer: { videoId: 'abc12345678', title: { simpleText: 'Space Documentary' }, longBylineText: { runs: [{ text: 'Cosmos' }] }, lengthText: { simpleText: '14:05' } } },
+                ],
+              },
+            }],
+          },
+        },
+      },
+    },
+  };
+  const extracted = extractSearchResults(fakeInnertube, 5);
+  ok(extracted.length === 2 && extracted[0].id === 'dQw4w9WgXcQ' && extracted[0].duration === '3:12', 'extractSearchResults parses videoRenderer items');
+  const r = await search('cats playing piano', {}, async () => ({ ok: true, json: async () => fakeInnertube }));
+  ok(r.results?.length === 2 && r.results[0].title === 'Cats Playing Piano', 'keyless search works without YOUTUBE_API_KEY');
+  console.log('youtube-search: ok');
+}
+
 console.log(process.exitCode ? 'features: failed' : 'features: all passed');

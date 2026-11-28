@@ -211,12 +211,12 @@ export function makeWatch({ host, sheet, world, onNews = () => {}, state = () =>
 
   // ---- opening and closing
   async function open(src, o = {}) {
-    if (!src) { sheet.show(); return 'The "what shall we watch?" sheet is open on their screen: they paste a YouTube link or pick a video file. You hear when it starts.'; }
+    if (!src) return { text: 'Say what kind of YouTube video to search for.', error: true };
     if (world.game) await world.stopGame();
     if (on) close(true);
     const my = ++opened;
     on = true; error = null; info = null; ears = []; ended = false; toldPause = false; pausedFor = 0; sinceComment = 0; saidUpTo = 0; watched = 0; lastLine = -1; lastState = 'waiting';
-    sheet.hide();
+    sheet?.hide?.();
     world.seat = { get pos() { return sofa().pos; }, get look() { return sofa().look; } };
     host.parentElement.classList.add('watching');
     screen ||= makeScreen(); screen.visible = true; roll = 0; gs.sound.sounds.whoosh?.();
@@ -260,7 +260,7 @@ export function makeWatch({ host, sheet, world, onNews = () => {}, state = () =>
     opened++;
     const title = info?.title || player?.title() || 'the video';
     on = false; seated = false; player?.destroy(); player = null; host.hidden = true; host.replaceChildren();
-    world.seat = null; sheet.hide(); host.parentElement.classList.remove('watching');
+    world.seat = null; sheet?.hide?.(); host.parentElement.classList.remove('watching');
     if (!quietly) { standUp(); world.creature.mood('calm'); gs.sound.sounds.whoosh?.(); }
     return `Rolled the screen back up and put "${title}" away.`;
   }
@@ -280,22 +280,55 @@ export function makeWatch({ host, sheet, world, onNews = () => {}, state = () =>
     return `Where "${words}" comes up: ` + picked.map(p => `at ${clock(p.l.t)}: "${quote(L.slice(Math.max(0, p.i - 1), p.i + 2)).slice(0, 160)}"`).join('; ') + '. Use seek to go to one.';
   }
 
+  let lastResults = [], resultIdx = 0;
+
+  async function searchYouTube(query) {
+    const r = await fetch(`${API}?q=${encodeURIComponent(query)}`).then(x => x.json()).catch(() => ({ error: 'no answer' }));
+    if (r.results?.length) { lastResults = r.results; resultIdx = 0; return { results: r.results }; }
+    return { error: r.error || 'nothing found' };
+  }
+
   /** Claude's watch tool. */
   async function command(input = {}) {
     const a = input.action;
+    if (a === 'search') {
+      const q = String(input.words || input.video || '').trim();
+      if (!q) return { text: 'Give some words to search YouTube for.', error: true };
+      const r = await searchYouTube(q);
+      if (!r.results) return { text: `Couldn't find YouTube videos for "${q}" (${r.error}). Try different keywords.`, error: true };
+      const list = r.results.slice(0, 5).map((v, i) => `${i + 1}. "${v.title}"${v.channel ? ` by ${v.channel}` : ''}${v.duration ? ` (${v.duration})` : ''}`).join('; ');
+      return `Found on YouTube for "${q}": ${list}. Call watch open with pick (1-${Math.min(5, r.results.length)}) or a title to play one.`;
+    }
     if (a === 'open') {
+      const pick = Number(input.pick);
+      if (pick >= 1 && pick <= lastResults.length) {
+        resultIdx = pick - 1;
+        return open({ kind: 'youtube', id: lastResults[resultIdx].id });
+      }
       const v = videoOf(input.video, true);
       if (v) return open(v);
       if (input.video && /\S/.test(input.video)) {
-        // words, not a link: search YouTube (only when the backend has a search key)
-        const r = await fetch(`${API}?q=${encodeURIComponent(input.video)}`).then(x => x.json()).catch(() => ({ error: 'no answer' }));
-        if (r.results?.length) { const top = r.results[0]; const said = await open({ kind: 'youtube', id: top.id }); return typeof said === 'string' ? `Searched YouTube for "${input.video}" and picked the top one. ${said}` : said; }
-        sheet.show(input.video);
-        return { text: `Could not search YouTube (${r.error || 'nothing found'}). The "what shall we watch?" sheet is open: ask them to paste a YouTube link into it or into the chat.`, error: true };
+        const r = await searchYouTube(input.video);
+        if (r.results?.length) {
+          const top = r.results[0];
+          const said = await open({ kind: 'youtube', id: top.id });
+          if (typeof said !== 'string') return said;
+          const alts = r.results.slice(1, 4).map((x, i) => `${i + 2}. "${x.title}"`).join(', ');
+          return `Found on YouTube for "${input.video}" and put on #1: ${said}${alts ? ` (Other matches ready via next/pick: ${alts}.)` : ''}`;
+        }
+        return { text: `Couldn't find a YouTube video for "${input.video}" (${r.error}). Try a slightly different search phrase.`, error: true };
       }
-      return open(null);
+      return { text: 'Say what kind of video to search for in video (e.g. "cats playing piano", "space documentary", "lo-fi beats").', error: true };
     }
-    if (!on || !player) return { text: 'Nothing is on the screen. Use open first.', error: true };
+    if (a === 'next') {
+      if (!lastResults.length) return { text: 'No other search results queued. Search for a topic with open or search first.', error: true };
+      const pick = Number(input.pick);
+      resultIdx = (pick >= 1 && pick <= lastResults.length) ? pick - 1 : (resultIdx + 1) % lastResults.length;
+      const next = lastResults[resultIdx];
+      const said = await open({ kind: 'youtube', id: next.id });
+      return typeof said === 'string' ? `Switched to #${resultIdx + 1}: ${said}` : said;
+    }
+    if (!on || !player) return { text: 'Nothing is on the screen. Use open with a search query first.', error: true };
     if (a === 'close') return close();
     if (a === 'play') { player.play(); return 'Playing.'; }
     if (a === 'pause') { player.pause(); toldPause = true; return `Paused at ${clock(player.time())}.`; }
@@ -386,13 +419,16 @@ export function makeWatch({ host, sheet, world, onNews = () => {}, state = () =>
       if (!on || !player) return null;
       const st = player.state(), t = player.time(), long = player.duration();
       const hint = !hasCaptions() && st === 'playing' ? ' · say "Reverie…" to talk' : '';
-      return { text: `${info?.title || player.title() || 'Watching'} · ${clock(t)}${long ? ' / ' + clock(long) : ''}${hint}`,
-        buttons: [{ id: 'toggle', label: st === 'playing' ? 'Pause' : 'Play' }, { id: 'chatter', label: chatter === 'quiet' ? 'Quiet 🤫' : chatter === 'chatty' ? 'Chatty' : 'Chat: some' }, { id: 'close', label: 'Done' }] };
+      const buttons = [{ id: 'toggle', label: st === 'playing' ? 'Pause' : 'Play' }];
+      if (lastResults.length > 1) buttons.push({ id: 'next', label: 'Next' });
+      buttons.push({ id: 'chatter', label: chatter === 'quiet' ? 'Quiet 🤫' : chatter === 'chatty' ? 'Chatty' : 'Chat: some' }, { id: 'close', label: 'Done' });
+      return { text: `${info?.title || player.title() || 'Watching'} · ${clock(t)}${long ? ' / ' + clock(long) : ''}${hint}`, buttons };
     },
     /** A button on that line. */
     button(id) {
       if (!player) return;
       if (id === 'toggle') { if (player.state() === 'playing') player.pause(); else player.play(); }
+      else if (id === 'next') command({ action: 'next' });
       else if (id === 'close') close();
       else if (id === 'chatter') chatter = chatter === 'normal' ? 'chatty' : chatter === 'chatty' ? 'quiet' : 'normal';
     },
