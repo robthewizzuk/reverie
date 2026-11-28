@@ -52,7 +52,7 @@ const gamebar = $('#gamebar'), gameText = $('#gamebar span'), gameButtons = $('#
 const draw = $('#draw'), book = $('#book'), look = $('#look'), recentre = $('#recentre'), helperList = $('#helpers'), tv = $('#tv');
 const debug = new URLSearchParams(location.search).has('debug');
 
-let W = 0, H = 0, world, brain, body, voice, pad, diary, mood, show, shaker, music, helpers, wisps, google, timers, shop, trophies, garden, watch, karaoke, aquarium, capsules, storytime, jam, radio, themes, focus, last = 0, awake = false, captionT = 0, nextAt = 0;
+let W = 0, H = 0, world, brain, body, voice, pad, diary, mood, show, shaker, music, helpers, wisps, google, timers, shop, trophies, garden, watch, karaoke, aquarium, capsules, storytime, jam, radio, themes, focus, splatRoom = null, last = 0, awake = false, captionT = 0, nextAt = 0;
 // its diary, kept in this browser (memory.js), and today's surprise (daily.js): { surprise, holding, funDay }
 const memory = makeMemory();
 // what you are learning together (learn.js), kept beside the diary; the lessons write their days in the diary too
@@ -217,6 +217,7 @@ function frame(now) {
     music.update(dt);
     karaoke.update(dt);
     jam?.update(dt);
+    splatRoom?.update?.(dt);
     mood.update(dt);
     trophies?.update(dt);
     const c = world.creature; c.cheer += (mood.cheer - c.cheer) * (1 - Math.exp(-dt * 1.5));   // (its body follows its mood, gently)
@@ -280,12 +281,19 @@ async function boot() {
   // Gmail and the calendar: read when asked; sending an email or adding an event only on a tap of Yes on its card
   google = makeGoogle({ el: $('#ask'), onNews: (text, loud) => { console.info('[reverie] ' + text); brain.notice(text, loud); } });
   google.check();
-  // Lazy-loaded Gaussian Splat Room controller (zero boot cost until a .splat/.ply file is dropped or picked)
-  let splatRoom = null;
+  // Lazy-loaded Gaussian Splat Room teleporter (zero boot cost until a .splat/.ply/.spz file is dropped or picked)
+  const WORKSHOP_OVERLAYS = new Set(['garden', 'trophy shelf', 'aquarium', 'capsules', 'radio']);
+  const setWorkshopVisible = vis => {
+    if (world?.roomGroup) world.roomGroup.visible = vis;
+    for (const e of world?.kept || []) if (e?.pivot) e.pivot.visible = vis;
+    for (const ch of world?.view?.scene?.children || []) {
+      if (WORKSHOP_OVERLAYS.has(ch.name)) ch.visible = vis;
+    }
+  };
   const ensureSplat = async () => {
     if (splatRoom) return splatRoom;
     const { makeSplatRoom } = await import('./splat-room.js');
-    splatRoom = makeSplatRoom({ world, roomGroup: world.roomGroup });
+    splatRoom = makeSplatRoom({ world, setWorkshopVisible });
     return splatRoom;
   };
   const splatController = {
@@ -297,13 +305,13 @@ async function boot() {
   };
   stage.addEventListener('dragover', e => { if (e.dataTransfer?.types?.includes('Files')) e.preventDefault(); });
   stage.addEventListener('drop', e => {
-    const file = [...(e.dataTransfer?.files || [])].find(f => /\.(splat|ply)$/i.test(f.name));
+    const file = [...(e.dataTransfer?.files || [])].find(f => /\.(splat|ply|spz)$/i.test(f.name));
     if (!file) return;
     e.preventDefault();
-    setStatus('Loading Gaussian Splat room…');
+    setStatus('Teleporting to Gaussian Splat room…');
     splatController.loadFile(file).then(r => {
       setStatus('');
-      if (r?.ok) brain?.notice?.(`[room] They loaded a photo-scanned Gaussian Splat room ("${r.name}", ${r.count.toLocaleString()} splats)! React with excitement!`, true);
+      if (r?.ok) brain?.notice?.(`[room] You just teleported together into their Gaussian Splat room ("${r.name}", ${r.count.toLocaleString()} splats)! React with wonder!`, true);
     }).catch(err => setStatus('Could not load splat: ' + String(err?.message || err).slice(0, 60)));
   });
   diary = makeDiary({ el: $('#diary'), memory, achievements, today: () => today, google, splat: splatController, extra: () => lessonsHtml(learning),
@@ -749,11 +757,12 @@ const looking = makeLook({
     if (!awake) return wakeUp();
     const hit = world.tap(x, y);
     if (hit === 'game') return;
-    if (!hit && tapTrophy(x, y)) return;
-    if (!hit && garden.tap(x, y, W, H)) return;
-    if (!hit && aquarium?.tap(x, y, W, H)) return;
-    if (!hit && capsules?.tap(x, y, W, H)) return;
-    if (!hit && radio?.tap(x, y, W, H)) return;
+    if (!hit && !splatRoom?.active && tapTrophy(x, y)) return;
+    if (!hit && !splatRoom?.active && garden.tap(x, y, W, H)) return;
+    if (!hit && splatRoom?.active && splatRoom.tap(x, y, W, H)) return;
+    if (!hit && !splatRoom?.active && aquarium?.tap(x, y, W, H)) return;
+    if (!hit && !splatRoom?.active && capsules?.tap(x, y, W, H)) return;
+    if (!hit && !splatRoom?.active && radio?.tap(x, y, W, H)) return;
     if (hit === 'pet') achievements.track('pat');
     if (hit === 'creature') { body.poke(); mood.fun('poke'); gs.sound.sounds.boing?.(); achievements.track('poke'); }
     else if (hit === 'prop') world.toss();
