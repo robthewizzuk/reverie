@@ -114,6 +114,35 @@ function setup() {
   const globe = new THREE.Mesh(new THREE.SphereGeometry(.075, 40, 24), globeMat); globe.position.set(L.x, L.y, L.z); room.add(globe);
   const vaseShape = [[0, 0], [.045, 0], [.055, .03], [.05, .09], [.03, .13], [.026, .16], [.032, .17], [0, .17]].map(([x, y]) => new THREE.Vector2(x, y));
   const vase = new THREE.Mesh(new THREE.LatheGeometry(vaseShape, 40), pbr('#d9b8a4', { rough: .45, clear: .4 })); vase.position.set(...onBoard(SHELF, -1.5)); add(vase);
+  // workshop wall mirror above the workbench: arched brass frame + true ray-traced mirror glass facing Reverie & the room
+  const mirrorGroup = new THREE.Group();
+  const mx = .74, my = 1.44, mz = backZ(mx, my) + .032;
+  const mn = wallNormal(mx, my, mz);
+  mirrorGroup.position.set(mx, my, mz);
+  mirrorGroup.lookAt(mx + mn[0], my + mn[1] * .35, mz + mn[2]);
+  const archShape = (w, h) => {
+    const sh = new THREE.Shape(), hw = w / 2, hh = h / 2, r = hw;
+    sh.moveTo(-hw, -hh);
+    sh.lineTo(hw, -hh);
+    sh.lineTo(hw, hh - r);
+    sh.absarc(0, hh - r, r, 0, Math.PI, false);
+    sh.lineTo(-hw, -hh);
+    return sh;
+  };
+  const mirrorMat = pbr('#f7f8fc', { metal: 1, rough: .015, clear: .25 });
+  const mirrorGlass = new THREE.Mesh(new THREE.ShapeGeometry(archShape(.64, .82), 32), mirrorMat);
+  mirrorGlass.position.z = .018;
+  mirrorGlass.userData.noTrace = true; // mirror reflects the room without self-intersecting in the traced BVH
+  const frameOuter = archShape(.70, .88);
+  const frameHole = archShape(.635, .815);
+  frameOuter.holes.push(frameHole);
+  const brassMat = pbr('#d4af6a', { metal: .88, rough: .22 });
+  const mirrorFrame = new THREE.Mesh(new THREE.ExtrudeGeometry(frameOuter, { depth: .028, bevelEnabled: true, bevelThickness: .006, bevelSize: .006, bevelSegments: 3, curveSegments: 24 }), brassMat);
+  const mirrorBack = new THREE.Mesh(new THREE.ShapeGeometry(archShape(.68, .86), 24), wood);
+  mirrorBack.position.z = -.002;
+  mirrorBack.rotation.y = Math.PI;
+  mirrorGroup.add(mirrorBack, mirrorFrame, mirrorGlass);
+  room.add(mirrorGroup);
   // a round pouf in the back left corner, soft like Reverie
   const pouf = new THREE.Mesh(new THREE.SphereGeometry(.26, 48, 24), felt('#b4bfa8'));
   pouf.scale.set(1, .62, 1); pouf.position.set(-1.15, .16, -.85); add(pouf);
@@ -128,9 +157,10 @@ function setup() {
   creature = makeCreature(); v.scene.add(creature.root);
   creature.setColours(colours());   // (the colours it was asked for last time, kept on this device)
   outfits = makeOutfits({ rig: creature.rig });   // (what it wore last time, and the season's hat)
-  // the light: the sun through the window, the bench lamp, its core, bounce light and the room's own reflections
-  // (made once the creature is in the room, so the reflections reach its eyes and glass dome)
+  // the light: the sun through the window, the bench lamp, its core, ray-traced bounce light and reflections
+  // (made once the creature is in the room, so the reflections reach its eyes, glass dome and mirror)
   light = lightRoom(v, creature, { min: [SHELL.cx - SHELL.a, 0, SHELL.cz - SHELL.b], max: [SHELL.cx + SHELL.a, SHELL.top, SHELL.cz + SHELL.b] });
+  v.reflect?.(mirrorGlass, mirrorFrame, vase);
   relight.push(light.bounce, light.room);   // (both baked again when the room is repainted)
   // the real day outside: the sun, the sky in the windows, the lamp, rain on the glass (daylight.js)
   daylight = makeDaylight({ v, light, outside: { side: sky.material, round: glass.material }, glass: GLASS, side: W0, globe: globeMat, motes: dust });

@@ -73,7 +73,7 @@ const FUN_OF = { make: 'make', change: 'change', toss: 'toss', place: 'place', r
 // game in the app: 60 frames a second on a phone or a laptop's browser (not every refresh of a 120 Hz screen, which is
 // twice the work and heat for a creature that breathes and waves), its own quality budget kept to that rate, and the
 // tier and picture size it settles on remembered for next time, so it starts there instead of stuttering down again.
-const REVERIE = { id: 'reverie', era: 'nextgen', title: 'Reverie' };
+const REVERIE = { id: 'reverie', era: 'nextgen', title: 'Reverie', fps: 30 };
 speed.game = REVERIE;
 speed.playing = () => !document.hidden;
 
@@ -171,14 +171,18 @@ function frame(now) {
       if (mine) input.placeholder = heard;
       // still going after a pause it took as the end: it stops and waits for the rest (asked again whole, not cut short)
       const early = voice.early, rest = early && heard.startsWith(early + ' ') ? brain.yours(heard.slice(early.length)) : null;
-      if (rest && rest.yours.length && (brain.speaking || brain.busy)) brain.interrupt(`they went on: "${heard}"`, { rest: true });
+      if (rest && rest.yours.length && (brain.speaking || brain.busy)) {
+        body?.brains?.noteTurnPacing?.(false); // user needed more breathing room
+        brain.interrupt(`they went on: "${heard}"`, { rest: true });
+      }
       // instant barge-in: 1-2 word interrupt phrases ("stop", "wait", "hey reverie") or 2+ clean new words
       else if (brain.speaking && !(early && sameWords(heard, early)) && isBargeIn(heard, h)) {
         setVoiceDuck(false);
+        body?.brains?.noteChatterResponse?.(false);
         brain.interrupt(`talked over by "${heard}"`);
       }
-      // smart adaptive endpointing: snappy (320ms) for short commands, patient (1100ms) on trailing hesitations
-      if (mine && !brain.speaking && !world.game?.heard) voice.settle(settleDelay(heard));
+      // smart adaptive endpointing tuned by pacingDial (learns user's speaking cadence over time)
+      if (mine && !brain.speaking && !world.game?.heard) voice.settle(Math.round(settleDelay(heard) * (body?.brains?.pacingScale?.() ?? 1)));
       const next = voice.next(); let said = next?.text;
       if (said && watch.isVideo(said)) { watch.overheard(said); said = null; }
       if (said) {
@@ -186,6 +190,7 @@ function frame(now) {
         setVoiceDuck(false);
         // pure hush while Reverie was talking: stop cleanly without sending a redundant LLM turn
         if (isPureHush(said) && (brain.speaking || brain.busy)) {
+          body?.brains?.noteChatterResponse?.(false);
           brain.interrupt(`hushed by "${said}"`);
           said = null;
         }
@@ -198,7 +203,12 @@ function frame(now) {
           : !f.words.length || f.yours.length / f.words.length > .3;
         if (ok && karaoke && !karaoke.heardOk(said)) console.info(`[reverie] a song is on: took "${said}" for singing (say Reverie's name, or stop)`);
         else if (ok && music && !music.heardOk(said)) console.info(`[reverie] music is on: took "${said}" for a lyric (say Reverie's name, or a music command)`);
-        else if (ok) { body?.react?.('think'); brain.hear(said, { more: next.more, at: next.at }); }
+        else if (ok) {
+          if (!next.more) body?.brains?.noteTurnPacing?.(true);
+          body?.brains?.noteChatterResponse?.(true);
+          body?.react?.('think');
+          brain.hear(said, { more: next.more, at: next.at });
+        }
         else { console.info(`[reverie] ignored its own voice: "${said}" (yours: ${f.yours.join(' ') || 'none'})`); if (debug) timing.textContent = 'ignored echo: ' + said; }
       }
     } else if (ducked) setVoiceDuck(false);
@@ -392,6 +402,7 @@ async function boot() {
   world.addLine(() => themes.line());
   focus = makeFocus({ world, body, radio, memory, aquarium, onNews: (text, loud) => brain.notice(text, loud) });
   world.addLine(() => focus.line());
+  world.addLine(() => body?.brains?.contextLine?.() || '');
   // watching a video together: a screen in the room; only words about it (title, captions) ever reach Claude
   const sheet = makeWatchSheet({ el: $('#watching'), onPick: v => { wakeUp(); startWatching(v); } });
   watch = makeWatch({ host: $('#screen'), sheet, world, memory, state: () => ({ speaking: brain.speaking, busy: brain.busy, listening: world.creature.state.listening }),

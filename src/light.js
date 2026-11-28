@@ -20,7 +20,16 @@ const CORE_LAMP = '#ff7020';     // the light its core casts, as made (moved wit
  * Returns { sun, lamp, bounce, room, update(dt, t), recolour() }. daylight.js moves the sun and lamp with the real day.
  */
 export function lightRoom(v, creature, roomBox) {
-  const { sun } = gs.hd;
+  const { sun, HD } = gs.hd;
+
+  // Enable WebGPU ray tracing for reflections, direct shadow rays, and live ray-traced bounce light (GI).
+  // (Automatically falls back to screen-space reflections & baked bounce on devices without WebGPU.)
+  if (HD) {
+    HD.traced = true;
+    HD.tracePhones = true;
+    HD.regen = true;
+    HD.traceSunMap = false;
+  }
 
   // the mood: clean and bright, colours as they are
   v.scene.background.set('#e9e3da');
@@ -48,10 +57,11 @@ export function lightRoom(v, creature, roomBox) {
   // a soft light from beside the camera, as a film crew lights a face: a bright point in each eye, the shade lifted
   v.faceLight(creature.face3d, { strength: .16, side: .35, up: .3, colour: '#fff6ec' });
 
-  // light bounced round the pale room (most of what lights the shade), the room itself in anything shiny, and soft
-  // contact shadows under its feet. Each scales itself down on a slow phone (the view's tiers).
+  // Live ray-traced bounce light (GI) across the room on WebGPU, with baked bounce & room probe as WebGL fallback,
+  // plus soft contact shadows under its feet.
+  v.liveBounce = { kind: 'traced', box: roomBox, spacing: .65 };
   const bounce = v.bounce(roomBox, { spacing: .8, bounces: 2, size: 8 });
-  const reflections = v.room(roomBox, { strength: .7 });
+  const reflections = v.room(roomBox, { strength: .85 });
   v.contact({ y: .026, size: 3, darkness: .9, opacity: .4, height: .7 });
 
   return {

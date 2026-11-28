@@ -112,7 +112,14 @@ export function makeBody({ creature, world, hour = hourNow, mood = null, audioOn
       const { s, see } = look();
       const picked = brains.pickIdle(see, rules(s), dt);
       creature.idle(picked.act);
-      last = { act: picked.act, see, at: t, taught: picked.taught };
+      // Emotional Resonance Brain: gently nudge Reverie's idle mood when not speaking
+      const moodSee = [s.cheer * 2 - 1, clamp(quiet / 60, 0, 1) * 2 - 1, clamp(pokes, 0, 1) * 2 - 1, (brains.skill() - .5) * 2, focusing ? 1 : -1, s.night * 2 - 1];
+      const nextMood = brains.pickMood(moodSee, dt);
+      if (nextMood && !focusing) creature.mood?.(nextMood);
+      // Attention & Gaze Director: decide where Reverie glances (user, prop, window, pet, mirror, desk)
+      const gazeSee = [st.speaking ? 1 : -1, st.listening ? 1 : -1, s.holding ? 1 : -1, world.keeper?.pet ? 1 : -1, s.night * 2 - 1, s.audio ? 1 : -1];
+      const gaze = brains.pickGaze(gazeSee, dt);
+      last = { act: picked.act, see, at: t, taught: picked.taught, gaze, mood: nextMood };
       const g = GAP[0] + Math.random() * (GAP[1] - GAP[0]);
       next = g * (focusing ? 2.2 : creature.drowsy ? 1.8 : 1) * (1.2 - s.cheer * .4) + (picked.act === 'rest' ? 1 : 0);
     },
@@ -121,14 +128,22 @@ export function makeBody({ creature, world, hour = hourNow, mood = null, audioOn
       creature.poke();
       pokes = Math.min(1.5, pokes + .5);
       const liked = last && t - last.at < LIKE_WINDOW && last.act !== 'rest';
-      if (liked) { brains.rewardIdle(last.see, last.act, { strong: true }); console.info(`[reverie] liked: ${last.act}`); }
+      if (liked) {
+        brains.rewardIdle(last.see, last.act, { strong: true });
+        brains.rewardGaze(true);
+        brains.rewardMood(true);
+        console.info(`[reverie] liked: ${last.act}`);
+      }
       if (lastReact && t - lastReact.at < LIKE_WINDOW) brains.rewardReaction(lastReact.see, lastReact.act);
       quiet = 0; creature.drowsy = false;
       return !!liked;
     },
     /** The person has started typing: perk up and softly reward recent engaging idle moves. */
     notice() {
-      if (last && t - last.at < LIKE_WINDOW && last.act !== 'rest') brains.rewardIdle(last.see, last.act, { strong: false });
+      if (last && t - last.at < LIKE_WINDOW && last.act !== 'rest') {
+        brains.rewardIdle(last.see, last.act, { strong: false });
+        brains.rewardGaze(true);
+      }
       if (!creature.state.speaking && !creature.state.thinking) perk();
     },
     /** Forgets everything all tiny brains were taught. */
