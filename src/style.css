@@ -2,7 +2,7 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 16px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; overscroll-behavior: none; }
 #app { position: fixed; inset: 0; display: flex; flex-direction: column; padding-bottom: env(safe-area-inset-bottom); }
-#stage { position: relative; flex: 1; min-height: 0; overflow: hidden; isolation: isolate; }
+#stage { position: relative; flex: 1; min-height: 0; overflow: hidden; }
 #stage canvas { display: block; width: 100%; height: 100%; touch-action: manipulation; }
 /* drags and pinches on the room look around it (look.js), so the browser mustn't scroll or zoom the page for them */
 #stage #view { touch-action: none; cursor: grab; }
@@ -12,10 +12,9 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 #recentre svg { width: 22px; height: 22px; fill: currentColor; }
 #recentre[hidden] { display: none; }
 #gamebar:not([hidden]) ~ #recentre { bottom: 64px; }
-/* the engine puts its 3D canvas right under ours (hd-layer); #splat-canvas sits underneath both without covering UI overlays */
-.screen #splat-canvas { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -2; pointer-events: none; }
-.screen .hd-layer { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -1; pointer-events: none; }
-.screen canvas.hd-host { position: relative; background: transparent; }
+/* the engine puts its 3D canvas right under ours (hd-layer) */
+.screen .hd-layer { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.screen canvas.hd-host { position: relative; }
 #caption { position: absolute; left: 50%; top: max(16px, env(safe-area-inset-top)); transform: translateX(-50%); width: min(92%, 560px); margin: 0;
   padding: 10px 16px; border-radius: 18px; background: #1b120dcc; backdrop-filter: blur(8px); text-align: center; font-size: 17px; pointer-events: none; }
 #wake { position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%); padding: 12px 22px; border: 0; border-radius: 999px;

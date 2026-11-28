@@ -26,8 +26,5 @@
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.137.0",
     "wrangler": "^4.168.0"
-  },
-  "dependencies": {
-    "@sparkjsdev/spark": "^2.4.0"
   }
 }

@@ -519,8 +519,6 @@ export function makeWorld() {
 
   const api = {
     get view() { return v; },
-    /** The procedural workshop room group (hidden when a Gaussian Splat room backdrop is active). */
-    get roomGroup() { return room; },
     /** The room's light (light.js). */
     get light() { return light; },
     /** Karaoke's party lights (party.js): on, beat(phase). */
