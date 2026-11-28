@@ -173,7 +173,7 @@ export function makeWorld() {
   let placed = [], acts = [], carrying = Promise.resolve(), restored = false;
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), at = new THREE.Vector3();
   // a game on the stage (./games): the one being played, the ones made so far, and where the camera is heading
-  let game = null, onNews = () => {}, onSay = () => false, pad = null, dice = null;
+  let game = null, onNews = () => {}, onSay = () => false, onGameResult = () => {}, getSkill = () => null, pad = null, dice = null;
   // its pet (pet.js), made once the room is; its mood (mood.js, set by the page); more lines for Claude's scene line
   let keeper = null, mood = null;
   // looking around (look.js, set by the page): drags and pinches swing the camera off its seat
@@ -202,6 +202,9 @@ export function makeWorld() {
     stopGame() { if (game) { const t = game.title; endGame(); onNews(`[game] They stopped ${t}: it is put away.`, false); } },
     /** A fresh round of the game on (a tap on a finished board): Claude hears it at once. */
     again: () => api.again(),
+    /** Adaptive Tiny Brains skill dial (0..1 or null) and result reporter. */
+    skill: () => getSkill(),
+    onGameResult: won => onGameResult(won),
   };
   // the game on is put away: its things off the table (each game's stop), and Reverie's hands and mood back to normal
   function endGame() {
@@ -516,6 +519,9 @@ export function makeWorld() {
     set onNews(fn) { onNews = fn; },
     /** Who says a game's own lines out loud at once (the brain's speak), returning false when busy. */
     set onSay(fn) { onSay = fn; },
+    /** Adaptive Tiny Brains skill getter & win/loss reporter for tabletop games. */
+    set skill(fn) { getSkill = fn; },
+    set onGameResult(fn) { onGameResult = fn; },
     /** The drawing pad, lent to games drawn on it. */
     set pad(p) { pad = p; },
     /** Starts a game by name ('chess'), or a fresh round of the one on. Resolves a sentence for Claude. */

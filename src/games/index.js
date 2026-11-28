@@ -33,6 +33,7 @@ import { makeLesson } from './lesson.js';
 import { makeEscape } from './escape.js';
 import { makeCards } from './cards.js';
 import { makeWords } from './words.js';
+import { makeBattleships } from './battleships.js';
 
 export const GAMES = {
   chess: { title: 'Chess', tag: 'chess', make: makeChess },
@@ -46,4 +47,5 @@ export const GAMES = {
   escape: { title: 'Escape Room', tag: 'escape', make: makeEscape },
   cards: { title: 'Cards', tag: 'cards', make: makeCards },
   words: { title: 'Word Game', tag: 'words', make: makeWords },
+  battleships: { title: 'Battleships', tag: 'battleships', make: makeBattleships },
 };

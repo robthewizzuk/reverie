@@ -8,6 +8,12 @@ import { makeAquariumState, MAX_FISH, HUNGRY_MS } from '../src/aquarium-state.js
 import { makeCapsuleState, parseOpenDate, MAX_CAPSULES } from '../src/capsule-state.js';
 import { makeStoryState } from '../src/storytime-state.js';
 import { makeJamState, JAM_PADS } from '../src/jam-state.js';
+import { makeBattleshipsGame, parseCoord, FLEET } from '../src/games/battleships-logic.js';
+import { makeRadioState, STATION_NAMES } from '../src/radio-state.js';
+import { makeThemesState, THEME_NAMES } from '../src/themes-state.js';
+import { makeFocusState, formatClock } from '../src/focus-state.js';
+import { makeTinyBrains } from '../src/tiny-brains.js';
+import { describe, colourName } from '../src/describe.js';
 import { SYSTEM, TOOLS } from '../server/persona.js';
 
 const fail = msg => { console.error('FAIL:', msg); process.exitCode = 1; };
@@ -123,14 +129,103 @@ const ok = (cond, msg) => { if (!cond) fail(msg); };
   console.log('jam: ok');
 }
 
-// 7. Persona prompt & tool checks
+// 7. Battleships
+{
+  ok(parseCoord('fire at B4')?.r === 3 && parseCoord('fire at B4')?.c === 1, 'parses B4 coordinate');
+  const bs = makeBattleshipsGame({ seed: 123, level: 3 });
+  ok(bs.player.ships.length === FLEET.length && bs.ai.ships.length === FLEET.length, 'places full 4-ship fleets');
+  const [sr, sc] = bs.ai.ships[0].cells[0];
+  const shot = bs.fire(sr, sc);
+  ok(shot.ok && shot.player.hit && bs.turns === 1, 'fires and registers hit + AI counter-shot');
+  ok(!bs.fire(sr, sc).ok, 'refuses firing at same coordinate twice');
+  console.log('battleships: ok');
+}
+
+// 8. Cosy Workshop Radio
+{
+  const rad = makeRadioState();
+  ok(!rad.playing && STATION_NAMES.length === 6, 'radio starts off with 6 stations');
+  ok(rad.play('crackling fire').station === 'fireplace' && rad.playing, 'maps fireplace alias');
+  ok(rad.setVolume(40).volume === 40 && /40%/.test(rad.line()), 'sets volume and builds context line');
+  ok(!rad.next().error && rad.station === 'rain', 'cycles to next station');
+  ok(rad.stop().was && !rad.playing, 'stops cleanly');
+  console.log('radio: ok');
+}
+
+// 9. Mood-Reactive Room Themes
+{
+  const th = makeThemesState();
+  ok(THEME_NAMES.includes('spaceship') && th.get('cozy cabin')?.key === 'cabin', 'resolves built-in theme aliases');
+  const saved = th.savePreset('Sunset Chill', { room: { walls: '#ffeedd' }, colours: { glow: '#ff8844' } });
+  ok(!saved.error && th.get('sunset chill')?.isCustom, 'saves and recalls custom preset');
+  ok(!th.removePreset('sunset chill').error && !th.get('sunset chill'), 'deletes custom preset');
+  console.log('themes: ok');
+}
+
+// 10. Focus / Pomodoro Buddy
+{
+  let now = new Date('2026-11-27T14:00:00Z').getTime();
+  const fc = makeFocusState({ clock: () => now });
+  ok(formatClock(90_000) === '01:30', 'formats clock mm:ss');
+  ok(!fc.start({ minutes: 1, label: 'Writing' }).error && fc.active.phase === 'focus', 'starts focus session');
+  ok(!fc.pause().error && fc.tick(65_000) === null, 'paused timer does not advance');
+  ok(!fc.resume().error, 'resumes timer');
+  const done = fc.tick(61_000);
+  ok(done?.done && done.phase === 'focus' && fc.stats.sessions === 1 && fc.stats.streak === 1, 'completes session and increments streak');
+  console.log('focus: ok');
+}
+
+// 11. Multi-Brain Tiny Brains Suite
+{
+  const tb = makeTinyBrains();
+  const focusSee = [0, -1, -1, -1, 0, 0, -1, 1]; // focusMode = 1
+  const pFocus = tb.pickIdle(focusSee, ['rest', 'glance', 'hop', 'stretch'], 1);
+  ok(['rest', 'glance'].includes(pFocus.act), 'focus mode stays calm: ' + pFocus.act);
+  const normalSee = [-.5, 1, 0, .6, -.5, .8, 1, -1];
+  tb.rewardIdle(normalSee, 'hop', { strong: true });
+  tb.rewardIdle(normalSee, 'hop', { strong: true });
+  ok(tb.pickIdle(normalSee, ['rest', 'glance', 'sway', 'hop'], 1).act === 'hop', 'coach learns liked idle move');
+  ok(tb.pickReaction([.5, -.5, -1, 1, -1, 0], ['wave', 'bounce']).length > 0, 'react brain picks gesture');
+  const sk0 = tb.skill();
+  tb.recordGameResult(true); tb.recordGameResult(true); tb.recordGameResult(true);
+  ok(tb.skill() >= sk0 && tb.stats().rounds === 3, 'skill dial adapts upward after player wins');
+  tb.noteActivity('game'); tb.noteActivity('music'); tb.noteActivity('game');
+  ok(tb.favouriteNext().guess != null, 'activity predictor tracks habits');
+  tb.forgetAll();
+  ok(tb.stats().rounds === 0, 'forgetAll resets all tiny brains');
+  console.log('tiny-brains: ok');
+}
+
+// 12. Improved Item Descriptions (src/describe.js)
+{
+  const fakeMesh = {
+    isMesh: true, name: 'wingL', userData: { part: 'wing' }, scale: { x: 1, y: 1, z: 1 }, position: { x: 0, y: 0, z: 0 },
+    geometry: { boundingBox: { min: { x: -.2, y: 0, z: -.1 }, max: { x: .2, y: .7, z: .1 } } },
+    material: { color: { r: .85, g: .65, b: .15 }, metalness: .85, roughness: .2, emissiveIntensity: .8 },
+  };
+  const fakeThing = {
+    userData: {
+      generatedSpec: { kind: 'creature', thing: 'dragon', style: 'lego', with: { how: 'with', crest: 'flame' } },
+    },
+    traverse(fn) { fn(this); fn(fakeMesh); },
+  };
+  const d = describe(fakeThing, 'a glowing gold lego dragon', { size: .4 });
+  ok(/dragon/.test(d.short) && !/creature/.test(d.short), 'prefers spec.thing over generic spec.kind: ' + d.short);
+  ok(/glowing/.test(d.text) && /metallic/.test(d.text) && /wings/.test(d.text) && /flame/.test(d.text), 'reports real mesh finish, parts, crest: ' + d.text);
+  ok(/tall and upright/.test(d.text), 'reports actual 3D proportions: ' + d.text);
+  ok(!/Not reflected/.test(d.text), 'no false-positive missing words: ' + d.text);
+  ok(colourName('#d6a634') === 'gold', 'colourName maps gold accurately');
+  console.log('describe: ok');
+}
+
+// 13. Persona prompt & tool checks
 {
   const diaryCount = (SYSTEM.match(/^Your diary:/gm) || []).length;
   ok(diaryCount === 1, `expected 1 "Your diary:" section in SYSTEM, found ${diaryCount}`);
   const names = new Set(TOOLS.map(t => t.name));
-  for (const req of ['play', 'aquarium', 'capsule', 'story', 'jam']) ok(names.has(req), `tool ${req} registered`);
+  for (const req of ['play', 'aquarium', 'capsule', 'story', 'jam', 'radio', 'theme', 'focus']) ok(names.has(req), `tool ${req} registered`);
   const playTool = TOOLS.find(t => t.name === 'play');
-  ok(playTool.input_schema.properties.game.enum.includes('cards') && playTool.input_schema.properties.game.enum.includes('words'), 'play tool includes cards and words');
+  for (const g of ['cards', 'words', 'battleships']) ok(playTool.input_schema.properties.game.enum.includes(g), `play tool includes ${g}`);
   console.log('persona: ok');
 }
 

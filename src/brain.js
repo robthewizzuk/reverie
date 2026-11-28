@@ -186,6 +186,9 @@ function checkInput(name, input) {
   if (name === 'capsule' && (!['seal', 'open', 'list', 'remove'].includes(input.action) || ['note', 'prop', 'until', 'label', 'id'].some(k => input[k] != null && typeof input[k] !== 'string'))) return 'action must be seal, open, list or remove, and the rest text';
   if (name === 'story' && (!['start', 'puppet', 'scene', 'end'].includes(input.action) || ['title', 'theme', 'time', 'weather', 'prop', 'character', 'voice', 'effect', 'beat'].some(k => input[k] != null && typeof input[k] !== 'string'))) return 'action must be start, puppet, scene or end, and the rest text';
   if (name === 'jam' && (!['start', 'change', 'pad', 'stop'].includes(input.action) || ['style', 'mood', 'pad'].some(k => input[k] != null && typeof input[k] !== 'string') || (input.bpm != null && typeof input.bpm !== 'number'))) return 'action must be start, change, pad or stop, bpm a number, the rest text';
+  if (name === 'radio' && (!['play', 'stop', 'next', 'volume', 'list'].includes(input.action) || (input.station != null && typeof input.station !== 'string') || (input.level != null && typeof input.level !== 'number'))) return 'action must be play, stop, next, volume or list, level a number, station text';
+  if (name === 'theme' && (!['apply', 'save', 'delete', 'list'].includes(input.action) || (input.name != null && typeof input.name !== 'string'))) return 'action must be apply, save, delete or list, name text';
+  if (name === 'focus' && (!['start', 'break', 'pause', 'resume', 'stop', 'status'].includes(input.action) || ['label', 'radio'].some(k => input[k] != null && typeof input[k] !== 'string') || (input.minutes != null && typeof input.minutes !== 'number'))) return 'action must be start, break, pause, resume, stop or status, minutes a number, the rest text';
   return null;
 }
 
@@ -197,9 +200,10 @@ export function gameAsked(text) {
     : /\b(draw and guess|draw ?& ?guess|pictionary|guess (what i'?m drawing|my drawing(s)?))\b/.test(t) ? 'draw_and_guess'
     : /\b(dice quest|dice adventure|quest|adventure game)\b/.test(t) ? 'quest' : /\b(escape room|escape game|escape the room)\b/.test(t) ? 'escape'
     : /\b(blackjack|pontoon|higher or lower|fortune teller|tarot|read my cards|card game)\b/.test(t) ? 'cards'
-    : /\b(wordle|hangman|word guesser|word game)\b/.test(t) ? 'words' : null;
+    : /\b(wordle|hangman|word guesser|word game)\b/.test(t) ? 'words'
+    : /\bbattleships?\b/.test(t) ? 'battleships' : null;
   if (!game || /\b(stop|quit|end|enough|no more|don'?t|not now|later|rules|history|who invented)\b/.test(t)) return null;
-  if (!/\b(play|game|match|fancy|let'?s|up for|challenge|set up|get out|board|again|rematch|wanna|want to|quiz me|another|round|start|do a|have a|host|guess my|go on a|tell me a|deal|read my)\b/.test(t) && !/^\W*(chess|quiz|trivia|noughts and crosses|tic tac toe|twenty questions|draw and guess|pictionary|dice quest|escape room|blackjack|higher or lower|fortune teller|tarot|wordle|hangman)\W*$/.test(t)) return null;
+  if (!/\b(play|game|match|fancy|let'?s|up for|challenge|set up|get out|board|again|rematch|wanna|want to|quiz me|another|round|start|do a|have a|host|guess my|go on a|tell me a|deal|read my)\b/.test(t) && !/^\W*(chess|quiz|trivia|noughts and crosses|tic tac toe|twenty questions|draw and guess|pictionary|dice quest|escape room|blackjack|higher or lower|fortune teller|tarot|wordle|hangman|battleships?)\W*$/.test(t)) return null;
   const level = /\b(easy|gentle|beginner|go easy)\b/.test(t) ? 1 : /\b(hardest|master|best you can|full strength)\b/.test(t) ? 5 : /\b(hard|tough|serious)\b/.test(t) ? 4 : undefined;
   const mode = game === 'cards' ? (/\b(fortune|tarot|read my cards)\b/.test(t) ? 'fortune' : /\bhigher or lower\b/.test(t) ? 'higher_lower' : 'blackjack')
     : game === 'words' ? (/\bhangman\b/.test(t) ? 'hangman' : 'wordle') : undefined;

@@ -40,6 +40,9 @@ import { makeAquarium } from './aquarium.js';
 import { makeCapsules } from './capsule.js';
 import { makeStorytime } from './storytime.js';
 import { makeJam } from './jam.js';
+import { makeRadio } from './radio.js';
+import { makeThemes } from './themes.js';
+import { makeFocus } from './focus.js';
 
 const $ = s => document.querySelector(s);
 const stage = $('#stage'), canvas = $('#view'), ctx = canvas.getContext('2d');
@@ -48,7 +51,7 @@ const gamebar = $('#gamebar'), gameText = $('#gamebar span'), gameButtons = $('#
 const draw = $('#draw'), book = $('#book'), look = $('#look'), recentre = $('#recentre'), helperList = $('#helpers'), tv = $('#tv');
 const debug = new URLSearchParams(location.search).has('debug');
 
-let W = 0, H = 0, world, brain, body, voice, pad, diary, mood, show, shaker, music, helpers, wisps, google, timers, shop, trophies, garden, watch, karaoke, aquarium, capsules, storytime, jam, last = 0, awake = false, captionT = 0, nextAt = 0;
+let W = 0, H = 0, world, brain, body, voice, pad, diary, mood, show, shaker, music, helpers, wisps, google, timers, shop, trophies, garden, watch, karaoke, aquarium, capsules, storytime, jam, radio, themes, focus, last = 0, awake = false, captionT = 0, nextAt = 0;
 // its diary, kept in this browser (memory.js), and today's surprise (daily.js): { surprise, holding, funDay }
 const memory = makeMemory();
 // what you are learning together (learn.js), kept beside the diary; the lessons write their days in the diary too
@@ -63,7 +66,7 @@ const achievements = makeAchievements();
 const today = { surprise: null, holding: null, funDay: funDay() };
 let overnight = Promise.resolve();
 // which kind of fun each of Claude's tools is, for its mood (mood.js FUN)
-const FUN_OF = { make: 'make', change: 'change', toss: 'toss', place: 'place', room_colours: 'room', colours: 'colours', roll: 'roll', doodle: 'doodle', play: 'game', game_move: 'move', voice: 'voice', show: 'show', smash: 'smash', effect: 'effect', music: 'music', dance: 'dance', teach: 'game', wear: 'wear', watch: 'watch', karaoke: 'game', garden: 'plant', aquarium: 'aquarium', capsule: 'capsule', story: 'story', jam: 'jam' };
+const FUN_OF = { make: 'make', change: 'change', toss: 'toss', place: 'place', room_colours: 'room', colours: 'colours', roll: 'roll', doodle: 'doodle', play: 'game', game_move: 'move', voice: 'voice', show: 'show', smash: 'smash', effect: 'effect', music: 'music', dance: 'dance', teach: 'game', wear: 'wear', watch: 'watch', karaoke: 'game', garden: 'plant', aquarium: 'aquarium', capsule: 'capsule', story: 'story', jam: 'jam', radio: 'radio', theme: 'theme', focus: 'focus' };
 
 // What the engine's speed kit is told is being played, so the 3D view paces and tunes itself as it does for a Next Gen
 // game in the app: 60 frames a second on a phone or a laptop's browser (not every refresh of a 120 Hz screen, which is
@@ -196,6 +199,8 @@ function frame(now) {
     garden?.update(dt);
     aquarium?.update(dt);
     capsules?.update(dt);
+    radio?.update(dt);
+    focus?.update(dt);
     watch.update(dt);
     if (!document.hidden) world.draw(ctx);
   } catch (e) {
@@ -285,7 +290,19 @@ async function boot() {
   setTone(() => toneOf(mood.cheer));
   brain = makeBrain({ world, onCaption: say, onStatus: setStatus, onTiming: showTiming,
     memo: () => [memory.summary(), learning.summary(), achievements.summary()].filter(Boolean).join('\n'), context: () => watch?.context() || '', onHeard: (text, again) => { memory.said('you', text, again); recapper.poke(); if (!again) mood.fun('chat'); timers?.heard(); },
-    onTool: (name, input, r) => { noted(name, input, r); earned(name, input, r); if (!r?.error && FUN_OF[name]) mood.fun(FUN_OF[name]); },
+    onTool: (name, input, r) => {
+      noted(name, input, r); earned(name, input, r);
+      if (!r?.error && FUN_OF[name]) mood.fun(FUN_OF[name]);
+      if (!r?.error) {
+        const act = name === 'make' || name === 'change' || name === 'doodle' ? 'make'
+          : name === 'play' || name === 'game_move' ? 'game'
+          : name === 'music' || name === 'karaoke' || name === 'jam' || name === 'radio' ? 'music'
+          : name === 'focus' ? 'focus'
+          : name === 'garden' || name === 'aquarium' ? 'garden'
+          : name === 'place' || name === 'room_colours' || name === 'theme' ? 'room' : 'chat';
+        body?.brains?.noteActivity(act);
+      }
+    },
     tools: {
       window: input => world.daylight.set(input),
       doodle: async () => { if (world.game?.id === 'draw_and_guess') return { text: 'Not opened: the drawing pad is already in use for Draw and Guess.', error: true }; pad.show(); return 'The drawing pad is open on their screen. When they press Make it!, you will hear what they drew and it appears in your hands.'; },
@@ -313,14 +330,17 @@ async function boot() {
       helpers: input => helpers.manage(input),
       shop: input => shop.tool(input || {}),
       badges: async () => achievements.report(),
-      karaoke: async input => { if (input?.action !== 'stop' && input?.action !== 'list' && jam?.playing) jam.stop(); return karaoke.tools.karaoke(input); },
-      ...jam.tools,
+      karaoke: async input => { if (input?.action !== 'stop' && input?.action !== 'list') { if (jam?.playing) jam.stop(); if (radio?.playing && radio.state.station === 'lofi') radio.stop(); } return karaoke.tools.karaoke(input); },
+      jam: async input => { if (input?.action !== 'stop' && radio?.playing && radio.state.station === 'lofi') radio.stop(); return jam.tools.jam(input); },
       diary: async () => { diary.show(); return 'Your diary is open on their screen: everything you remember about them, and a way to forget any of it.'; },
       reminder: input => timers.tool(input),
       garden: input => garden.command(input),
       aquarium: input => aquarium.command(input),
       capsule: input => capsules.command(input),
       story: input => storytime.command(input),
+      radio: input => radio.command(input),
+      theme: input => themes.command(input),
+      focus: input => focus.command(input),
       watch: input => watch.command(input),
     } });
   // reminders and timers: chips on the stage, a chime and Reverie saying so when one goes off (once it is free to talk)
@@ -329,33 +349,41 @@ async function boot() {
     canTalk: () => awake && !brain.busy && !brain.speaking && !world.creature.state.listening,
     announce: text => brain.hear(text, { at: performance.now(), news: true }),
     onRing: () => { const c = world.creature; if (!c.busy) c.gesture('wave'); c.mood('excited'); const at = c.coreAt(new gs.hd.THREE.Vector3()); world.floaties.burst({ x: at.x, y: at.y + .3, z: at.z }, { n: 4 }); } });
-  body = makeBody({ creature: world.creature, world, mood });
+  body = makeBody({ creature: world.creature, world, mood, audioOn: () => !!(radio?.playing || jam?.playing || music?.spotify?.playing) });
+  world.skill = () => body.brains.skill();
+  world.onGameResult = won => body.brains.recordGameResult(won);
   // the phone in their hands (fun.js): shaken, it gets dizzy and Claude hears of it; tilted, things on the floor roll
   shaker = makeShaker({ world: world.physics, creature: world.creature, floaties: world.floaties, floor: world.floorBodies, pet: () => world.keeper,
     onShaken: strength => { mood.fun('shake'); if (!world.game) brain.notice(`[phone] They just shook the phone ${strength > 220 ? 'really hard' : 'about'}: you are dizzy, and everything on the floor bounced.`, true); } });
   // its windowsill garden (garden.js): plants that grow over real days, watered by asking or by a tap on the pot
   garden = makeGarden({ world, onNews: (text, loud) => brain.notice(text, loud) });
   world.addLine(() => garden.line());
-  // mini desk aquarium (aquarium.js), time capsule jars on the shelf (capsule.js), and bedtime storytime (storytime.js)
+  // mini desk aquarium, time capsule jars, bedtime storytime, workshop radio, room themes, and focus buddy
   aquarium = makeAquarium({ world, onNews: (text, loud) => brain.notice(text, loud) });
   world.addLine(() => aquarium.line());
   capsules = makeCapsules({ world, memory, onNews: (text, loud) => brain.notice(text, loud) });
   world.addLine(() => capsules.line());
   storytime = makeStorytime({ world, memory, onNews: (text, loud) => brain.notice(text, loud) });
   world.addLine(() => storytime.line());
+  radio = makeRadio({ world, onNews: (text, loud) => brain.notice(text, loud) });
+  world.addLine(() => radio.line());
+  themes = makeThemes({ world, radio });
+  world.addLine(() => themes.line());
+  focus = makeFocus({ world, body, radio, memory, onNews: (text, loud) => brain.notice(text, loud) });
+  world.addLine(() => focus.line());
   // watching a video together: a screen in the room; only words about it (title, captions) ever reach Claude
   const sheet = makeWatchSheet({ el: $('#watching'), onPick: v => { wakeUp(); startWatching(v); } });
   watch = makeWatch({ host: $('#screen'), sheet, world, memory, state: () => ({ speaking: brain.speaking, busy: brain.busy, listening: world.creature.state.listening }),
     onOpen: () => { pad?.hide(); if (show?.isOpen) show.close(); diary?.hide(); },
     onNews: (text, loud) => brain.notice(text, loud) });
-  world.onNews = (text, loud) => { gameNews(text); gameBadges(text); if (/^\[(chess|quiz|noughts|twenty|draw and guess|quest|lesson|escape|cards|words)/.test(text)) mood.fun(/checkmate|you win|you won|they won|last question|well played|right!|guessed it|treasure|you escaped|spot on|solved/i.test(text) ? 'win' : 'move'); brain.notice(text, loud); };
+  world.onNews = (text, loud) => { gameNews(text); gameBadges(text); if (/^\[(chess|quiz|noughts|twenty|draw and guess|quest|lesson|escape|cards|words|battleships)/.test(text)) mood.fun(/checkmate|you win|you won|they won|last question|well played|right!|guessed it|treasure|you escaped|spot on|solved|fleet cleared/i.test(text) ? 'win' : 'move'); brain.notice(text, loud); };
   world.onSay = line => { if (brain.busy || brain.speaking) return false; brain.speak(line); return true; };
   world.pad = pad;
   voice = new Listener({ onProblem: () => listeningOff(), onNote: debug ? line => { timing.textContent = 'mic: ' + line; } : null });
   // (which games they play most, for the diary's habits)
   const play0 = world.play.bind(world);
   world.play = (game, o) => { memory.note('play', { game }); return play0(game, o); };
-  window.__reverie = { world, brain, body, gs, voice, pad, memory, learning, diary, today, mood, show, shaker, music, helpers, google, reminders, timers, recapper, shop, achievements, trophies, garden, aquarium, capsules, storytime, watch, karaoke, jam };
+  window.__reverie = { world, brain, body, gs, voice, pad, memory, learning, diary, today, mood, show, shaker, music, helpers, google, reminders, timers, recapper, shop, achievements, trophies, garden, aquarium, capsules, storytime, radio, themes, focus, watch, karaoke, jam };
   achievements.onUnlock(celebrateBadge);
   // its voice (about 48 MB the first time, then from the cache) loaded and its hello written while the light gets
   // ready, so the tap is answered at once: the web version of the engine otherwise loads it with the first line, and
@@ -652,6 +680,7 @@ const looking = makeLook({
     if (!hit && garden.tap(x, y, W, H)) return;
     if (!hit && aquarium?.tap(x, y, W, H)) return;
     if (!hit && capsules?.tap(x, y, W, H)) return;
+    if (!hit && radio?.tap(x, y, W, H)) return;
     if (hit === 'pet') achievements.track('pat');
     if (hit === 'creature') { body.poke(); mood.fun('poke'); gs.sound.sounds.boing?.(); achievements.track('poke'); }
     else if (hit === 'prop') world.toss();
@@ -682,7 +711,7 @@ helperList.addEventListener('click', e => {
 // The line above the chat bar while a game is on: how it stands, and its buttons (Undo, New game, Done).
 let barKey = '';
 function showGame() {
-  const g = world.game, b = g ? g.bar() : (watch?.bar() || storytime?.bar());
+  const g = world.game, b = g ? g.bar() : (watch?.bar() || focus?.bar() || storytime?.bar());
   gamebar.hidden = !b; if (!b) { barKey = ''; return; }
   if (gameText.textContent !== b.text) gameText.textContent = b.text;
   // (the buttons are made again only when they change: a video's clock changes the text every second)
@@ -693,6 +722,7 @@ function showGame() {
 gamebar.addEventListener('click', e => {
   const id = e.target.closest('button')?.dataset.id, g = world?.game; if (!id) return;
   if (!g && watch?.on) { watch.button(id); barKey = ''; return; }
+  if (!g && focus?.on) { focus.button(id); barKey = ''; return; }
   if (!g && storytime?.on) { storytime.button(id); barKey = ''; return; }
   if (!g) return;
   // (Claude hears about both: a new round out loud, as when it calls play; a game put away with the next thing said)
