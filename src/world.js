@@ -168,12 +168,12 @@ function setup() {
     handle.position.set(mx0 + .036, my0 + .045, mz0 + .06); handle.rotation.z = -Math.PI / 2;
     add(mug); room.add(coffee); add(handle, false);
   }
-  // workshop wall mirror above the workbench: arched brass frame + true ray-traced mirror glass facing Reverie & the room
+  // workshop wall mirror: arched brass frame + true reflective mirror glass positioned clearly in view on the right wall
   const mirrorGroup = new THREE.Group();
-  const mx = .74, my = 1.44, mz = backZ(mx, my) + .032;
+  const mx = .38, my = 1.24, mz = backZ(mx, my) + .032;
   const mn = wallNormal(mx, my, mz);
   mirrorGroup.position.set(mx, my, mz);
-  mirrorGroup.lookAt(mx + mn[0], my + mn[1] * .35, mz + mn[2]);
+  mirrorGroup.lookAt(mx + mn[0], my + mn[1] * .25, mz + mn[2]);
   const archShape = (w, h) => {
     const sh = new THREE.Shape(), hw = w / 2, hh = h / 2, r = hw;
     sh.moveTo(-hw, -hh);
@@ -183,16 +183,16 @@ function setup() {
     sh.lineTo(-hw, -hh);
     return sh;
   };
-  const mirrorMat = pbr('#f7f8fc', { metal: 1, rough: .015, clear: .25 });
-  const mirrorGlass = new THREE.Mesh(new THREE.ShapeGeometry(archShape(.64, .82), 24), mirrorMat);
+  const mirrorMat = pbr('#ffffff', { metal: .98, rough: .01, clear: .3 });
+  const mirrorGlass = new THREE.Mesh(new THREE.ShapeGeometry(archShape(.52, .68), 24), mirrorMat);
   mirrorGlass.position.z = .018;
   mirrorGlass.userData.noTrace = true; // mirror reflects the room without self-intersecting in the traced BVH
-  const frameOuter = archShape(.70, .88);
-  const frameHole = archShape(.635, .815);
+  const frameOuter = archShape(.58, .74);
+  const frameHole = archShape(.515, .675);
   frameOuter.holes.push(frameHole);
   const brassMat = Object.assign(pbr('#d4af6a', { metal: .9, rough: .24 }), { bumpMap: bb.bumpMap, bumpScale: .002, roughnessMap: bb.roughnessMap });
   const mirrorFrame = new THREE.Mesh(new THREE.ExtrudeGeometry(frameOuter, { depth: .028, bevelEnabled: true, bevelThickness: .006, bevelSize: .006, bevelSegments: 2, curveSegments: 20 }), brassMat);
-  const mirrorBack = new THREE.Mesh(new THREE.ShapeGeometry(archShape(.68, .86), 20), wood);
+  const mirrorBack = new THREE.Mesh(new THREE.ShapeGeometry(archShape(.56, .72), 20), wood);
   mirrorBack.position.z = -.002;
   mirrorBack.rotation.y = Math.PI;
   mirrorGroup.add(mirrorBack, mirrorFrame, mirrorGlass);

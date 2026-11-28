@@ -168,6 +168,7 @@ export function makeShow({ el, world, onNews = () => {}, onOpen = () => {} }) {
     gs.sound.sounds.select?.(); flash();
     creature.mood('curious'); creature.gesture('think');
     if (id === 'show') onNews(`[show] They held something up to the camera to show you: the photo is attached. ${spotted()} Say what you think it is and react like a delighted friend in one to three short lines: notice a detail or two, ask about it, or say something fun. If you aren't sure what it is, say so playfully and guess. Offer to make a copy for your shelf if it suits.`, true, img, true);
+    if (id === 'identify') onNews(`[show] They pressed "What's this?" on the live camera: the photo is attached. ${spotted()} Identify clearly what is in front of the camera (object, plant, book, product, gadget, or sign). If there is foreign text, a label, or a menu visible, read or translate it concisely out loud. Keep it helpful and friendly in 1 to 3 short sentences, and offer to note it in their diary or make a tiny 3D copy if it fits.`, true, img, true);
     if (id === 'copy') onNews(`[show] They held something up to the camera and want a 3D copy of it for your shelf: the photo is attached. ${spotted()} Say one short line about it, then call place with item set to 1 to 8 plain words for what it is (its colour, material and kind, the way you'd ask the maker: "a yellow rubber duck") and spot "on the shelf". Afterwards, be honest about how close the copy came out.`, true, img, true);
   }
   let flashT = 0;
@@ -223,7 +224,22 @@ export function makeShow({ el, world, onNews = () => {}, onOpen = () => {} }) {
       } else if (hunt) line.textContent = `Find ${a(hunt.name)}!`;
       await starting;
       if (eyes?.failed) return { text: 'The camera did not open (they may have said no, or there is no camera). Tell them kindly; they can describe things instead.', error: true };
-      return `The camera window is open on their screen.${note} When they press Show, you get a photo of what they are holding; Make a copy asks you to make one for your shelf. Barcodes they hold up hatch a surprise in your hands.`;
+      return `The camera window is open on their screen.${note} When they press "What's this?" or Show, you get a photo to identify or talk about; Make a copy asks you to make one for your shelf.`;
+    },
+    /** Live Camera "What's This?": opens the camera if needed, snaps a crisp frame, and sends it to Claude to identify/translate. */
+    async identify(question = '') {
+      if (el.hidden) {
+        const res = await show.open();
+        if (res?.error) return res;
+      }
+      // Wait briefly for the first live camera frame if it just opened
+      for (let i = 0; i < 20 && !eyes?.picture; i++) await new Promise(r => setTimeout(r, 150));
+      const img = photo();
+      if (!img) return { text: 'The camera is open — ask them to point it at the item and press "What\'s this?" once the picture appears.' };
+      gs.sound.sounds.pop?.(); flash();
+      const q = String(question || '').trim();
+      onNews(`[show] Live "What's this?" snapshot attached.${q ? ` They asked: "${q}".` : ''} ${spotted()} Identify what is in the photo clearly (object, plant, book, gadget, or sign), read or translate any visible text if helpful, and reply warmly in 1 to 3 short sentences.`, true, img, true);
+      return 'Snapped a live photo from the camera to identify it.';
     },
     close() {
       el.hidden = true; cancelAnimationFrame(raf); stopEyes();

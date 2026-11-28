@@ -159,8 +159,12 @@ export const TOOLS = [
   },
   {
     name: 'show',
-    description: 'Open a camera window on their screen for show and tell: they hold something up and press Show, and you get a photo of it (or Make a copy, to copy it onto your shelf). Give find to start a hunt for an everyday thing; you hear when the camera spots it.',
-    input_schema: strict({ find: { type: 'string', description: 'Optional: an everyday thing for them to find and show you, such as "cup", "banana", "book", "teddy bear", "scissors" or "toothbrush".' } }, []),
+    description: 'Live camera window for Show & Tell and "What\'s this?": set identify: true to immediately snap a live photo and identify an object, plant, book, gadget, or translate a sign/label out loud; leave identify false to open the camera window (or give find to start a hunt for an everyday thing).',
+    input_schema: strict({
+      identify: { type: 'boolean', description: 'Set true when they ask "what\'s this?", "what am I holding?", "identify this", or "translate this" to snap and identify immediately.' },
+      question: { type: 'string', description: 'Optional specific question about what is in front of the camera (e.g. "what plant is this?", "translate this menu").' },
+      find: { type: 'string', description: 'Optional: an everyday thing for them to find and show you, such as "cup", "banana", "book", "teddy bear", "scissors" or "toothbrush".' },
+    }, []),
   },
   {
     name: 'act',
@@ -489,11 +493,44 @@ export const TOOLS = [
   },
   {
     name: 'radio',
-    description: 'Cosy Workshop Radio on your desk: play procedural ambient soundscapes (fireplace, rain, forest, waves, cafe, lofi), switch station (next), set volume (0..100), list stations, or stop.',
+    description: 'Cosy Workshop Radio & Ambient Soundscape Mixer on your desk: play a station (fireplace, rain, forest, waves, cafe, lofi), apply a multi-layer preset (rainy_cafe, fireplace, ocean, deep_focus, forest, calm_alpha), mix individual soundscape layers (rain, fire, cafe, waves, wind, binaural 0..100 with binaural_mode focus/calm/sleep), switch station (next), set volume, list, or stop.',
     input_schema: strict({
-      action: { type: 'string', enum: ['play', 'stop', 'next', 'volume', 'list'] },
+      action: { type: 'string', enum: ['play', 'preset', 'mix', 'stop', 'next', 'volume', 'list'] },
       station: { type: 'string', description: 'play: fireplace, rain, forest, waves, cafe, or lofi.' },
+      preset: { type: 'string', description: 'preset: rainy_cafe, fireplace, ocean, deep_focus, forest, or calm_alpha.' },
+      layers: {
+        type: 'object',
+        description: 'mix: 0..100 levels for any combination of rain, fire, cafe, waves, wind, binaural.',
+        properties: {
+          rain: { type: 'number' }, fire: { type: 'number' }, cafe: { type: 'number' },
+          waves: { type: 'number' }, wind: { type: 'number' }, binaural: { type: 'number' },
+        },
+      },
+      binaural_mode: { type: 'string', enum: ['focus', 'calm', 'sleep'], description: 'mix: focus (40 Hz gamma), calm (10 Hz alpha), or sleep (6 Hz theta).' },
       level: { type: 'number', description: 'volume: 0 to 100.' },
+    }, ['action']),
+  },
+  {
+    name: 'guide',
+    description: 'Voice-First Recipe / Cooking & DIY Sidekick: walk them hands-free through any recipe, workout, or DIY project step by step on a big HUD bar with automatic named timers. start begins with title, ingredients/materials list, and steps (each with optional timer_seconds & timer_label); next/prev/goto move steps; ingredients reads the list; timer starts the current step\'s timer; stop closes it.',
+    input_schema: strict({
+      action: { type: 'string', enum: ['start', 'next', 'prev', 'goto', 'ingredients', 'timer', 'stop'] },
+      title: { type: 'string', description: 'start: short title (e.g. "Fluffy Pancakes", "Replace a Bike Tube").' },
+      ingredients: { type: 'array', items: { type: 'string' }, description: 'start: list of ingredients or tools/materials.' },
+      steps: {
+        type: 'array',
+        description: 'start: ordered steps.',
+        items: {
+          type: 'object',
+          properties: {
+            text: { type: 'string' },
+            timer_seconds: { type: 'number' },
+            timer_label: { type: 'string' },
+          },
+          required: ['text'],
+        },
+      },
+      step: { type: 'integer', description: 'goto: 1-based step number.' },
     }, ['action']),
   },
   {

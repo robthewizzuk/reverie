@@ -384,4 +384,26 @@ const ok = (cond, msg) => { if (!cond) fail(msg); };
   console.log('youtube-search: ok');
 }
 
+// 18. Wall clock, seasonal weather, Recipe/DIY Guide & Ambient Soundscapes
+{
+  const { WEATHER_NAMES } = await import('../src/sky-names.js');
+  ok(WEATHER_NAMES.includes('aurora') && WEATHER_NAMES.includes('fireflies') && WEATHER_NAMES.includes('autumn'), 'seasonal weather window scenes registered');
+  const { makeGuide } = await import('../src/guide.js');
+  let timerSet = null;
+  const g = makeGuide({ timers: { set: o => { timerSet = o; return `Set ${o.label}`; } } });
+  const r1 = g.command({ action: 'start', title: 'Pancakes', ingredients: ['200g flour', '2 eggs'], steps: [{ text: 'Whisk batter' }, { text: 'Cook each side', timer_seconds: 120, timer_label: 'Flip pancake' }] });
+  ok(/Step 1 of 2/.test(r1) && g.on, 'guide starts on step 1');
+  ok(/200g flour/.test(g.command({ action: 'ingredients' })), 'guide recalls ingredients');
+  ok(/Step 2 of 2/.test(g.command({ action: 'next' })), 'guide advances to step 2');
+  ok(/Flip pancake/.test(g.command({ action: 'timer' })) && timerSet?.seconds === 120, 'guide triggers named step timer');
+  ok(g.bar()?.buttons.some(b => b.id === 'timer'), 'guide HUD bar shows step timer button');
+  ok(/All done/.test(g.command({ action: 'next' })) && !g.on, 'guide finishes cleanly on final step');
+  ok(TOOLS.some(t => t.name === 'guide'), 'guide tool registered in persona');
+  const radioTool = TOOLS.find(t => t.name === 'radio');
+  ok(radioTool.input_schema.properties.action.enum.includes('mix') && radioTool.input_schema.properties.action.enum.includes('preset'), 'radio tool supports mix and preset soundscapes');
+  const showTool = TOOLS.find(t => t.name === 'show');
+  ok(showTool.input_schema.properties.identify?.type === 'boolean', 'show tool supports Live Camera What\'s This? identify');
+  console.log('workshop-upgrades: ok');
+}
+
 console.log(process.exitCode ? 'features: failed' : 'features: all passed');
