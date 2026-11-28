@@ -19,9 +19,17 @@ const MODEL_URLS = {
 // Tuned for Reverie's live voice-companion turn-taking (16 kHz, 512 samples = 32 ms per VAD frame)
 const VAD_FRAME = 512;
 const VAD_CTX = 64;
-const START_PROB = 0.48;      // speech onset threshold
+const START_PROB = 0.48;      // speech onset threshold when room is quiet
 const CONT_PROB = 0.30;       // speech continuation hysteresis (keeps soft trailing syllables)
 const ONSET_FRAMES = 2;       // 64 ms consecutive speech to reject clicks/pops
+// Stricter thresholds while Reverie is speaking (+250 ms tail) to ignore faint AEC speaker bleed
+// while still letting a real near-field user voice barge in cleanly
+const SPEAK_START_PROB = 0.72;
+const SPEAK_CONT_PROB = 0.45;
+const SPEAK_ONSET_FRAMES = 4; // 128 ms consecutive speech
+const SPEAK_MIN_RMS = 0.025;  // near-field energy gate against residual speakerphone bleed
+const SPEAK_TAIL_FRAMES = 8;  // 256 ms post-speech reverb guard after Reverie stops talking
+
 const PREROLL_FRAMES = 8;     // 256 ms ring buffer so first syllable is never clipped
 const HANGOVER_FRAMES = 15;   // 480 ms trailing silence before finalizing utterance
 const MAX_UTT_FRAMES = 500;   // ~16 s safety cap per utterance
@@ -45,6 +53,7 @@ let decY = [0, 0], decOut = null, hyp = [], lastPartial = '';
 const fbank = new OnlineFbank();
 const preroll = [];
 let inSpeech = false, onsetCount = 0, silenceCount = 0, uttFrames = 0;
+let botSpeaking = false, botTail = 0;
 let ready = false, busy = false;
 const pendingAudio = [];
 
@@ -248,15 +257,22 @@ async function processFrame(frame512) {
   for (let i = 0; i < frame512.length; i++) sum += frame512[i] * frame512[i];
   const rms = Math.sqrt(sum / frame512.length);
 
+  if (!botSpeaking && botTail > 0) botTail--;
+  const echoGuard = botSpeaking || botTail > 0;
+  const startTh = echoGuard ? SPEAK_START_PROB : START_PROB;
+  const contTh = echoGuard ? SPEAK_CONT_PROB : CONT_PROB;
+  const onsetNeed = echoGuard ? SPEAK_ONSET_FRAMES : ONSET_FRAMES;
+  const rmsOk = !echoGuard || rms >= SPEAK_MIN_RMS;
+
   const prob = await runVad(frame512);
-  const voiceNow = inSpeech ? prob >= CONT_PROB : prob >= START_PROB;
+  const voiceNow = inSpeech ? (prob >= contTh && rmsOk) : (prob >= startTh && rmsOk);
   postMessage({ type: 'vad', prob, speaking: voiceNow, rms });
 
   if (!inSpeech) {
     preroll.push(frame512);
     if (preroll.length > PREROLL_FRAMES) preroll.shift();
-    if (prob >= START_PROB) {
-      if (++onsetCount >= ONSET_FRAMES) {
+    if (prob >= startTh && rmsOk) {
+      if (++onsetCount >= onsetNeed) {
         inSpeech = true;
         silenceCount = 0;
         uttFrames = preroll.length;
@@ -275,7 +291,7 @@ async function processFrame(frame512) {
   fbank.acceptWaveform(frame512);
   while (fbank.numFrames >= encT) await runEncoderChunk();
 
-  if (prob >= CONT_PROB) {
+  if (prob >= contTh && rmsOk) {
     silenceCount = 0;
   } else {
     silenceCount++;
@@ -313,12 +329,17 @@ self.onmessage = async e => {
     if (pendingAudio.length > 64) pendingAudio.splice(0, pendingAudio.length - 16);
     pendingAudio.push(m.pcm);
     drain();
+  } else if (m.type === 'speaking') {
+    const on = !!m.on;
+    if (on && !botSpeaking && !inSpeech) { preroll.length = 0; onsetCount = 0; }
+    if (!on && botSpeaking) botTail = SPEAK_TAIL_FRAMES;
+    botSpeaking = on;
   } else if (m.type === 'hotwords') {
     hotBoosts = buildHotwordBoosts([...DEFAULT_HOTWORDS, ...(m.words || [])], tokens, 1.15);
   } else if (m.type === 'reset') {
     pendingAudio.length = 0;
     preroll.length = 0;
-    inSpeech = false; onsetCount = 0; silenceCount = 0; uttFrames = 0;
+    inSpeech = false; onsetCount = 0; silenceCount = 0; uttFrames = 0; botTail = 0;
     if (ready) { resetVadState(); await resetZipformer(); }
   }
 };

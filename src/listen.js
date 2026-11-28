@@ -91,6 +91,9 @@ export class Listener {
   /** Update Reverie-specific hotwords (pet name, room items, etc.) boosted by Zipformer 20M. */
   setHotwords(words) { this._localStt?.setHotwords(words); }
 
+  /** Inform local Silero VAD when Reverie is speaking so faint speaker bleed doesn't trigger self-ducking or loops. */
+  setBotSpeaking(on) { this._localStt?.setBotSpeaking(on); }
+
   /** Switch seamlessly from browser SpeechRecognition to local Silero VAD + Zipformer 20M once models are ready. */
   _activateLocal() {
     if (!this.want || !this._localStt?.ready || this._localStt.failed) return;
