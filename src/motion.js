@@ -43,9 +43,10 @@ export function makeMotion({ view, fx, sound = () => {} }) {
   const moving = new Set();   // entries whose springs are still going
   let lit = 0;
 
-  // an entry's springs, made the first time it moves
+  // an entry's springs, made the first time it moves (recreated if a plain-JSON flexing object was loaded from storage)
   function springs(e) {
-    return e.flexing ||= { size: new Spring({ ...FEEL.size, x: 1, target: 1 }), squash: new Spring({ ...FEEL.squash }), tilt: new Spring({ ...FEEL.tilt }), dir: Math.random() * Math.PI * 2, spin: 0, gone: null, t: 0 };
+    if (e.flexing && typeof e.flexing.size?.update === 'function') return e.flexing;
+    return e.flexing = { size: new Spring({ ...FEEL.size, x: 1, target: 1 }), squash: new Spring({ ...FEEL.squash }), tilt: new Spring({ ...FEEL.tilt }), dir: Math.random() * Math.PI * 2, spin: 0, gone: null, t: 0 };
   }
   function go(e) { moving.add(e); return springs(e); }
 

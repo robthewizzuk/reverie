@@ -63,10 +63,11 @@ function load() {
   try { const o = JSON.parse(localStorage.getItem(KEY) || 'null'); return o && typeof o === 'object' ? o : {}; } catch { return {}; }
 }
 const okItem = i => i && typeof i.words === 'string' && i.words && [i.x, i.y, i.z].every(Number.isFinite);
+const cleanItem = ({ pivot, body, life, open, flexing, brushed, ...rest }) => rest;
 const kept = load();
 const now = {
   colours: { ...DEFAULT_ROOM, ...Object.fromEntries(Object.entries(kept.colours || {}).filter(([k, c]) => k in DEFAULT_ROOM && /^#[0-9a-f]{6}$/.test(c))) },
-  items: (Array.isArray(kept.items) ? kept.items : []).filter(okItem).slice(0, MAX_ITEMS),
+  items: (Array.isArray(kept.items) ? kept.items : []).filter(okItem).map(cleanItem).slice(0, MAX_ITEMS),
 };
 function save() {
   try { localStorage.setItem(KEY, JSON.stringify(now)); } catch { /* a private window: kept until it closes */ }
@@ -96,7 +97,7 @@ export function keepRoomColours(c) { now.colours = { ...c }; save(); }
 /** Keeps a thing placed in the room (replacing one with the same id). */
 export function keepItem(item) {
   now.items = now.items.filter(i => i.id !== item.id);
-  now.items.push({ ...item });
+  now.items.push(cleanItem(item));
   while (now.items.length > MAX_ITEMS) now.items.shift();
   save();
 }
