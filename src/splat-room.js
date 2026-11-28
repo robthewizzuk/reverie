@@ -40,7 +40,7 @@ export function makeSplatRoom({ world, stageEl, setWorkshopVisible = () => {} })
   canvas.id = 'splat-canvas';
   Object.assign(canvas.style, {
     position: 'absolute', inset: '0', width: '100%', height: '100%',
-    zIndex: '0', pointerEvents: 'none', display: 'none',
+    zIndex: '-2', pointerEvents: 'none', display: 'none',
   });
   stageEl.prepend(canvas);
 
