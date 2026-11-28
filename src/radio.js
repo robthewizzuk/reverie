@@ -4,6 +4,7 @@
 import gs from '../engine/src/gamescroll.js';
 import { audio } from '../engine/src/sfx.js';
 import { makeRadioState, STATIONS } from './radio-state.js';
+import { makeSoundscapeMixer, SOUNDSCAPE_PRESETS } from './soundscape.js';
 import { DESK, onBoard } from './room.js';
 import { FUN } from './mood.js';
 
@@ -144,9 +145,11 @@ export function makeRadio({ world, onNews = () => {} }) {
     } catch { /* headless / audio locked */ }
   }
 
+  const mixer = makeSoundscapeMixer();
+
   let t = 0;
   function update(dt) {
-    if (!state.playing) return;
+    if (!state.playing && !mixer.active) return;
     t += dt;
     const s = 1 + Math.sin(t * 3.5) * .04;
     dial.scale.setScalar(s);
@@ -156,6 +159,7 @@ export function makeRadio({ world, onNews = () => {} }) {
     ndc.set(x / w * 2 - 1, -(y / h) * 2 + 1);
     ray.setFromCamera(ndc, world.view.cam);
     if (!ray.intersectObject(root, true).length) return false;
+    mixer.stop();
     const r = state.next();
     if (state.playing) startAudio(); else stopAudio();
     knob.rotation.y += .7;
@@ -166,10 +170,30 @@ export function makeRadio({ world, onNews = () => {} }) {
   }
 
   async function command(input = {}) {
-    const a = input.action || (input.station ? 'play' : 'play');
-    if (a === 'stop') { const r = state.stop(); stopAudio(); return r.text; }
-    if (a === 'list') return `Workshop radio stations: ${state.list()}.`;
-    if (a === 'next') { const r = state.next(); if (state.playing) startAudio(); else stopAudio(); return r.text; }
+    const a = input.action || (input.preset ? 'preset' : input.layers ? 'mix' : input.station ? 'play' : 'play');
+    if (a === 'stop') {
+      const r = state.stop();
+      stopAudio();
+      mixer.stop();
+      return r.text;
+    }
+    if (a === 'preset') {
+      stopAudio(); state.stop();
+      const res = mixer.preset(input.preset);
+      if (res.error) return { text: res.error, error: true };
+      dialMat.color.set('#7be0ff');
+      return res.text;
+    }
+    if (a === 'mix') {
+      stopAudio(); state.stop();
+      const text = mixer.mix(input.layers || {}, input.binaural_mode || input.binauralMode || null);
+      if (mixer.active) dialMat.color.set('#7be0ff'); else dialMat.color.copy(DIAL_OFF);
+      return `Soundscape mix updated: ${text}.`;
+    }
+    if (a === 'list') {
+      return `Workshop radio stations: ${state.list()}. Soundscape presets: ${Object.keys(SOUNDSCAPE_PRESETS).join(', ')}. Mixable layers: rain, fire, cafe, waves, wind, binaural (focus 40 Hz / calm 10 Hz / sleep 6 Hz).`;
+    }
+    if (a === 'next') { mixer.stop(); const r = state.next(); if (state.playing) startAudio(); else stopAudio(); return r.text; }
     if (a === 'volume') {
       const r = state.setVolume(input.level);
       if (r.error) return { text: r.error, error: true };
@@ -178,6 +202,7 @@ export function makeRadio({ world, onNews = () => {} }) {
       else startAudio();
       return r.text;
     }
+    mixer.stop();
     const r = state.play(input.station);
     if (r.error) return { text: r.error, error: true };
     startAudio();
@@ -186,8 +211,9 @@ export function makeRadio({ world, onNews = () => {} }) {
 
   return {
     state,
-    get playing() { return state.playing; },
-    update, tap, command, stop: () => { state.stop(); stopAudio(); },
-    line: () => state.line(),
+    mixer,
+    get playing() { return state.playing || mixer.active; },
+    update, tap, command, stop: () => { state.stop(); stopAudio(); mixer.stop(); },
+    line: () => mixer.active ? ` Workshop soundscape playing: ${mixer.summary()}.` : state.line(),
   };
 }

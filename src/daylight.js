@@ -43,7 +43,12 @@ export function skyOf(code, cloud = null) {
   if (cloud != null && !w.rain && !w.snow && !w.fog) w.cloud = Math.max(w.cloud, cloud * .9);
   return w;
 }
-const WEATHERS = { clear: skyOf(0), cloudy: skyOf(2), overcast: skyOf(3), fog: skyOf(45), drizzle: skyOf(51), rain: skyOf(63), storm: skyOf(95), snow: skyOf(73) };
+const WEATHERS = {
+  clear: skyOf(0), cloudy: skyOf(2), overcast: skyOf(3), fog: skyOf(45), drizzle: skyOf(51), rain: skyOf(63), storm: skyOf(95), snow: skyOf(73),
+  aurora: { ...skyOf(0), aurora: 1 },
+  fireflies: { ...skyOf(0), fireflies: 1 },
+  autumn: { ...skyOf(1), autumn: 1 },
+};
 
 /** How sleepy the hour is on the device's own clock, 0..1: 0 by day, rising from 9:30 pm to 1 by 11:30 pm, easing off 5 to 7 am. */
 export function lateness(d = new Date()) { return latenessAt(d.getHours() + d.getMinutes() / 60); }
@@ -69,7 +74,8 @@ export function makeDaylight({ v, light, outside, glass, side, globe, motes }) {
   const now = {}, goal = {}, baked = {};
   for (const k of COLOURS) { now[k] = C(KEYS[4][1][k]); goal[k] = C(KEYS[4][1][k]); }
   for (const k of NUMBERS) { now[k] = KEYS[4][1][k]; goal[k] = now[k]; }
-  Object.assign(now, { night: 0, cloud: 0, rain: 0, snow: 0, fog: 0, stars: 0 }); Object.assign(goal, { night: 0, cloud: 0, rain: 0, snow: 0, fog: 0, stars: 0 });
+  Object.assign(now, { night: 0, cloud: 0, rain: 0, snow: 0, fog: 0, stars: 0, aurora: 0, fireflies: 0, autumn: 0 });
+  Object.assign(goal, { night: 0, cloud: 0, rain: 0, snow: 0, fog: 0, stars: 0, aurora: 0, fireflies: 0, autumn: 0 });
   const dirNow = new THREE.Vector3(-.8, .62, .3).normalize(), dirGoal = dirNow.clone();
   let asked = { time: 'live', weather: 'live' }, storm = false, moon = { phase: .5, lit: 1, up: true }, label = 'day', settleT = 0, bakeAt = 3;
   let t = 0, lookT = 0, paintT = 0, painted = '', flashT = 0, nextFlash = 8, thunderIn = -1, bed = null, soundOn = false;
@@ -84,6 +90,8 @@ export function makeDaylight({ v, light, outside, glass, side, globe, motes }) {
   // stars: the same each night (seeded), brighter ones fewer
   const STARS = Array.from({ length: 70 }, (_, i) => { const r = n => { const s = Math.sin(i * 127.1 + n * 311.7) * 43758.5; return s - Math.floor(s); }; return [r(1), r(2) * .75, .4 + r(3) * .9, .35 + r(4) * .65]; });
   const CLOUDS = Array.from({ length: 9 }, (_, i) => { const r = n => { const s = Math.sin(i * 91.3 + n * 47.9) * 24634.6; return s - Math.floor(s); }; return [r(1), .1 + r(2) * .6, .18 + r(3) * .22, .06 + r(4) * .07]; });
+  const FLIES = Array.from({ length: 18 }, (_, i) => { const r = n => { const s = Math.sin(i * 73.1 + n * 151.3) * 19283.4; return s - Math.floor(s); }; return [r(1), .25 + r(2) * .65, r(3) * 6.28, .6 + r(4) * .9]; });
+  const LEAVES = Array.from({ length: 22 }, (_, i) => { const r = n => { const s = Math.sin(i * 53.7 + n * 211.9) * 31415.9; return s - Math.floor(s); }; return [r(1), r(2), .5 + r(3) * .9, ['#d96b27', '#c9452c', '#e6a532', '#a84324'][i % 4]]; });
   const css = (col, a = 1) => `rgba(${Math.round(col.r * 255)},${Math.round(col.g * 255)},${Math.round(col.b * 255)},${a})`;
   function paintSky(s) {
     const { x, size: n } = s, top = now.top.clone().convertLinearToSRGB(), low = now.low.clone().convertLinearToSRGB();
@@ -110,6 +118,28 @@ export function makeDaylight({ v, light, outside, glass, side, globe, motes }) {
       x.ellipse(mx, my, Math.abs(k) * mr, mr, 0, Math.PI / 2, -Math.PI / 2, (k > 0) === waxing);
       x.fill(); x.restore();
     }
+    // Aurora borealis: shimmering emerald, cyan & violet curtains dancing across the sky
+    if (now.aurora > .04) {
+      const a = now.aurora * .72;
+      for (let b = 0; b < 3; b++) {
+        const yBase = n * (.2 + b * .16);
+        const gr = x.createLinearGradient(0, yBase - n * .18, 0, yBase + n * .22);
+        gr.addColorStop(0, 'rgba(130,80,255,0)');
+        gr.addColorStop(.35, b === 1 ? `rgba(140,95,255,${a * .55})` : `rgba(50,245,175,${a * .75})`);
+        gr.addColorStop(.7, `rgba(45,220,190,${a * .45})`);
+        gr.addColorStop(1, 'rgba(50,245,175,0)');
+        x.fillStyle = gr;
+        x.beginPath();
+        x.moveTo(0, yBase + n * .22);
+        for (let px = 0; px <= n; px += n / 12) {
+          const wave = Math.sin(px * .04 + t * (.35 + b * .12) + b * 2) * n * .07;
+          x.lineTo(px, yBase + wave);
+        }
+        x.lineTo(n, yBase + n * .22);
+        x.closePath();
+        x.fill();
+      }
+    }
     // soft clouds drifting by, lit like the sky
     if (now.cloud > .05) {
       const cc = low.clone().lerp(new THREE.Color(1, 1, 1), now.night > .5 ? .05 : .35).multiplyScalar(now.night > .5 ? .55 : 1);
@@ -117,6 +147,31 @@ export function makeDaylight({ v, light, outside, glass, side, globe, motes }) {
         const px = ((cx + t * .0015 * (1 + h * 5)) % 1.3 - .15) * n, py = cy * n, rw = w * n, rh = h * n;
         const gr = x.createRadialGradient(px, py, 0, px, py, rw); gr.addColorStop(0, css(cc, .55 * now.cloud)); gr.addColorStop(1, css(cc, 0));
         x.globalAlpha = 1; x.fillStyle = gr; x.save(); x.translate(px, py); x.scale(1, rh / rw); x.translate(-px, -py); x.fillRect(px - rw, py - rw, rw * 2, rw * 2); x.restore();
+      }
+    }
+    // Summer fireflies: warm golden orbs pulsing gently outside the windows
+    if (now.fireflies > .04) {
+      for (const [fx, fy, ph, spd] of FLIES) {
+        const pulse = .25 + .75 * Math.pow(.5 + .5 * Math.sin(t * 1.4 * spd + ph), 2);
+        const px = ((fx + Math.sin(t * .25 * spd + ph) * .06 + 1) % 1) * n;
+        const py = (fy + Math.cos(t * .32 * spd + ph) * .04) * n;
+        const r = n * .026 * (.6 + .5 * pulse);
+        const gr = x.createRadialGradient(px, py, 0, px, py, r);
+        gr.addColorStop(0, `rgba(255,242,150,${now.fireflies * pulse})`);
+        gr.addColorStop(1, 'rgba(255,210,80,0)');
+        x.fillStyle = gr; x.beginPath(); x.arc(px, py, r, 0, 7); x.fill();
+      }
+    }
+    // Drifting autumn leaves fluttering across the glass
+    if (now.autumn > .04) {
+      x.globalAlpha = now.autumn * .88;
+      for (const [lx, ly, spd, col] of LEAVES) {
+        const px = ((lx + t * .045 * spd) % 1.15 - .07) * n;
+        const py = ((ly + t * .06 * spd + Math.sin(t * 2 + lx * 10) * .02) % 1.15 - .07) * n;
+        x.save(); x.translate(px, py); x.rotate(t * 1.6 * spd + lx * 8);
+        x.fillStyle = col;
+        x.beginPath(); x.ellipse(0, 0, n * .022, n * .011, 0, 0, 7); x.fill();
+        x.restore();
       }
     }
     x.globalAlpha = 1; s.tex.needsUpdate = true;
@@ -212,6 +267,7 @@ export function makeDaylight({ v, light, outside, glass, side, globe, motes }) {
     const live = asked.weather === 'live' ? (() => { const s = skyHere(); return s ? skyOf(s.code, s.cloud) : null; })() : null;
     const w = asked.weather !== 'live' ? WEATHERS[asked.weather] : live || WEATHERS.clear;
     goal.cloud = w.cloud; goal.rain = w.rain; goal.snow = w.snow; goal.fog = w.fog; storm = w.storm;
+    goal.aurora = w.aurora || 0; goal.fireflies = w.fireflies || 0; goal.autumn = w.autumn || 0;
     // (cloud dims and spreads the sun, the sky lights the room more evenly, and on a grey day the lamp is put on)
     goal.sunI *= 1 - .8 * w.cloud; goal.glow *= 1 - .3 * w.cloud; goal.hemiI *= 1 + .25 * w.cloud;
     goal.lamp += (1 - goal.night) * w.cloud * .7; goal.globe += (1 - goal.night) * w.cloud * .6; goal.exposure += .04 * w.cloud * (1 - goal.night);
@@ -223,7 +279,7 @@ export function makeDaylight({ v, light, outside, glass, side, globe, motes }) {
     return goal;
   }
 
-  const ALL_NUMBERS = [...NUMBERS, 'night', 'cloud', 'rain', 'snow', 'fog', 'stars'];
+  const ALL_NUMBERS = [...NUMBERS, 'night', 'cloud', 'rain', 'snow', 'fog', 'stars', 'aurora', 'fireflies', 'autumn'];
   const LAMP_COL = new THREE.Color();
   let hadFlash = false, dropsActive = false;
 
@@ -282,8 +338,8 @@ export function makeDaylight({ v, light, outside, glass, side, globe, motes }) {
   Object.assign(baked, { sunI: now.sunI, lamp: now.lamp, glow: now.glow, hemiI: now.hemiI, sun: now.sun.clone(), dir: dirNow.clone() });   // (baked by the view on its first frame)
 
   return {
-    /** What it shows now: { label ('day', 'golden hour', 'sunset', 'evening', 'night'...), night 0..1, cloud, rain, snow, fog, asked }. */
-    get state() { return { label, night: now.night, cloud: now.cloud, rain: now.rain, snow: now.snow, fog: now.fog, storm, asked: { ...asked } }; },
+    /** What it shows now: { label ('day', 'golden hour', 'sunset', 'evening', 'night'...), night 0..1, cloud, rain, snow, fog, aurora, fireflies, autumn, asked }. */
+    get state() { return { label, night: now.night, cloud: now.cloud, rain: now.rain, snow: now.snow, fog: now.fog, aurora: now.aurora, fireflies: now.fireflies, autumn: now.autumn, storm, asked: { ...asked } }; },
     update(dt) {
       t += dt;
       if ((lookT -= dt) <= 0) { lookT = 5; target(); }
@@ -298,10 +354,12 @@ export function makeDaylight({ v, light, outside, glass, side, globe, motes }) {
         apply();
         hadFlash = flashT > 0;
       }
-      // the sky pictures: check & repaint at most 4x/sec instead of allocating hex strings every frame
+      // the sky pictures: check & repaint at most 4x/sec (or 8x/sec when aurora/fireflies/autumn are animating)
+      const animSky = now.aurora > .04 || now.fireflies > .04 || now.autumn > .04;
       if ((paintT -= dt) <= 0) {
-        paintT = .25;
-        const key = `${now.top.getHexString()},${now.low.getHexString()},${now.stars * 20 | 0},${now.cloud * 20 | 0},${now.fog * 10 | 0},${(t / 4 | 0) * (now.cloud > .05 ? 1 : 0)},${moon.phase.toFixed(2)}`;
+        paintT = animSky ? .12 : .25;
+        const animTick = animSky ? (t * 8 | 0) : (t / 4 | 0) * (now.cloud > .05 ? 1 : 0);
+        const key = `${now.top.getHexString()},${now.low.getHexString()},${now.stars * 20 | 0},${now.cloud * 20 | 0},${now.fog * 10 | 0},${now.aurora * 10 | 0},${now.fireflies * 10 | 0},${now.autumn * 10 | 0},${animTick},${moon.phase.toFixed(2)}`;
         if (key !== painted) { painted = key; for (const s of skies) paintSky(s); }
       }
       for (const f of falls) if (f.mesh.visible) { const map = f.m.map; map.offset.y += dt * (now.snow > now.rain ? .05 : .9); map.offset.x += dt * (now.snow > now.rain ? .01 : 0); }
