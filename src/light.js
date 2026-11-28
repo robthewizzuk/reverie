@@ -68,12 +68,17 @@ export function lightRoom(v, creature, roomBox) {
   const reflections = v.room(roomBox, { strength: .88 });
   v.contact({ y: .026, size: 3, darkness: .9, opacity: .42, height: .7 });
 
+  // soft warm front-fill lamp that fades in at night so props in Reverie's hands and on the rug never fall into silhouette
+  const propFill = { x: -.3, y: 1.05, z: 1.35, col: '#ffebd6', i: 0, reach: 3.2 };
+
   return {
     sun: s,
     /** Toggle shallow depth of field (relaxed during tabletop games so the whole board stays crisp). */
     setDof(on) { v.focus = on ? { at: 2.35, range: 1.45, depth: 1.8, blur: 1.8 } : null; },
     /** The desk lamp's light ({ i, reach, col }): daylight.js turns it up as the day goes. */
     lamp,
+    /** 0..1 night amount set by daylight.js, used to fade in the warm front prop-fill lamp. */
+    night: 0,
     /** How much of its core's light reaches the room (daylight.js turns it down at night, so the rug isn't orange). */
     coreK: 1,
     /** 0..1, set each frame while it dances (music.js): the core's light and the desk lamp swell on the beat. */
@@ -83,7 +88,14 @@ export function lightRoom(v, creature, roomBox) {
     update(dt, t) {
       creature.coreAt(at); core.at(at.x, at.y - .04, at.z + .2); core.i0 = (.2 + creature.coreGlow * .5) * this.coreK * (1 + this.pulse * .8);
       // (a gentle swell, not a disco: the lamp is a little brighter on each beat)
-      v.placeLamps([this.pulse ? Object.assign(swell, lamp, { i: lamp.i * (1 + this.pulse * .35) }) : lamp], 0, .4, 0, t);
+      const mainLamp = this.pulse ? Object.assign(swell, lamp, { i: lamp.i * (1 + this.pulse * .35) }) : lamp;
+      const lamps = [mainLamp];
+      if (this.night > .05) {
+        propFill.x = at.x - .3; propFill.z = at.z + 1.35;
+        propFill.i = 1.45 * this.night;
+        lamps.push(propFill);
+      }
+      v.placeLamps(lamps, 0, .4, 0, t);
       s.follow(at.x, 0, at.z);
     },
     /** The core's light, after its glow colour changed. */

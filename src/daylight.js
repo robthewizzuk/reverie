@@ -22,8 +22,8 @@ const mix = (a, b, k) => a + (b - a) * k;
 // The light at a few heights of the sun (degrees). Between two, it is mixed. Kept gentle: the day key is the room's
 // approved daylight (light.js), and every other key stays within a soft, natural range of it.
 const KEYS = [
-  [-12, { name: 'night', sun: '#b9c8ea', sunI: .32, up: 34, hemi: '#8f9ab8', ground: '#5c4a3c', hemiI: .05, envI: .03, top: '#0a1226', low: '#1b2747', glow: .9, lamp: 2.3, reach: 2.4, globe: 2.8, exposure: 1, motes: 0 }],
-  [-5, { name: 'blue hour', sun: '#b8c4e6', sunI: .2, up: 26, hemi: '#a9b2cc', ground: '#7a6656', hemiI: .1, envI: .12, top: '#34446e', low: '#7c84ab', glow: .8, lamp: 2.1, reach: 2.4, globe: 2.6, exposure: 1.06, motes: 0 }],
+  [-12, { name: 'night', sun: '#b9c8ea', sunI: .42, up: 34, hemi: '#a6b2cc', ground: '#786250', hemiI: .18, envI: .16, top: '#0a1226', low: '#1b2747', glow: .9, lamp: 2.5, reach: 3.4, globe: 2.8, exposure: 1.04, motes: 0 }],
+  [-5, { name: 'blue hour', sun: '#b8c4e6', sunI: .32, up: 26, hemi: '#b4bdd4', ground: '#86705e', hemiI: .2, envI: .22, top: '#34446e', low: '#7c84ab', glow: .8, lamp: 2.3, reach: 3.2, globe: 2.6, exposure: 1.06, motes: 0 }],
   [0, { name: 'dusk', sun: '#ffd8bc', sunI: .9, up: 6, hemi: '#dcd6e2', ground: '#a08470', hemiI: .22, envI: .32, top: '#8c9bc2', low: '#f1c7b0', glow: .78, lamp: 2.3, reach: 2.6, globe: 2.6, exposure: 1.04, motes: 1 }],
   [9, { name: 'golden', sun: '#ffe6cc', sunI: 2.6, up: 15, hemi: '#f3ede6', ground: '#b89a7c', hemiI: .28, envI: .5, top: '#d3deea', low: '#fbe7d3', glow: 1, lamp: 1.4, reach: 2, globe: 1.9, exposure: 1, motes: 3 }],
   [26, { name: 'day', sun: '#fff2e2', sunI: 3, up: 38, hemi: '#f2f1ee', ground: '#b79c80', hemiI: .3, envI: .55, top: '#e3eaf0', low: '#f6f3ec', glow: 1.05, lamp: 1.2, reach: 1.8, globe: 1.6, exposure: 1, motes: 3 }],
@@ -232,7 +232,7 @@ export function makeDaylight({ v, light, outside, glass, side, globe, motes }) {
     if (v.scene.background) v.scene.background.copy(BG).lerp(now.low, now.night);
     light.lamp.i = now.lamp; light.lamp.reach = now.reach;
     // (at night the lamp is a softer warm white and the core's own light is turned down: the room cosy, not orange)
-    light.lamp.col = '#' + LAMP_DAY.clone().lerp(LAMP_NIGHT, now.night).getHexString(); light.coreK = 1 - .5 * now.night;
+    light.lamp.col = '#' + LAMP_DAY.clone().lerp(LAMP_NIGHT, now.night).getHexString(); light.coreK = 1 - .25 * now.night; light.night = now.night;
     // (the round room is closed all round, so at night a little more of the soft light by the camera keeps its face read)
     if (v.faceLit) v.faceLit.strength = .16 + .24 * now.night;
     globe.emissiveIntensity = now.globe;
