@@ -9,7 +9,7 @@ import { backZ } from './shell.js';
 // where the shelf hangs: on the back wall, above the right end of the desk. The room is round (shell.js) and its wall
 // leans in as it rises into the dome, so each tier sits out from the wall at its own depth (zs), clear of the curve at
 // both ends
-export const SHELF = { x: .9, ys: [1.22, 1.43, 1.64], width: .84, depth: .2, slots: 6 };
+export const SHELF = { x: 1.06, ys: [1.06, 1.24, 1.42], width: .78, depth: .19, slots: 6 };
 SHELF.zs = SHELF.ys.map(y => Math.max(backZ(SHELF.x - SHELF.width / 2, y + .03), backZ(SHELF.x + SHELF.width / 2, y + .03)) + SHELF.depth / 2 + .015);
 SHELF.z = SHELF.zs[0];
 const METAL = { bronze: '#c98a55', silver: '#d9dde2', gold: '#f2c14e' };

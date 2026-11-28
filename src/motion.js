@@ -20,7 +20,7 @@ export const FEEL = {
   // how strong a prop's own light is in the room: about the desk lamp's, a small pool on what is near it. (The engine's
   // own, 6 reaching a couple of metres, is for a game's lantern outdoors; on a shelf against the pale wall at night it
   // burnt a big white blot into the wall and washed out everything round it.)
-  glow: { i: 1, reach: 1.1 },
+  glow: { i: .55, reach: .95 },
 };
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 

@@ -9,8 +9,9 @@ import { backZ, WINDOW } from './shell.js';
 export const SUN_DIR = [-.8, .62, .3];
 // the opening in the left wall, its window (shell.js, with the room's shape)
 export { WINDOW };
-// the desk lamp's globe
-export const LAMP = { x: 1.3, y: 1.12, z: backZ(1.3, .8) + .15 };
+// actual wall sconce lights mounted above the shelves (pulled slightly out from the wall so they illuminate the shelves cleanly without burning hotspots onto the plaster)
+export const LAMP = { x: 1.06, y: 1.56, z: backZ(1.06, 1.56) + .24 };
+export const SHELF_LAMP = { x: -.46, y: 1.21, z: backZ(-.46, 1.21) + .24 };
 
 const CORE_LAMP = '#ff7020';     // the light its core casts, as made (moved with the glow colour)
 
@@ -50,8 +51,9 @@ export function lightRoom(v, creature, roomBox) {
   const s = sun('#fff2e2', 3.1, 4, SUN_DIR);
   s.softShadows(3); v.scene.add(s, s.target); v.onTier(T => s.setTier(T));
 
-  // the desk lamp's globe: a small warm glow on the desk and the wall behind it, as a lamp on in daytime
-  const lamp = { ...LAMP, col: '#ffd7a6', i: 1.25, reach: 1.9 };
+  // the two warm brass sconce lights above the shelves (right trophy shelf + left floating shelf)
+  const lamp = { ...LAMP, col: '#ffd7a6', i: .95, reach: 2.0 };
+  const leftLamp = { ...SHELF_LAMP, col: '#ffd7a6', i: .65, reach: 1.7 };
   v.lampLights(6);
   // its core: a warm light on its hands, on what it holds and on the rug in front of it, brighter as it glows
   const core = v.flash(0, .3, .3, { keep: true, col: creature.glowed(CORE_LAMP), i: .5, reach: 1.1 });
@@ -69,34 +71,38 @@ export function lightRoom(v, creature, roomBox) {
 
   // soft warm front-fill lamp that fades in at night so props in Reverie's hands and on the rug never fall into silhouette
   const propFill = { x: -.3, y: 1.05, z: 1.35, col: '#ffebd6', i: 0, reach: 3.2 };
-  const lamps1 = [lamp], lamps2 = [lamp, propFill];
+  const lampsDay = [lamp, leftLamp], lampsNight = [lamp, leftLamp, propFill];
 
   return {
     sun: s,
     /** Keep the room and held props sharp (depth-of-field blur disabled for crispness). */
     setDof() { v.focus = null; },
-    /** The desk lamp's light ({ i, reach, col }): daylight.js turns it up as the day goes. */
+    /** The right shelf sconce light ({ i, reach, col }): daylight.js turns it up as the day goes. */
     lamp,
     /** 0..1 night amount set by daylight.js, used to fade in the warm front prop-fill lamp. */
     night: 0,
     /** How much of its core's light reaches the room (daylight.js turns it down at night, so the rug isn't orange). */
     coreK: 1,
-    /** 0..1, set each frame while it dances (music.js): the core's light and the desk lamp swell on the beat. */
+    /** 0..1, set each frame while it dances (music.js): the core's light and the shelf lights swell on the beat. */
     pulse: 0,
     /** The bounce light and the room's reflections: bake() each again after the room changes. */
     bounce, room: reflections,
     update(dt, t) {
       creature.coreAt(at); core.at(at.x, at.y - .04, at.z + .2); core.i0 = (.2 + creature.coreGlow * .5) * this.coreK * (1 + this.pulse * .8);
-      // (a gentle swell, not a disco: the lamp is a little brighter on each beat)
-      const mainLamp = this.pulse ? Object.assign(swell, lamp, { i: lamp.i * (1 + this.pulse * .35) }) : lamp;
+      // Keep shelf sconces warm and gentle (avoid blowing out the back wall with harsh white hotspots)
+      const mainI = lamp.i * .55 * (1 + this.pulse * .35);
+      const mainLamp = Object.assign(swell, lamp, { i: mainI });
+      leftLamp.col = lamp.col;
+      leftLamp.i = mainI * .78;
+      leftLamp.reach = Math.max(1.5, lamp.reach * .8);
       if (this.night > .05) {
         propFill.x = at.x - .3; propFill.z = at.z + 1.35;
-        propFill.i = 1.45 * this.night;
-        lamps2[0] = mainLamp;
-        v.placeLamps(lamps2, 0, .4, 0, t);
+        propFill.i = 1.35 * this.night;
+        lampsNight[0] = mainLamp;
+        v.placeLamps(lampsNight, 0, .4, 0, t);
       } else {
-        lamps1[0] = mainLamp;
-        v.placeLamps(lamps1, 0, .4, 0, t);
+        lampsDay[0] = mainLamp;
+        v.placeLamps(lampsDay, 0, .4, 0, t);
       }
       // Keep the 4m shadow frustum centered on the room instead of jittering with Reverie's breathing
       s.follow(0, 0, 0);

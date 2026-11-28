@@ -13,7 +13,7 @@ export { makeRadioState, STATIONS };
 Object.assign(FUN, { radio: FUN.radio || [.025, .45] });
 
 // sits cleanly on the desk between the aquarium (x = 0.52) and desk lamp (x = 1.3)
-const RADIO_X = .94;
+const RADIO_X = 1.14;
 
 export function makeRadio({ world, onNews = () => {} }) {
   const { THREE, pbr, rbox } = gs.hd;

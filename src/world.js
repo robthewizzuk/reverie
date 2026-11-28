@@ -76,7 +76,7 @@ function setup() {
   // two windows are cut cleanly into the curve: a long rounded one in the left wall (the daylight) and a round one in
   // the back wall, each with a deep reveal out to the glass, as in a thick moulded wall.
   const W0 = WINDOW, wz = (W0.z0 + W0.z1) / 2, wy = (W0.y0 + W0.y1) / 2;
-  const PORT = { x: -.3, y: 1.32, r: .3 }, portOut = backZ(PORT.x, PORT.y) - .05;
+  const PORT = { x: -1.28, y: 1.12, r: .26 }, portOut = backZ(PORT.x, PORT.y) - .05;
   const cut = buildShell(THREE, [
     { wall: 'side', sdf: roundRect(wz, wy, (W0.z1 - W0.z0) / 2, (W0.y1 - W0.y0) / 2, W0.r), at: [wz, wy], out: W0.x },
     { wall: 'back', sdf: circle(PORT.x, PORT.y, PORT.r), at: [PORT.x, PORT.y], out: portOut },
@@ -122,23 +122,56 @@ function setup() {
   board(SILL, .04); board(DESK, .045); board(SHELF, .04);
   // a ledge along the bottom of the big window, out over the curve, to sit things on
   { const m = part('wood', new THREE.Mesh(rbox(LEDGE.x1 - LEDGE.x0, .035, LEDGE.z1 - LEDGE.z0, .012), wood)); m.position.set((LEDGE.x0 + LEDGE.x1) / 2, LEDGE.y - .0175, (LEDGE.z0 + LEDGE.z1) / 2); add(m); }
-  // the desk lamp: a globe on a slim stem, powder-coated a soft warm white
-  const pale = pbr('#ece6dd', { rough: .55 });
-  const L = LAMP, lampBase = new THREE.Mesh(new THREE.CylinderGeometry(.06, .068, .018, 24), pale); lampBase.position.set(L.x, DESK.y + .009, L.z); add(lampBase, false);
-  const stem = new THREE.Mesh(new THREE.CylinderGeometry(.006, .006, L.y - DESK.y - .07, 10), pale); stem.position.set(L.x, (DESK.y + L.y - .07) / 2, L.z); add(stem, false);
-  const globeMat = pbr('#fff6e8', { rough: .35, glow: 1.6, glowCol: '#ffe2b8' });
-  const globe = new THREE.Mesh(new THREE.SphereGeometry(.075, 28, 18), globeMat); globe.position.set(L.x, L.y, L.z); room.add(globe);
   const cb = ceramicBump(THREE), bb = brushedBrassMaps(THREE);
+  const brassMat = Object.assign(pbr('#d4af6a', { metal: .9, rough: .24 }), { bumpMap: bb.bumpMap, bumpScale: .002, roughnessMap: bb.roughnessMap });
+  const globeMat = pbr('#fff6e8', { rough: .35, glow: 1.4, glowCol: '#ffe2b8' });
+
+  // Actual 3D brass picture-bar wall sconce lights mounted cleanly above both shelves
+  const addShelfSconce = (sx, sy, barW) => {
+    const g = new THREE.Group();
+    const sz = backZ(sx, sy) + .018;
+    const n = wallNormal(sx, sy, sz);
+    g.position.set(sx, sy, sz);
+    g.lookAt(sx + n[0], sy + n[1] * .2, sz + n[2]);
+    // Backplate mounted flush on the wall
+    const plate = new THREE.Mesh(rbox(.09, .036, .014, .004), brassMat);
+    g.add(plate);
+    // Two slim brass arms reaching out over the shelf
+    for (const dx of [-.028, .028]) {
+      const arm = new THREE.Mesh(new THREE.CylinderGeometry(.0045, .0045, .13, 8), brassMat);
+      arm.rotation.x = Math.PI / 2; arm.position.set(dx, 0, .065);
+      g.add(arm);
+    }
+    // Sleek brass shade hood angled down toward the shelf
+    const hood = new THREE.Mesh(rbox(barW, .02, .034, .006), brassMat);
+    hood.position.set(0, .004, .132); hood.rotation.x = .25;
+    g.add(hood);
+    // Warm glowing frosted LED diffuser bar underneath the hood
+    const bulb = new THREE.Mesh(rbox(barW - .02, .009, .016, .003), globeMat);
+    bulb.position.set(0, -.006, .134); bulb.rotation.x = .25;
+    g.add(bulb);
+    room.add(g);
+  };
+  addShelfSconce(-.46, 1.21, .34);   // above the left floating shelf
+  addShelfSconce(1.06, 1.56, .46);   // above the right trophy shelf
+
+  // little desk accent lamp on the far right end of the workbench
+  const pale = pbr('#ece6dd', { rough: .55 });
+  const [dlx, dly, dlz] = onBoard(DESK, 1.46);
+  const lampBase = new THREE.Mesh(new THREE.CylinderGeometry(.05, .058, .016, 24), pale); lampBase.position.set(dlx, dly + .008, dlz); add(lampBase, false);
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(.005, .005, .19, 10), pale); stem.position.set(dlx, dly + .105, dlz); add(stem, false);
+  const globe = new THREE.Mesh(new THREE.SphereGeometry(.058, 24, 16), globeMat); globe.position.set(dlx, dly + .22, dlz); room.add(globe);
+
   const vaseShape = [[0, 0], [.045, 0], [.055, .03], [.05, .09], [.03, .13], [.026, .16], [.032, .17], [0, .17]].map(([x, y]) => new THREE.Vector2(x, y));
   const vaseMat = Object.assign(pbr('#d9b8a4', { rough: .34, clear: .65 }), { bumpMap: cb, bumpScale: .003 });
-  const vase = new THREE.Mesh(new THREE.LatheGeometry(vaseShape, 28), vaseMat); vase.position.set(...onBoard(SHELF, -1.5)); add(vase);
+  const vase = new THREE.Mesh(new THREE.LatheGeometry(vaseShape, 28), vaseMat); vase.position.set(...onBoard(SHELF, -.68)); add(vase);
   // workshop dressing: cloth-bound books + framed sketch on the floating shelf, ceramic coffee mug on the workbench
   {
     const bookCols = ['#7b3f36', '#3d5a52', '#c89b52'];
-    const [bx0, by0, bz0] = onBoard(SHELF, -.95);
+    const [bx0, by0, bz0] = onBoard(SHELF, -.25);
     let yAcc = by0;
     bookCols.forEach((col, i) => {
-      const bw = .17 - i * .014, bh = .028, bd = .12 - i * .008;
+      const bw = .15 - i * .012, bh = .026, bd = .11 - i * .008;
       const bm = new THREE.Mesh(rbox(bw, bh, bd, .003), pbr(col, { rough: .82, sheen: .35 }));
       bm.position.set(bx0 + (i - 1) * .006, yAcc + bh / 2, bz0);
       bm.rotation.y = (i - 1) * .08;
@@ -146,34 +179,34 @@ function setup() {
       yAcc += bh;
     });
     // leaning framed botanical print on the shelf
-    const [fx, fy, fz] = onBoard(SHELF, -1.24);
+    const [fx, fy, fz] = onBoard(SHELF, -.47);
     const frameG = new THREE.Group();
-    frameG.position.set(fx, fy + .11, fz - .02);
-    frameG.rotation.set(-.12, .14, 0);
-    const outerF = new THREE.Mesh(rbox(.16, .21, .016, .004), wood);
-    const matBoard = new THREE.Mesh(new THREE.PlaneGeometry(.13, .18), pbr('#f5f0e6', { rough: .9 }));
+    frameG.position.set(fx, fy + .10, fz - .02);
+    frameG.rotation.set(-.12, .12, 0);
+    const outerF = new THREE.Mesh(rbox(.14, .19, .016, .004), wood);
+    const matBoard = new THREE.Mesh(new THREE.PlaneGeometry(.11, .16), pbr('#f5f0e6', { rough: .9 }));
     matBoard.position.z = .0085;
-    const leafArt = new THREE.Mesh(new THREE.CircleGeometry(.038, 20), pbr('#6e8c68', { rough: .88 }));
+    const leafArt = new THREE.Mesh(new THREE.CircleGeometry(.034, 20), pbr('#6e8c68', { rough: .88 }));
     leafArt.scale.set(.7, 1.35, 1); leafArt.position.set(0, .005, .0092);
     frameG.add(outerF, matBoard, leafArt);
     room.add(frameG);
     // warm ceramic coffee mug on the workbench
-    const [mx0, my0, mz0] = onBoard(DESK, .38);
+    const [mx0, my0, mz0] = onBoard(DESK, .54);
     const mugMat = Object.assign(pbr('#e9dfd1', { rough: .28, clear: .7 }), { bumpMap: cb, bumpScale: .002 });
-    const mug = new THREE.Mesh(new THREE.CylinderGeometry(.038, .034, .085, 22), mugMat);
-    mug.position.set(mx0, my0 + .0425, mz0 + .06);
-    const coffee = new THREE.Mesh(new THREE.CircleGeometry(.034, 18), pbr('#2c1810', { rough: .08, clear: .9 }));
-    coffee.rotation.x = -Math.PI / 2; coffee.position.set(mx0, my0 + .081, mz0 + .06);
-    const handle = new THREE.Mesh(new THREE.TorusGeometry(.024, .006, 8, 16, Math.PI), mugMat);
-    handle.position.set(mx0 + .036, my0 + .045, mz0 + .06); handle.rotation.z = -Math.PI / 2;
+    const mug = new THREE.Mesh(new THREE.CylinderGeometry(.036, .032, .08, 22), mugMat);
+    mug.position.set(mx0, my0 + .04, mz0 + .06);
+    const coffee = new THREE.Mesh(new THREE.CircleGeometry(.032, 18), pbr('#2c1810', { rough: .08, clear: .9 }));
+    coffee.rotation.x = -Math.PI / 2; coffee.position.set(mx0, my0 + .076, mz0 + .06);
+    const handle = new THREE.Mesh(new THREE.TorusGeometry(.022, .0055, 8, 16, Math.PI), mugMat);
+    handle.position.set(mx0 + .034, my0 + .042, mz0 + .06); handle.rotation.z = -Math.PI / 2;
     add(mug); room.add(coffee); add(handle, false);
   }
-  // workshop wall mirror: arched brass frame + true reflective mirror glass positioned clearly in view on the right wall
+  // workshop wall mirror: arched brass frame + true reflective mirror glass positioned cleanly in the center-right zone
   const mirrorGroup = new THREE.Group();
-  const mx = .38, my = 1.24, mz = backZ(mx, my) + .032;
+  const mx = .16, my = 1.10, mz = backZ(mx, my) + .03;
   const mn = wallNormal(mx, my, mz);
   mirrorGroup.position.set(mx, my, mz);
-  mirrorGroup.lookAt(mx + mn[0], my + mn[1] * .25, mz + mn[2]);
+  mirrorGroup.lookAt(mx + mn[0], my + mn[1] * .2, mz + mn[2]);
   const archShape = (w, h) => {
     const sh = new THREE.Shape(), hw = w / 2, hh = h / 2, r = hw;
     sh.moveTo(-hw, -hh);
@@ -184,15 +217,14 @@ function setup() {
     return sh;
   };
   const mirrorMat = pbr('#ffffff', { metal: .98, rough: .01, clear: .3 });
-  const mirrorGlass = new THREE.Mesh(new THREE.ShapeGeometry(archShape(.52, .68), 24), mirrorMat);
+  const mirrorGlass = new THREE.Mesh(new THREE.ShapeGeometry(archShape(.44, .56), 24), mirrorMat);
   mirrorGlass.position.z = .018;
   mirrorGlass.userData.noTrace = true; // mirror reflects the room without self-intersecting in the traced BVH
-  const frameOuter = archShape(.58, .74);
-  const frameHole = archShape(.515, .675);
+  const frameOuter = archShape(.50, .62);
+  const frameHole = archShape(.435, .555);
   frameOuter.holes.push(frameHole);
-  const brassMat = Object.assign(pbr('#d4af6a', { metal: .9, rough: .24 }), { bumpMap: bb.bumpMap, bumpScale: .002, roughnessMap: bb.roughnessMap });
   const mirrorFrame = new THREE.Mesh(new THREE.ExtrudeGeometry(frameOuter, { depth: .028, bevelEnabled: true, bevelThickness: .006, bevelSize: .006, bevelSegments: 2, curveSegments: 20 }), brassMat);
-  const mirrorBack = new THREE.Mesh(new THREE.ShapeGeometry(archShape(.56, .72), 20), wood);
+  const mirrorBack = new THREE.Mesh(new THREE.ShapeGeometry(archShape(.48, .60), 20), wood);
   mirrorBack.position.z = -.002;
   mirrorBack.rotation.y = Math.PI;
   mirrorGroup.add(mirrorBack, mirrorFrame, mirrorGlass);
