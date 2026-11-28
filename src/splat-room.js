@@ -1,33 +1,16 @@
-// Gaussian Splat Room Teleporter (src/splat-room.js):
-// Renders `.splat`, `.ply`, and `.spz` 3D Gaussian Splat scans via WebGPU + WebGL compatible InstancedMesh quads
-// (unlike PointsMaterial, which WebGPU clamps to 1px), teleports Reverie cleanly out of the procedural workshop
-// (hiding all workshop furniture/shelves/props so nothing floats), adds an invisible shadow-catcher floor,
-// and lets Reverie walk around autonomously or wherever you tap on the splat floor!
+// Photorealistic Gaussian Splat Room Teleporter powered by @sparkjsdev/spark (World Labs' Three.js 3DGS renderer).
+// Renders true anisotropic 3D Gaussian ellipsoids with GPU depth sorting at 1:1 human scale — supporting
+// `.ply`, SuperSplat compressed `.ply`, `.spz`, `.splat`, `.sog`, and `.ksplat` — on a dedicated WebGL2 canvas
+// composited directly behind Reverie's transparent WebGPU stage (v.clearBg = true), camera-synced every frame.
+import * as THREE from 'three';
+import { SplatMesh } from '@sparkjsdev/spark';
 import gs from '../engine/src/gamescroll.js';
-import { parseSplatAsync } from './splat-parse.js';
 
-let gaussianSprite = null;
-function getGaussianSprite(THREE) {
-  if (gaussianSprite) return gaussianSprite;
-  const S = 64, c = document.createElement('canvas');
-  c.width = c.height = S;
-  const ctx = c.getContext('2d'), img = ctx.createImageData(S, S), d = img.data;
-  const half = S / 2;
-  for (let y = 0; y < S; y++) {
-    for (let x = 0; x < S; x++) {
-      const dx = (x - half + .5) / half, dy = (y - half + .5) / half;
-      const r2 = dx * dx + dy * dy;
-      const a = r2 >= 1 ? 0 : Math.exp(-3.0 * r2);
-      const i = (y * S + x) * 4;
-      d[i] = d[i + 1] = d[i + 2] = 255;
-      d[i + 3] = Math.round(a * 255);
-    }
-  }
-  ctx.putImageData(img, 0, 0);
-  gaussianSprite = new THREE.CanvasTexture(c);
-  gaussianSprite.needsUpdate = true;
-  return gaussianSprite;
-}
+const AXES = [
+  { id: 'opencv', label: 'Y-down', rx: Math.PI },
+  { id: 'yup',    label: 'Y-up',   rx: 0 },
+  { id: 'zup',    label: 'Z-up',   rx: -Math.PI / 2 },
+];
 
 /** Brief white-gold teleport portal flash over the stage. */
 function portalFlash() {
@@ -48,42 +31,87 @@ function portalFlash() {
   setTimeout(() => { f.style.transition = 'opacity .55s ease-out'; f.style.opacity = '0'; }, 160);
 }
 
-export function makeSplatRoom({ world, setWorkshopVisible = () => {} }) {
-  const { THREE } = gs.hd;
-  const scene = world.view.scene;
-  const holder = new THREE.Group();
-  holder.name = 'splat-room';
-  holder.visible = false;
-  scene.add(holder);
+export function makeSplatRoom({ world, stageEl, setWorkshopVisible = () => {} }) {
+  const hdThree = gs.hd.THREE;
+  const hdScene = world.view.scene;
 
-  // Invisible shadow catcher floor so Reverie, pets, and thrown props cast real shadows onto the splat floor
-  const catcher = new THREE.Mesh(
-    new THREE.PlaneGeometry(12, 12),
-    new THREE.ShadowMaterial({ opacity: .45 }),
+  // Dedicated WebGL2 canvas behind Reverie's stage canvas for @sparkjsdev/spark
+  const canvas = document.createElement('canvas');
+  canvas.id = 'splat-canvas';
+  Object.assign(canvas.style, {
+    position: 'absolute', inset: '0', width: '100%', height: '100%',
+    zIndex: '0', pointerEvents: 'none', display: 'none',
+  });
+  stageEl.prepend(canvas);
+
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+  const splatScene = new THREE.Scene();
+  splatScene.background = new THREE.Color('#141820');
+  const splatCam = new THREE.PerspectiveCamera(45, 1, .05, 500);
+
+  // Invisible shadow catcher in Reverie's scene so Reverie, pets, and props cast real shadows onto the splat floor
+  const catcher = new hdThree.Mesh(
+    new hdThree.PlaneGeometry(14, 14),
+    new hdThree.ShadowMaterial({ opacity: .45 }),
   );
   catcher.rotation.x = -Math.PI / 2;
   catcher.position.y = .002;
   catcher.receiveShadow = true;
-  holder.add(catcher);
+  catcher.visible = false;
+  hdScene.add(catcher);
 
-  let mesh = null, currentName = '', active = false;
-  let opts = { scale: 1, yOffset: 0, yaw: 0, splatScale: 1.65 };
-  let roamTimer = 8;
-  const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), hitPt = new THREE.Vector3();
+  let splatMesh = null, currentName = '', active = false, savedBg = null;
+  let opts = { axisIdx: 0, scale: 1, yOffset: -1.1, yaw: 0 };
+  let roamTimer = 8, lastW = 0, lastH = 0;
+  const ray = new hdThree.Raycaster(), ndc = new hdThree.Vector2();
+  const floorPlane = new hdThree.Plane(new hdThree.Vector3(0, 1, 0), 0), hitPt = new hdThree.Vector3();
 
-  function clearMesh() {
-    if (!mesh) return;
-    mesh.geometry?.dispose?.();
-    mesh.material?.dispose?.();
-    holder.remove(mesh);
-    mesh = null;
-  }
+  // Compact floating HUD bar for quick 1-tap alignment (Axis flip, Floor height, Scale, Rotate, Exit)
+  const hud = document.createElement('div');
+  hud.id = 'splat-hud';
+  Object.assign(hud.style, {
+    position: 'absolute', top: '64px', right: '12px', zIndex: '25', display: 'none',
+    gap: '4px', flexWrap: 'wrap', alignItems: 'center', maxWidth: 'min(92vw, 420px)',
+    padding: '6px 8px', borderRadius: '14px', background: 'rgba(20,16,14,.78)',
+    backdropFilter: 'blur(10px)', color: '#f7efe6', font: '500 12px system-ui, sans-serif',
+    boxShadow: '0 4px 18px rgba(0,0,0,.35)',
+  });
+  const mkBtn = (label, fn) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.textContent = label;
+    Object.assign(b.style, {
+      border: '0', borderRadius: '8px', padding: '5px 8px', cursor: 'pointer',
+      background: 'rgba(255,255,255,.12)', color: '#f7efe6', font: 'inherit',
+    });
+    b.addEventListener('click', fn);
+    hud.appendChild(b);
+    return b;
+  };
+  const axisBtn = mkBtn('Axis: Y-down', () => { opts.axisIdx = (opts.axisIdx + 1) % AXES.length; applyTransform(); });
+  mkBtn('Floor −', () => { opts.yOffset -= .25; applyTransform(); });
+  mkBtn('Floor +', () => { opts.yOffset += .25; applyTransform(); });
+  mkBtn('Scale −', () => { opts.scale = Math.max(.1, +(opts.scale / 1.25).toFixed(3)); applyTransform(); });
+  mkBtn('Scale +', () => { opts.scale = Math.min(10, +(opts.scale * 1.25).toFixed(3)); applyTransform(); });
+  mkBtn('⟲', () => { opts.yaw -= Math.PI / 8; applyTransform(); });
+  mkBtn('⟳', () => { opts.yaw += Math.PI / 8; applyTransform(); });
+  const exitBtn = mkBtn('Exit', () => unload());
+  exitBtn.style.background = 'rgba(229,72,77,.82)';
+  stageEl.appendChild(hud);
 
   function applyTransform() {
-    if (!mesh) return;
-    mesh.scale.setScalar(opts.scale);
-    mesh.position.y = opts.yOffset;
-    mesh.rotation.y = opts.yaw;
+    axisBtn.textContent = 'Axis: ' + AXES[opts.axisIdx].label;
+    if (!splatMesh) return;
+    splatMesh.rotation.set(AXES[opts.axisIdx].rx, opts.yaw, 0, 'YXZ');
+    splatMesh.scale.setScalar(opts.scale);
+    splatMesh.position.set(0, opts.yOffset, 0);
+  }
+
+  function clearMesh() {
+    if (!splatMesh) return;
+    splatScene.remove(splatMesh);
+    try { splatMesh.dispose?.(); } catch {}
+    splatMesh = null;
   }
 
   function teleportEffect(entering) {
@@ -95,75 +123,62 @@ export function makeSplatRoom({ world, setWorkshopVisible = () => {} }) {
   }
 
   function setActive(on, { silent = false } = {}) {
-    const next = !!on && !!mesh;
+    const next = !!on && !!splatMesh;
     if (next !== active && !silent) teleportEffect(next);
     active = next;
-    holder.visible = active;
+    canvas.style.display = active ? 'block' : 'none';
+    hud.style.display = active ? 'flex' : 'none';
+    catcher.visible = active;
     setWorkshopVisible(!active);
-    world.light?.setDof?.(!active);
+
+    // Switch Reverie's HDView to transparent background so Spark's photorealistic WebGL2 splat shows behind it
     if (active) {
+      if (savedBg === null) savedBg = hdScene.background ? hdScene.background.clone() : new hdThree.Color('#e9e3da');
+      world.view.clearBg = true;
+      hdScene.background = null;
+      world.light?.setDof?.(false);
       roamTimer = 7;
       world.goHome?.();
     } else {
+      world.view.clearBg = false;
+      if (savedBg) { hdScene.background = savedBg; savedBg = null; }
+      world.light?.setDof?.(true);
       world.goHome?.();
     }
   }
 
-  async function loadBuffer(buffer, name = 'room.splat') {
-    const parsed = await parseSplatAsync(buffer, name);
-    if (!parsed.count) throw new Error('No visible splats found in file.');
+  async function loadOptions(meshOpts, name) {
     clearMesh();
+    const isSpz = /\.spz$/i.test(name);
+    opts = { axisIdx: isSpz ? 1 : 0, scale: 1, yOffset: -1.1, yaw: 0 };
 
-    // Auto-center X/Z and snap the 8th-percentile floor near y = 0 using robust percentile bounds
-    const [cx, , cz] = parsed.bounds.center;
-    const floorY = parsed.bounds.floorY;
-    const span = parsed.bounds.span;
-    // Scale room so its 5th–95th percentile diameter is ~5.2m around Reverie
-    const autoScale = +(5.2 / Math.max(.4, span)).toFixed(4);
-
-    // Crossed billboarded-style quad geometry (two perpendicular planes so splats stay full from every viewing angle)
-    const g1 = new THREE.PlaneGeometry(1, 1);
-    const mat = new THREE.MeshBasicMaterial({
-      map: getGaussianSprite(THREE),
-      transparent: true,
-      alphaTest: .08,
-      side: THREE.DoubleSide,
-      depthWrite: true,
-      toneMapped: false,
+    await new Promise((resolve, reject) => {
+      try {
+        const m = new SplatMesh({
+          ...meshOpts,
+          fileName: name,
+          onLoad: loaded => resolve(loaded),
+        });
+        splatMesh = m;
+        splatScene.add(m);
+        applyTransform();
+        // Fallback resolve if SplatMesh initializes synchronously or onLoad isn't awaited
+        if (m.initialized && typeof m.initialized.then === 'function') {
+          m.initialized.then(() => resolve(m), reject);
+        }
+      } catch (e) {
+        reject(e);
+      }
     });
 
-    const inst = new THREE.InstancedMesh(g1, mat, parsed.count);
-    inst.frustumCulled = false;
-
-    const dummy = new THREE.Object3D();
-    const col = new THREE.Color();
-    const camPos = world.view.cam?.position || new THREE.Vector3(0, .95, 2.5);
-
-    for (let i = 0; i < parsed.count; i++) {
-      const x = (parsed.positions[i * 3] - cx) * autoScale;
-      const y = (parsed.positions[i * 3 + 1] - floorY) * autoScale;
-      const z = (parsed.positions[i * 3 + 2] - cz) * autoScale;
-      // Compute generous splat quad diameter so neighboring Gaussians overlap smoothly into a solid room
-      const s = Math.max(.032, Math.min(.42, parsed.sizes[i] * autoScale * 2.4 * opts.splatScale));
-      dummy.position.set(x, y, z);
-      dummy.lookAt(camPos);
-      dummy.scale.set(s, s, s);
-      dummy.updateMatrix();
-      inst.setMatrixAt(i, dummy.matrix);
-
-      col.setRGB(parsed.colors[i * 4], parsed.colors[i * 4 + 1], parsed.colors[i * 4 + 2]);
-      inst.setColorAt(i, col);
-    }
-    inst.instanceMatrix.needsUpdate = true;
-    if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
-
-    mesh = inst;
-    holder.add(mesh);
     currentName = name;
-    opts = { scale: 1, yOffset: 0, yaw: 0, splatScale: 1.65 };
-    applyTransform();
     setActive(true);
-    return { ok: true, count: parsed.count, name };
+    return { ok: true, count: splatMesh?.numSplats || 0, name };
+  }
+
+  async function loadBuffer(buffer, name = 'room.splat') {
+    const bytes = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+    return loadOptions({ fileBytes: bytes }, name);
   }
 
   async function loadFile(file) {
@@ -173,10 +188,29 @@ export function makeSplatRoom({ world, setWorkshopVisible = () => {} }) {
   }
 
   async function loadUrl(url) {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Could not fetch splat (${res.status})`);
-    const buf = await res.arrayBuffer();
-    return loadBuffer(buf, url.split('/').pop() || 'room.splat');
+    const cleanUrl = String(url || '').trim();
+    if (!cleanUrl) return { ok: false, error: 'No URL given.' };
+    return loadOptions({ url: cleanUrl }, cleanUrl.split('/').pop() || 'room.splat');
+  }
+
+  /** Sync Spark's WebGL2 camera to Reverie's HDView camera and render the anisotropic Gaussian Splats. */
+  function render(W, H) {
+    if (!active || !splatMesh) return;
+    if (W !== lastW || H !== lastH) {
+      lastW = W; lastH = H;
+      renderer.setSize(W, H, false);
+    }
+    const src = world.view.cam;
+    if (src) {
+      splatCam.fov = src.fov;
+      splatCam.aspect = W / Math.max(1, H);
+      splatCam.near = Math.max(.02, src.near);
+      splatCam.far = Math.max(500, src.far);
+      splatCam.position.set(src.position.x, src.position.y, src.position.z);
+      splatCam.quaternion.set(src.quaternion.x, src.quaternion.y, src.quaternion.z, src.quaternion.w);
+      splatCam.updateProjectionMatrix();
+    }
+    renderer.render(splatScene, splatCam);
   }
 
   /** Tap on the splat floor to send Reverie walking over to explore that spot! */
@@ -210,9 +244,10 @@ export function makeSplatRoom({ world, setWorkshopVisible = () => {} }) {
   }
 
   function adjust(patch = {}) {
-    if (patch.scale != null) opts.scale = Math.max(.25, Math.min(4, +patch.scale || 1));
-    if (patch.yOffset != null) opts.yOffset = Math.max(-2, Math.min(2, +patch.yOffset || 0));
+    if (patch.scale != null) opts.scale = Math.max(.1, Math.min(10, +patch.scale || 1));
+    if (patch.yOffset != null) opts.yOffset = Math.max(-20, Math.min(20, +patch.yOffset || 0));
     if (patch.yaw != null) opts.yaw = +patch.yaw || 0;
+    if (patch.axisIdx != null) opts.axisIdx = ((patch.axisIdx | 0) % AXES.length + AXES.length) % AXES.length;
     applyTransform();
   }
 
@@ -225,7 +260,7 @@ export function makeSplatRoom({ world, setWorkshopVisible = () => {} }) {
   return {
     get active() { return active; },
     get name() { return currentName; },
-    loadFile, loadBuffer, loadUrl, setActive, adjust, unload, tap, update,
-    line: () => active ? ` Teleported into their Gaussian Splat room ("${currentName}"), where you can walk around and explore.` : '',
+    loadFile, loadBuffer, loadUrl, setActive, adjust, unload, tap, update, render,
+    line: () => active ? ` Teleported into their photorealistic Gaussian Splat room ("${currentName}"), where you can walk around and explore.` : '',
   };
 }
