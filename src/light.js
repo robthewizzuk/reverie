@@ -22,18 +22,17 @@ const CORE_LAMP = '#ff7020';     // the light its core casts, as made (moved wit
 export function lightRoom(v, creature, roomBox) {
   const { sun } = gs.hd;
 
-  // Enable WebGPU ray tracing for reflections, direct shadow rays, and live ray-traced bounce light (GI).
-  // (Uses the mutable HD object from hd3d.js dynamically so hd3d stays code-split; gs.hd.HD is a read-only view.)
+  // Let the engine enable WebGPU ray tracing automatically on capable desktop GPUs without forcing it on phones
+  // (forcing HD.tracePhones pushes mobile GPUs over budget and causes adaptive quality to drop 3D resolution).
   import('../engine/src/kit/hd3d.js').then(({ HD }) => {
     try {
-      HD.traced = true;
-      HD.tracePhones = true;
+      HD.traced = null;
+      HD.tracePhones = false;
       HD.regen = true;
-      HD.traceSunMap = false;
     } catch { /* fallback to defaults */ }
   }).catch(() => {});
 
-  // the mood: photorealistic natural daylight with AgX filmic roll-off and subtle camera optics
+  // the mood: crisp natural daylight with AgX filmic roll-off and no blur/fringe softening
   v.scene.background.set('#e9e3da');
   v.tone = 'agx';
   v.hemi.color.set('#f4f2ee'); v.hemi.groundColor.set('#b79a7c'); v.hemi.intensity = .32;
@@ -42,9 +41,9 @@ export function lightRoom(v, creature, roomBox) {
   v.air({ haze: 0, mist: 0, clouds: 0, wet: 0, macro: .45 });
   v.grade = { saturation: 1.02, contrast: 1.05, shadows: '#e0e4ee', highlights: '#fff6ea' };
   v.lut = null;
-  v.exposure = 1.02; v.bloom = .28; v.glare = 0; v.shafts = .22; v.flare = null; v.beams = null;
-  v.film = { halation: .16, grain: .45, fringe: .12 };
-  v.focus = { at: 2.35, range: 1.45, depth: 1.8, blur: 1.8 };
+  v.exposure = 1.02; v.bloom = .24; v.glare = 0; v.shafts = 0; v.flare = null; v.beams = null;
+  v.film = { halation: .05, grain: .15, fringe: 0 };
+  v.focus = null;
   v.autoExposure = false;
 
   // daylight through the window: soft (a big window), not too strong, a near-white with a little warmth
@@ -73,8 +72,8 @@ export function lightRoom(v, creature, roomBox) {
 
   return {
     sun: s,
-    /** Toggle shallow depth of field (relaxed during tabletop games so the whole board stays crisp). */
-    setDof(on) { v.focus = on ? { at: 2.35, range: 1.45, depth: 1.8, blur: 1.8 } : null; },
+    /** Keep the room and held props sharp (depth-of-field blur disabled for crispness). */
+    setDof() { v.focus = null; },
     /** The desk lamp's light ({ i, reach, col }): daylight.js turns it up as the day goes. */
     lamp,
     /** 0..1 night amount set by daylight.js, used to fade in the warm front prop-fill lamp. */

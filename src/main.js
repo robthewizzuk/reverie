@@ -73,35 +73,31 @@ const FUN_OF = { make: 'make', change: 'change', toss: 'toss', place: 'place', r
 // game in the app: 60 frames a second on a phone or a laptop's browser (not every refresh of a 120 Hz screen, which is
 // twice the work and heat for a creature that breathes and waves), its own quality budget kept to that rate, and the
 // tier and picture size it settles on remembered for next time, so it starts there instead of stuttering down again.
-const REVERIE = { id: 'reverie', era: 'nextgen', title: 'Reverie', fps: 30 };
+const REVERIE = { id: 'reverie-hd', era: 'nextgen', title: 'Reverie', fps: 30 };
 speed.game = REVERIE;
 speed.playing = () => !document.hidden;
 
-// The canvas's pixels: the screen's own, up to the 2.4 million the engine draws a computer's final picture at (its
-// OUT_PX). The 3D is drawn at its tier's size and blown up to this, so past that a big desktop window only paid for
-// a bigger upscale and finishing pass (a 1920 x 1080 window at 2x is 8.3 million), and looked no sharper.
-const MOST_PX = 2.4e6;
+// The canvas's pixels: the screen's own up to 3.6 million pixels (crisp native Retina / mobile DPR without
+// paying for 8+ million pixels on a 4K window).
+const MOST_PX = 3.6e6;
 
-// On a computer, the 3D is drawn at that size itself, not at a phone's budget for its quality level and blown up to it.
-// The engine's levels are sized for a phone's screen (high: 1.3 million pixels), so a laptop's 2.4 million pixel window
-// had its 3D drawn with about half the pixels and upscaled, and the upscaler, which builds each frame on the last ones,
-// stepped along the edges of a body that is always breathing and swaying: jagged outlines, and a dotted ring round the
-// core under its glass. One creature in one room is light work for a computer's graphics chip; if it can't keep up, the
-// engine still steps the size down, then the level, as it does for any game (and medium and low keep their own sizes).
-// Phones and tablets keep the engine's sizes: their screens are about a level's size already, and there the heat
-// counts. ?crisp tries it anywhere.
-const COMPUTER = matchMedia('(any-pointer: fine)').matches && !matchMedia('(pointer: coarse)').matches;
-const CRISP = COMPUTER || new URLSearchParams(location.search).has('crisp');
-// (the engine's 3D loads on first use, so its levels are reached once it has: boot)
+// Draw 3D at the canvas's own native pixel budget on computers, tablets, and phones alike (avoiding half-res
+// upscaling artefacts on Reverie's moving silhouette and held props). If a device can't keep up, the engine's
+// adaptive scaler still steps down automatically.
 // (?direct: a test browser shows the 3D canvas itself as a real one does, instead of copying each frame onto the page's
 // canvas, a read back from the chip that is slow in software and made timings say nothing: tests/startup.mjs)
 const DIRECT = new URLSearchParams(location.search).has('direct');
-const crisp = async () => { const { HD } = await import('../engine/src/kit/hd3d.js'); if (CRISP) HD.leastPx = MOST_PX; if (DIRECT) HD.direct = true; };
+const crisp = async () => {
+  const { HD } = await import('../engine/src/kit/hd3d.js');
+  HD.leastPx = MOST_PX;
+  HD.detailSize = false;
+  if (DIRECT) HD.direct = true;
+};
 
 function fit() {
   const r = stage.getBoundingClientRect();
   W = Math.round(r.width); H = Math.round(r.height);
-  const dpr = Math.max(1, Math.min(2, devicePixelRatio || 1, Math.sqrt(MOST_PX / Math.max(1, W * H))));
+  const dpr = Math.max(1, Math.min(3, devicePixelRatio || 1, Math.sqrt(MOST_PX / Math.max(1, W * H))));
   canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   world?.resize(W, H);
