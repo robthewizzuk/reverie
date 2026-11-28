@@ -237,7 +237,7 @@ export function describe(thing, words, { size = null, read = null, asked = words
   if (meshInfo.finishes.length) text += ` Finish: ${meshInfo.finishes.join(', ')}.`;
   const parts = partsOf(thing);
   if (parts.length) text += ` Visible parts: ${parts.join(', ')}.`;
-  if (size) text += ` Proportions: ${meshInfo.shape ? `${meshInfo.shape}, ` : ''}about ${Math.round(size * 100)} cm across in your hands.`;
+  if (meshInfo.shape) text += ` Shape: ${meshInfo.shape}.`;
 
   // Words of the request that genuinely did not come through
   const shown = [

@@ -232,6 +232,7 @@ const ok = (cond, msg) => { if (!cond) fail(msg); };
   ok(/dragon/.test(d.short) && !/creature/.test(d.short), 'prefers spec.thing over generic spec.kind: ' + d.short);
   ok(/glowing/.test(d.text) && /metallic/.test(d.text) && /wings/.test(d.text) && /flame/.test(d.text), 'reports real mesh finish, parts, crest: ' + d.text);
   ok(/tall and upright/.test(d.text), 'reports actual 3D proportions: ' + d.text);
+  ok(!/\bcm\b|centimetre/i.test(d.text), 'does not report cm size measurement: ' + d.text);
   ok(!/Not reflected/.test(d.text), 'no false-positive missing words: ' + d.text);
   ok(colourName('#d6a634') === 'gold', 'colourName maps gold accurately');
   // Regression test: Lego brick house with InstancedMesh instanceColor + default black emissive (emissiveIntensity: 1)
