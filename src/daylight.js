@@ -229,7 +229,7 @@ export function makeDaylight({ v, light, outside, glass, side, globe, motes }) {
     s.aim(dirNow.x, dirNow.y, dirNow.z);
     v.hemi.color.copy(now.hemi); v.hemi.groundColor.copy(now.ground); v.hemi.intensity = now.hemiI;
     v.envI = now.envI; v.exposure = now.exposure;
-    v.scene.background.copy(BG).lerp(now.low, now.night);
+    if (v.scene.background) v.scene.background.copy(BG).lerp(now.low, now.night);
     light.lamp.i = now.lamp; light.lamp.reach = now.reach;
     // (at night the lamp is a softer warm white and the core's own light is turned down: the room cosy, not orange)
     light.lamp.col = '#' + LAMP_DAY.clone().lerp(LAMP_NIGHT, now.night).getHexString(); light.coreK = 1 - .5 * now.night;
