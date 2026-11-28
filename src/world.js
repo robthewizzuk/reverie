@@ -71,7 +71,7 @@ function setup() {
   floor.rotation.x = -Math.PI / 2; add(floor, false);
   // the rug: thick and soft, its edge rounded over (a lathe), not a flat disc
   const rugShape = [[0, 0], [1.02, 0], [1.05, .006], [1.06, .014], [1.05, .021], [1.02, .024], [0, .024]].map(([x, y]) => new THREE.Vector2(x, y));
-  const rug = part('rug', new THREE.Mesh(new THREE.LatheGeometry(rugShape, 96), roomMat('rug', rc.rug))); add(rug, false);
+  const rug = part('rug', new THREE.Mesh(new THREE.LatheGeometry(rugShape, 64), roomMat('rug', rc.rug))); add(rug, false);
   const wallMat = roomMat('walls', rc.walls), wood = roomMat('wood', rc.wood);
   // The room is a round capsule, like the inside of a ball: one smooth shell, the floor curving up into the walls,
   // the walls curving over into a dome above a soft seam round the middle, and no corners anywhere (shell.js). Its
@@ -102,7 +102,7 @@ function setup() {
   sky.position.set(W0.x - .8, 1.6, wz); sky.rotation.y = Math.PI / 2; room.add(sky);
   // the round window's glass at the end of its reveal (matte, so the sky painted in it by daylight.js reads: the stars
   // and moon at night, not the room mirrored over them), and a sill under it
-  const glass = new THREE.Mesh(new THREE.CircleGeometry(PORT.r + .02, 64), pbr('#eef0ec', { rough: 1, glow: .9, glowCol: '#f2f0e8' }));
+  const glass = new THREE.Mesh(new THREE.CircleGeometry(PORT.r + .02, 40), pbr('#eef0ec', { rough: 1, glow: .9, glowCol: '#f2f0e8' }));
   glass.position.set(PORT.x, PORT.y, portOut + .002); room.add(glass);
   const GLASS = { x: PORT.x, y: PORT.y, z: portOut + .002, r: PORT.r };
   // boards that follow the curve of the back wall: the sill under the round window, the desk (where it makes things)
@@ -126,14 +126,14 @@ function setup() {
   { const m = part('wood', new THREE.Mesh(rbox(LEDGE.x1 - LEDGE.x0, .035, LEDGE.z1 - LEDGE.z0, .012), wood)); m.position.set((LEDGE.x0 + LEDGE.x1) / 2, LEDGE.y - .0175, (LEDGE.z0 + LEDGE.z1) / 2); add(m); }
   // the desk lamp: a globe on a slim stem, powder-coated a soft warm white
   const pale = pbr('#ece6dd', { rough: .55 });
-  const L = LAMP, lampBase = new THREE.Mesh(new THREE.CylinderGeometry(.06, .068, .018, 40), pale); lampBase.position.set(L.x, DESK.y + .009, L.z); add(lampBase);
-  const stem = new THREE.Mesh(new THREE.CylinderGeometry(.006, .006, L.y - DESK.y - .07, 12), pale); stem.position.set(L.x, (DESK.y + L.y - .07) / 2, L.z); add(stem);
+  const L = LAMP, lampBase = new THREE.Mesh(new THREE.CylinderGeometry(.06, .068, .018, 24), pale); lampBase.position.set(L.x, DESK.y + .009, L.z); add(lampBase, false);
+  const stem = new THREE.Mesh(new THREE.CylinderGeometry(.006, .006, L.y - DESK.y - .07, 10), pale); stem.position.set(L.x, (DESK.y + L.y - .07) / 2, L.z); add(stem, false);
   const globeMat = pbr('#fff6e8', { rough: .35, glow: 1.6, glowCol: '#ffe2b8' });
-  const globe = new THREE.Mesh(new THREE.SphereGeometry(.075, 40, 24), globeMat); globe.position.set(L.x, L.y, L.z); room.add(globe);
+  const globe = new THREE.Mesh(new THREE.SphereGeometry(.075, 28, 18), globeMat); globe.position.set(L.x, L.y, L.z); room.add(globe);
   const cb = ceramicBump(THREE), bb = brushedBrassMaps(THREE);
   const vaseShape = [[0, 0], [.045, 0], [.055, .03], [.05, .09], [.03, .13], [.026, .16], [.032, .17], [0, .17]].map(([x, y]) => new THREE.Vector2(x, y));
   const vaseMat = Object.assign(pbr('#d9b8a4', { rough: .34, clear: .65 }), { bumpMap: cb, bumpScale: .003 });
-  const vase = new THREE.Mesh(new THREE.LatheGeometry(vaseShape, 40), vaseMat); vase.position.set(...onBoard(SHELF, -1.5)); add(vase);
+  const vase = new THREE.Mesh(new THREE.LatheGeometry(vaseShape, 28), vaseMat); vase.position.set(...onBoard(SHELF, -1.5)); add(vase);
   // workshop dressing: cloth-bound books + framed sketch on the floating shelf, ceramic coffee mug on the workbench
   {
     const bookCols = ['#7b3f36', '#3d5a52', '#c89b52'];
@@ -155,20 +155,20 @@ function setup() {
     const outerF = new THREE.Mesh(rbox(.16, .21, .016, .004), wood);
     const matBoard = new THREE.Mesh(new THREE.PlaneGeometry(.13, .18), pbr('#f5f0e6', { rough: .9 }));
     matBoard.position.z = .0085;
-    const leafArt = new THREE.Mesh(new THREE.CircleGeometry(.038, 24), pbr('#6e8c68', { rough: .88 }));
+    const leafArt = new THREE.Mesh(new THREE.CircleGeometry(.038, 20), pbr('#6e8c68', { rough: .88 }));
     leafArt.scale.set(.7, 1.35, 1); leafArt.position.set(0, .005, .0092);
     frameG.add(outerF, matBoard, leafArt);
     room.add(frameG);
     // warm ceramic coffee mug on the workbench
     const [mx0, my0, mz0] = onBoard(DESK, .38);
     const mugMat = Object.assign(pbr('#e9dfd1', { rough: .28, clear: .7 }), { bumpMap: cb, bumpScale: .002 });
-    const mug = new THREE.Mesh(new THREE.CylinderGeometry(.038, .034, .085, 28), mugMat);
+    const mug = new THREE.Mesh(new THREE.CylinderGeometry(.038, .034, .085, 22), mugMat);
     mug.position.set(mx0, my0 + .0425, mz0 + .06);
-    const coffee = new THREE.Mesh(new THREE.CircleGeometry(.034, 24), pbr('#2c1810', { rough: .08, clear: .9 }));
+    const coffee = new THREE.Mesh(new THREE.CircleGeometry(.034, 18), pbr('#2c1810', { rough: .08, clear: .9 }));
     coffee.rotation.x = -Math.PI / 2; coffee.position.set(mx0, my0 + .081, mz0 + .06);
-    const handle = new THREE.Mesh(new THREE.TorusGeometry(.024, .006, 10, 20, Math.PI), mugMat);
+    const handle = new THREE.Mesh(new THREE.TorusGeometry(.024, .006, 8, 16, Math.PI), mugMat);
     handle.position.set(mx0 + .036, my0 + .045, mz0 + .06); handle.rotation.z = -Math.PI / 2;
-    add(mug); room.add(coffee); add(handle);
+    add(mug); room.add(coffee); add(handle, false);
   }
   // workshop wall mirror above the workbench: arched brass frame + true ray-traced mirror glass facing Reverie & the room
   const mirrorGroup = new THREE.Group();
@@ -186,26 +186,26 @@ function setup() {
     return sh;
   };
   const mirrorMat = pbr('#f7f8fc', { metal: 1, rough: .015, clear: .25 });
-  const mirrorGlass = new THREE.Mesh(new THREE.ShapeGeometry(archShape(.64, .82), 32), mirrorMat);
+  const mirrorGlass = new THREE.Mesh(new THREE.ShapeGeometry(archShape(.64, .82), 24), mirrorMat);
   mirrorGlass.position.z = .018;
   mirrorGlass.userData.noTrace = true; // mirror reflects the room without self-intersecting in the traced BVH
   const frameOuter = archShape(.70, .88);
   const frameHole = archShape(.635, .815);
   frameOuter.holes.push(frameHole);
   const brassMat = Object.assign(pbr('#d4af6a', { metal: .9, rough: .24 }), { bumpMap: bb.bumpMap, bumpScale: .002, roughnessMap: bb.roughnessMap });
-  const mirrorFrame = new THREE.Mesh(new THREE.ExtrudeGeometry(frameOuter, { depth: .028, bevelEnabled: true, bevelThickness: .006, bevelSize: .006, bevelSegments: 3, curveSegments: 24 }), brassMat);
-  const mirrorBack = new THREE.Mesh(new THREE.ShapeGeometry(archShape(.68, .86), 24), wood);
+  const mirrorFrame = new THREE.Mesh(new THREE.ExtrudeGeometry(frameOuter, { depth: .028, bevelEnabled: true, bevelThickness: .006, bevelSize: .006, bevelSegments: 2, curveSegments: 20 }), brassMat);
+  const mirrorBack = new THREE.Mesh(new THREE.ShapeGeometry(archShape(.68, .86), 20), wood);
   mirrorBack.position.z = -.002;
   mirrorBack.rotation.y = Math.PI;
   mirrorGroup.add(mirrorBack, mirrorFrame, mirrorGlass);
   room.add(mirrorGroup);
   // a round pouf in the back left corner, soft woven linen like Reverie
-  const pouf = new THREE.Mesh(new THREE.SphereGeometry(.26, 48, 24), felt('#b4bfa8', [8, 8]));
+  const pouf = new THREE.Mesh(new THREE.SphereGeometry(.26, 32, 18), felt('#b4bfa8', [8, 8]));
   pouf.scale.set(1, .62, 1); pouf.position.set(-1.15, .16, -.85); add(pouf);
   // a plant on the right, in a tall matte ceramic pot
   const potShape = [[0, 0], [.13, 0], [.16, .04], [.17, .38], [.165, .4], [0, .4]].map(([x, y]) => new THREE.Vector2(x, y));
   const potMat = Object.assign(pbr('#efeae3', { rough: .72, clear: .18 }), { bumpMap: cb, bumpScale: .003 });
-  const pot = new THREE.Mesh(new THREE.LatheGeometry(potShape, 48), potMat); pot.position.set(1.85, 0, -.6); add(pot);
+  const pot = new THREE.Mesh(new THREE.LatheGeometry(potShape, 32), potMat); pot.position.set(1.85, 0, -.6); add(pot);
   const plant = gs.models.tree('fan', { seed: 7 }); fitTo(plant, 1.05); standAt(plant, 1.85, .37, -.6); shade(plant); room.add(plant);
   // a little dust drifting in the daylight
   motes = new gs.fx3d.Particles3D(v.scene);
@@ -217,7 +217,7 @@ function setup() {
   // the light: the sun through the window, the bench lamp, its core, ray-traced bounce light and reflections
   // (made once the creature is in the room, so the reflections reach its eyes, glass dome and mirror)
   light = lightRoom(v, creature, { min: [SHELL.cx - SHELL.a, 0, SHELL.cz - SHELL.b], max: [SHELL.cx + SHELL.a, SHELL.top, SHELL.cz + SHELL.b] });
-  v.reflect?.(mirrorGlass, mirrorFrame, vase);
+  v.reflect?.(mirrorGlass);
   relight.push(light.bounce, light.room);   // (both baked again when the room is repainted)
   // the real day outside: the sun, the sky in the windows, the lamp, rain on the glass (daylight.js)
   daylight = makeDaylight({ v, light, outside: { side: sky.material, round: glass.material }, glass: GLASS, side: W0, globe: globeMat, motes: dust });
@@ -254,7 +254,8 @@ function standAt(o, x, y, z) { const { THREE } = gs.hd; o.position.set(x, y, z);
  */
 export function makeWorld() {
   const { THREE } = gs.hd;
-  let W = 360, H = 640, held = null, loose = [], seed = 1, t = 0, motion = null;
+  let W = 360, H = 640, lastAspect = 0, held = null, loose = [], seed = 1, t = 0, motion = null;
+  const emberAt = { x: 0, y: 0, z: 0 };
   const every = [];   // (held, loose and placed, gathered each frame for their own small movements)
   // things kept in the room (room.js has what is saved), what it is doing with its legs now, and carrying jobs in a queue
   let placed = [], acts = [], carrying = Promise.resolve(), restored = false;
@@ -553,19 +554,35 @@ export function makeWorld() {
       dice ||= makeDice({ THREE, scene: v.scene, physics: world, creature, sparks: stage.sparks }); dice.clear();
       endGame();
     },
-    resize(w, h) { W = w; H = h; look?.size(w, h); },
+    resize(w, h) {
+      W = w; H = h; look?.size(w, h);
+      if (v?.cam && W > 0 && H > 0) {
+        // a tall screen sees as wide as a square one would, so the creature never crops at the sides
+        const a = W / H;
+        v.cam.fov = a < 1 ? 2 * Math.atan(Math.tan(21 * Math.PI / 180) / a) * 180 / Math.PI : 36;
+        v.cam.aspect = a;
+        v.cam.updateProjectionMatrix();
+        lastAspect = a;
+      }
+    },
     /** Looking around the room (look.js): the page's drags, pinches and scrolls. */
     get look() { return look; },
     set look(l) { look = l; l?.size(W, H); },
     update(dt) {
       t += dt;
-      // a tall screen sees as wide as a square one would, so the creature never crops at the sides
-      const a = W / H; v.cam.fov = a < 1 ? 2 * Math.atan(Math.tan(21 * Math.PI / 180) / a) * 180 / Math.PI : 36;
-      v.cam.aspect = a; v.cam.updateProjectionMatrix();
+      const a = W / H;
+      if (a !== lastAspect && W > 0 && H > 0) {
+        v.cam.fov = a < 1 ? 2 * Math.atan(Math.tan(21 * Math.PI / 180) / a) * 180 / Math.PI : 36;
+        v.cam.aspect = a; v.cam.updateProjectionMatrix();
+        lastAspect = a;
+      }
       // the camera eases to the game's seat and back
       // (a wide window looks a little higher, so the shelves and windows on the back wall are in the picture, not cut off at the top)
       const goal = game?.camera || seat || (a > 1.05 ? WIDE : HOME), ck = 1 - Math.exp(-dt * 3);
-      for (const k of ['pos', 'look']) for (let i = 0; i < 3; i++) camAt[k][i] += (goal[k][i] - camAt[k][i]) * ck;
+      for (let i = 0; i < 3; i++) {
+        camAt.pos[i] += (goal.pos[i] - camAt.pos[i]) * ck;
+        camAt.look[i] += (goal.look[i] - camAt.look[i]) * ck;
+      }
       const seen = look ? look.view(camAt, dt, goal) : camAt;
       v.cam.position.set(...seen.pos); v.cam.lookAt(...seen.look);
       game?.update(dt);
@@ -575,7 +592,8 @@ export function makeWorld() {
       light.update(dt, t);
       party.update(dt); v.exposure *= party.dim;   // (the room a little darker while the party lights are up)
       creature.coreAt(at);
-      const st = creature.state; embers.at({ x: at.x, y: at.y, z: at.z + .03 }); embers.rate = st.thinking ? 14 : st.listening ? 6 : st.speaking ? 4 : 2; embers.on = true;
+      emberAt.x = at.x; emberAt.y = at.y; emberAt.z = at.z + .03;
+      const st = creature.state; embers.at(emberAt); embers.rate = st.thinking ? 14 : st.listening ? 6 : st.speaking ? 4 : 2; embers.on = true;
       // props springing (popping in, landing, wobbling, vanishing) and their own small movements; a thing it brushes past rocks
       every.length = 0; if (held) every.push(held); for (const e of loose) every.push(e);
       const cr = creature.root.position;
@@ -586,11 +604,15 @@ export function makeWorld() {
       }
       motion.update(dt, every);
       if (held) { held.pivot.rotation.y += dt * .5; held.pivot.position.y = held.pivot.userData.size.y * .3 + Math.sin(t * 2.4) * .01; }
-      world.step(dt);
+      // Only step Rapier WASM physics when dynamic bodies (loose props, dice, rubble) or walking body are active
+      if (loose.length || (rubble?.count || 0) > 0 || dice?.active || acts.length) world.step(dt);
       dice?.update(dt);
-      for (const e of loose) if (e.pivot.position.y < -4) remove(e);
-      loose = loose.filter(e => e.pivot.position.y >= -4);
-      while (loose.length > 14) remove(loose.shift());
+      if (loose.length) {
+        let fallen = false;
+        for (const e of loose) if (e.pivot.position.y < -4) { remove(e); fallen = true; }
+        if (fallen) loose = loose.filter(e => e.pivot.position.y >= -4);
+        while (loose.length > 14) remove(loose.shift());
+      }
       keeper?.update(dt);
       rubble?.update(dt); shows?.update(dt);
       fx.update(dt); motes.update(dt); floaties.update(dt);

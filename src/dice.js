@@ -93,6 +93,8 @@ export function makeDice({ THREE, scene, physics, creature, sparks }) {
     },
     /** The dice on the floor, in a few words for the scene line, or ''. */
     get onFloor() { return cubes && !rolling ? `${meshes.length === 1 ? 'a die showing' : meshes.length + ' dice showing'} ${cubes.values.join(', ')}` : ''; },
+    /** True while dice physics bodies exist on the floor or are rolling. */
+    get active() { return !!(cubes || rolling); },
     /** Takes every die (and number) away. */
     clear() { clears++; const had = meshes.length; clearCubes(); for (const s of shown) s.label.removeFromParent(); shown = []; if (rolling) { rolling.res([]); rolling = null; } return had; },
     /** Every frame, after the physics step. */

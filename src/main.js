@@ -130,7 +130,7 @@ function showTiming(t) {
 }
 
 // Acoustic ducking while the user starts speaking over Reverie (Web Audio VAD from listen.js)
-let vadSpeakMs = 0, ducked = false;
+let vadSpeakMs = 0, ducked = false, wasHearing = false, lastVad = '', wasDragging = false;
 function setVoiceDuck(on) {
   if (on === ducked) return;
   ducked = on;
@@ -150,10 +150,11 @@ function frame(now) {
   try {
     if (voice?.listening || voice?.want) {
       // Web Audio VAD: duck Reverie's voice the moment the user's mic energy spikes so speech recognition hears them cleanly
-      const lvl = voice.voiceLevel || 0;
-      mic.classList.toggle('hearing', !!voice.speakingNow);
-      mic.style.setProperty('--vad', Math.min(1, lvl * 6).toFixed(2));
-      if (brain?.speaking && voice.speakingNow) {
+      const lvl = voice.voiceLevel || 0, hearing = !!voice.speakingNow;
+      if (hearing !== wasHearing) { wasHearing = hearing; mic.classList.toggle('hearing', hearing); }
+      const vadStr = Math.min(1, lvl * 6).toFixed(2);
+      if (vadStr !== lastVad) { lastVad = vadStr; mic.style.setProperty('--vad', vadStr); }
+      if (brain?.speaking && hearing) {
         vadSpeakMs += dt * 1000;
         setVoiceDuck(true);
       } else {
@@ -164,7 +165,7 @@ function frame(now) {
       // (and while a video plays, it hears the video: that is neither you nor its voice: watch.js)
       const heard = voice.text.trim(), film = !!heard && watch.isVideo(heard), h = heard && !film ? brain.yours(heard) : null, mine = h ? h.yours.length : 0;
       world.creature.state.listening = mine > 0 || (vadSpeakMs > 80 && !brain?.speaking);
-      if (mine) input.placeholder = heard;
+      if (mine && input.placeholder !== heard) input.placeholder = heard;
       // still going after a pause it took as the end: it stops and waits for the rest (asked again whole, not cut short)
       const early = voice.early, rest = early && heard.startsWith(early + ' ') ? brain.yours(heard.slice(early.length)) : null;
       if (rest && rest.yours.length && (brain.speaking || brain.busy)) {
@@ -208,7 +209,8 @@ function frame(now) {
         else { console.info(`[reverie] ignored its own voice: "${said}" (yours: ${f.yours.join(' ') || 'none'})`); if (debug) timing.textContent = 'ignored echo: ' + said; }
       }
     } else if (ducked) setVoiceDuck(false);
-    captionT -= dt; if (captionT < 0 && !brain?.speaking) caption.hidden = true;
+    if (captionT > 0) captionT -= dt;
+    if (captionT <= 0 && !caption.hidden && !brain?.speaking) caption.hidden = true;
     if (awake) { body.update(dt); shaker?.update(dt); }
     music.update(dt);
     karaoke.update(dt);
@@ -219,7 +221,7 @@ function frame(now) {
     brain.update();
     showGame();
     if (recentre.hidden === looking.moved) recentre.hidden = !looking.moved;
-    canvas.classList.toggle('looking', looking.dragging);
+    if (looking.dragging !== wasDragging) { wasDragging = looking.dragging; canvas.classList.toggle('looking', wasDragging); }
     world.update(dt);
     wisps?.update(dt); helpers?.tell();
     garden?.update(dt);
@@ -779,7 +781,9 @@ helperList.addEventListener('click', e => {
 let barKey = '';
 function showGame() {
   const g = world.game, b = g ? g.bar() : (watch?.bar() || focus?.bar() || storytime?.bar());
-  gamebar.hidden = !b; if (!b) { barKey = ''; return; }
+  const hide = !b;
+  if (gamebar.hidden !== hide) gamebar.hidden = hide;
+  if (hide) { barKey = ''; return; }
   if (gameText.textContent !== b.text) gameText.textContent = b.text;
   // (the buttons are made again only when they change: a video's clock changes the text every second)
   const key = b.buttons.map(x => x.id + ':' + x.label).join();
