@@ -299,7 +299,7 @@ async function boot() {
   const ensureSplat = async () => {
     if (splatRoom) return splatRoom;
     const { makeSplatRoom } = await import('./splat-room.js');
-    splatRoom = makeSplatRoom({ world, stageEl: stage, setWorkshopVisible });
+    splatRoom = makeSplatRoom({ world, stageEl: stage, looking, setWorkshopVisible });
     return splatRoom;
   };
   const splatController = {

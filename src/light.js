@@ -84,7 +84,7 @@ export function lightRoom(v, creature, roomBox) {
       creature.coreAt(at); core.at(at.x, at.y - .04, at.z + .2); core.i0 = (.2 + creature.coreGlow * .5) * this.coreK * (1 + this.pulse * .8);
       // (a gentle swell, not a disco: the lamp is a little brighter on each beat)
       v.placeLamps([this.pulse ? Object.assign(swell, lamp, { i: lamp.i * (1 + this.pulse * .35) }) : lamp], 0, .4, 0, t);
-      s.follow(0, 0, 0);
+      s.follow(at.x, 0, at.z);
     },
     /** The core's light, after its glow colour changed. */
     recolour() { core.s.col = creature.glowed(CORE_LAMP); },
