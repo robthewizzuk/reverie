@@ -841,7 +841,7 @@ export function makeWorld() {
       e.ry = +((e.ry || 0) + deltaRad).toFixed(3);
       e.pivot.rotation.y = e.ry;
       settle(e);
-      const { pivot, body, life, open, ...saved } = e;
+      const { pivot, body, life, open, flexing, brushed, ...saved } = e;
       keepItem(saved);
     },
     dropKept(e) {
@@ -849,7 +849,7 @@ export function makeWorld() {
       settle(e);
       motion.wobble(e, motion.FEEL.bump);
       gs.sound.sounds.pop();
-      const { pivot, body, life, open, ...saved } = e;
+      const { pivot, body, life, open, flexing, brushed, ...saved } = e;
       keepItem(saved);
     },
     /** Breaks the prop it holds (or the last one thrown on the floor): how 'smash' into real pieces that tumble, or
