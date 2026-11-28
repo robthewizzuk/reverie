@@ -31,8 +31,9 @@ async function put(key, value) {
 function latest(r, now) {
   if (r.at > now) return null;
   let t = r.at;
-  if (r.repeat) for (let i = 0; i < 400; i++) {
-    const d = new Date(t); d.setDate(d.getDate() + STEP[r.repeat]);
+  const step = STEP[r.repeat];
+  if (step) for (let i = 0; i < 400; i++) {
+    const d = new Date(t); d.setDate(d.getDate() + step);
     if (r.repeat === 'weekdays') while (d.getDay() === 0 || d.getDay() === 6) d.setDate(d.getDate() + 1);
     if (d.getTime() > now) break;
     t = d.getTime();

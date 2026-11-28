@@ -135,8 +135,8 @@ export function makeWords(stage) {
     get level() { return level; },
     async start(o = {}) {
       this.stop();
-      mode = wordModeOf(o.mode || 'wordle');
-      level = o.level || 2; round++;
+      mode = o.mode ? wordModeOf(o.mode) : mode;
+      level = o.level ?? level; round++;
       const answer = await pickAnswer(mode);
       game = makeWordGame({ mode, answer, dict });
       build(); scene.add(root);
@@ -149,6 +149,7 @@ export function makeWords(stage) {
     },
     stop() {
       tw.stop();
+      if (board) { board.material?.map?.dispose?.(); board.material?.dispose?.(); board.geometry?.dispose?.(); }
       if (root) { scene.remove(root); root = null; board = null; }
       game = null;
     },

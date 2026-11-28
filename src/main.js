@@ -9,6 +9,7 @@ import { makeLook } from './look.js';
 import { makeBrain } from './brain.js';
 import { makeBody } from './body.js';
 import { Listener, sameWords } from './listen.js';
+import { isBargeIn, isPureHush, settleDelay } from './turn-taking.js';
 import { askPlace, placeAt, weather, contextLine } from './place.js';
 import { makePad, madeFrom } from './doodle.js';
 import { makeMood, toneOf } from './mood.js';
@@ -40,6 +41,9 @@ import { makeAquarium } from './aquarium.js';
 import { makeCapsules } from './capsule.js';
 import { makeStorytime } from './storytime.js';
 import { makeJam } from './jam.js';
+import { makeRadio } from './radio.js';
+import { makeThemes } from './themes.js';
+import { makeFocus } from './focus.js';
 
 const $ = s => document.querySelector(s);
 const stage = $('#stage'), canvas = $('#view'), ctx = canvas.getContext('2d');
@@ -48,7 +52,7 @@ const gamebar = $('#gamebar'), gameText = $('#gamebar span'), gameButtons = $('#
 const draw = $('#draw'), book = $('#book'), look = $('#look'), recentre = $('#recentre'), helperList = $('#helpers'), tv = $('#tv');
 const debug = new URLSearchParams(location.search).has('debug');
 
-let W = 0, H = 0, world, brain, body, voice, pad, diary, mood, show, shaker, music, helpers, wisps, google, timers, shop, trophies, garden, watch, karaoke, aquarium, capsules, storytime, jam, last = 0, awake = false, captionT = 0, nextAt = 0;
+let W = 0, H = 0, world, brain, body, voice, pad, diary, mood, show, shaker, music, helpers, wisps, google, timers, shop, trophies, garden, watch, karaoke, aquarium, capsules, storytime, jam, radio, themes, focus, last = 0, awake = false, captionT = 0, nextAt = 0;
 // its diary, kept in this browser (memory.js), and today's surprise (daily.js): { surprise, holding, funDay }
 const memory = makeMemory();
 // what you are learning together (learn.js), kept beside the diary; the lessons write their days in the diary too
@@ -63,13 +67,13 @@ const achievements = makeAchievements();
 const today = { surprise: null, holding: null, funDay: funDay() };
 let overnight = Promise.resolve();
 // which kind of fun each of Claude's tools is, for its mood (mood.js FUN)
-const FUN_OF = { make: 'make', change: 'change', toss: 'toss', place: 'place', room_colours: 'room', colours: 'colours', roll: 'roll', doodle: 'doodle', play: 'game', game_move: 'move', voice: 'voice', show: 'show', smash: 'smash', effect: 'effect', music: 'music', dance: 'dance', teach: 'game', wear: 'wear', watch: 'watch', karaoke: 'game', garden: 'plant', aquarium: 'aquarium', capsule: 'capsule', story: 'story', jam: 'jam' };
+const FUN_OF = { make: 'make', change: 'change', toss: 'toss', place: 'place', room_colours: 'room', colours: 'colours', roll: 'roll', doodle: 'doodle', play: 'game', game_move: 'move', voice: 'voice', show: 'show', smash: 'smash', effect: 'effect', music: 'music', dance: 'dance', teach: 'game', wear: 'wear', watch: 'watch', karaoke: 'game', garden: 'plant', aquarium: 'aquarium', capsule: 'capsule', story: 'story', jam: 'jam', radio: 'radio', theme: 'theme', focus: 'focus' };
 
 // What the engine's speed kit is told is being played, so the 3D view paces and tunes itself as it does for a Next Gen
 // game in the app: 60 frames a second on a phone or a laptop's browser (not every refresh of a 120 Hz screen, which is
 // twice the work and heat for a creature that breathes and waves), its own quality budget kept to that rate, and the
 // tier and picture size it settles on remembered for next time, so it starts there instead of stuttering down again.
-const REVERIE = { id: 'reverie', era: 'nextgen', title: 'Reverie' };
+const REVERIE = { id: 'reverie', era: 'nextgen', title: 'Reverie', fps: 30 };
 speed.game = REVERIE;
 speed.playing = () => !document.hidden;
 
@@ -129,12 +133,14 @@ function showTiming(t) {
   if (debug) timing.textContent = line;
 }
 
-// How long the words being heard must stand still before they are answered, without waiting for the recogniser to be
-// sure the phrase is over (it often takes a second or more after the last word). If they go on, the rest joins on.
-const SETTLE_MS = 650;
-
-/** Words heard that are clearly someone talking, not its voice coming back: 3 or more new words, most of what was heard. */
-const deliberate = h => !!h && h.yours.length >= 3 && h.yours.length / Math.max(1, h.words.length) >= .5;
+// Acoustic ducking while the user starts speaking over Reverie (Web Audio VAD from listen.js)
+let vadSpeakMs = 0, ducked = false;
+function setVoiceDuck(on) {
+  if (on === ducked) return;
+  ducked = on;
+  mic.classList.toggle('ducking', on);
+  try { gs.sound.mixer?.volume?.('voice', on ? .32 : 1, .08); } catch { /* ok */ }
+}
 
 function frame(now) {
   requestAnimationFrame(frame);
@@ -147,38 +153,65 @@ function frame(now) {
   const dt = Math.min(.05, (now - (last || now)) / 1000); last = now;
   try {
     if (voice?.listening || voice?.want) {
+      // Web Audio VAD: duck Reverie's voice the moment the user's mic energy spikes so speech recognition hears them cleanly
+      const lvl = voice.voiceLevel || 0;
+      mic.classList.toggle('hearing', !!voice.speakingNow);
+      mic.style.setProperty('--vad', Math.min(1, lvl * 6).toFixed(2));
+      if (brain?.speaking && voice.speakingNow) {
+        vadSpeakMs += dt * 1000;
+        setVoiceDuck(true);
+      } else {
+        vadSpeakMs = Math.max(0, vadSpeakMs - dt * 2000);
+        if (vadSpeakMs === 0) setVoiceDuck(false);
+      }
       // the mic hears its voice too: only words it has not just said (or is about to say) count as yours
       // (and while a video plays, it hears the video: that is neither you nor its voice: watch.js)
       const heard = voice.text.trim(), film = !!heard && watch.isVideo(heard), h = heard && !film ? brain.yours(heard) : null, mine = h ? h.yours.length : 0;
-      world.creature.state.listening = mine > 0;
+      world.creature.state.listening = mine > 0 || (vadSpeakMs > 80 && !brain?.speaking);
       if (mine) input.placeholder = heard;
       // still going after a pause it took as the end: it stops and waits for the rest (asked again whole, not cut short)
       const early = voice.early, rest = early && heard.startsWith(early + ' ') ? brain.yours(heard.slice(early.length)) : null;
-      if (rest && rest.yours.length && (brain.speaking || brain.busy)) brain.interrupt(`they went on: "${heard}"`, { rest: true });
-      // talking over it: three or more words of yours, most of what was heard, stop it (less is its own voice misheard)
-      // (not the words it took at a pause and is answering now: the recogniser shows them until it gives its final)
-      else if (brain.speaking && !(early && sameWords(heard, early)) && deliberate(h)) brain.interrupt(`talked over by "${heard}"`);
-      // words that have stood still are answered now (not while it talks: that is talking over it, above); not in a game
-      // that counts what is said (Twenty Questions), where a phrase taken twice would count twice
-      if (mine && !brain.speaking && !world.game?.heard) voice.settle(SETTLE_MS);
+      if (rest && rest.yours.length && (brain.speaking || brain.busy)) {
+        body?.brains?.noteTurnPacing?.(false); // user needed more breathing room
+        brain.interrupt(`they went on: "${heard}"`, { rest: true });
+      }
+      // instant barge-in: 1-2 word interrupt phrases ("stop", "wait", "hey reverie") or 2+ clean new words
+      else if (brain.speaking && !(early && sameWords(heard, early)) && isBargeIn(heard, h)) {
+        setVoiceDuck(false);
+        body?.brains?.noteChatterResponse?.(false);
+        brain.interrupt(`talked over by "${heard}"`);
+      }
+      // smart adaptive endpointing tuned by pacingDial (learns user's speaking cadence over time)
+      if (mine && !brain.speaking && !world.game?.heard) voice.settle(Math.round(settleDelay(heard) * (body?.brains?.pacingScale?.() ?? 1)));
       const next = voice.next(); let said = next?.text;
       if (said && watch.isVideo(said)) { watch.overheard(said); said = null; }
       if (said) {
         input.placeholder = 'Say something, or type…';
+        setVoiceDuck(false);
+        // pure hush while Reverie was talking: stop cleanly without sending a redundant LLM turn
+        if (isPureHush(said) && (brain.speaking || brain.busy)) {
+          body?.brains?.noteChatterResponse?.(false);
+          brain.interrupt(`hushed by "${said}"`);
+          said = null;
+        }
+      }
+      if (said) {
         const f = brain.yours(said);
-        // while it talks, only a clear new ask counts (or two or more words, none of them its own); between its sentences
-        // in a reply (making something, thinking), anything with none of its words; when it is quiet, anything with
-        // some words of yours ("make it bigger" after it said "make it"), and short words alone ("hi")
         const all = f.words.length > 0 && f.yours.length === f.words.length;
-        const ok = brain.speaking ? deliberate(f) || (all && f.words.length >= 2)
-          : brain.busy ? deliberate(f) || all
+        const ok = brain.speaking ? isBargeIn(said, f)
+          : brain.busy ? isBargeIn(said, f) || all
           : !f.words.length || f.yours.length / f.words.length > .3;
         if (ok && karaoke && !karaoke.heardOk(said)) console.info(`[reverie] a song is on: took "${said}" for singing (say Reverie's name, or stop)`);
         else if (ok && music && !music.heardOk(said)) console.info(`[reverie] music is on: took "${said}" for a lyric (say Reverie's name, or a music command)`);
-        else if (ok) brain.hear(said, { more: next.more, at: next.at });
+        else if (ok) {
+          if (!next.more) body?.brains?.noteTurnPacing?.(true);
+          body?.brains?.noteChatterResponse?.(true);
+          body?.react?.('think');
+          brain.hear(said, { more: next.more, at: next.at });
+        }
         else { console.info(`[reverie] ignored its own voice: "${said}" (yours: ${f.yours.join(' ') || 'none'})`); if (debug) timing.textContent = 'ignored echo: ' + said; }
       }
-    }
+    } else if (ducked) setVoiceDuck(false);
     captionT -= dt; if (captionT < 0 && !brain?.speaking) caption.hidden = true;
     if (awake) { body.update(dt); shaker?.update(dt); }
     music.update(dt);
@@ -196,8 +229,10 @@ function frame(now) {
     garden?.update(dt);
     aquarium?.update(dt);
     capsules?.update(dt);
+    radio?.update(dt);
+    focus?.update(dt);
     watch.update(dt);
-    world.draw(ctx);
+    if (!document.hidden) world.draw(ctx);
   } catch (e) {
     if (!e?.kitLoading) { console.error(e); setStatus('error: ' + e.message); }
   }
@@ -285,7 +320,19 @@ async function boot() {
   setTone(() => toneOf(mood.cheer));
   brain = makeBrain({ world, onCaption: say, onStatus: setStatus, onTiming: showTiming,
     memo: () => [memory.summary(), learning.summary(), achievements.summary()].filter(Boolean).join('\n'), context: () => watch?.context() || '', onHeard: (text, again) => { memory.said('you', text, again); recapper.poke(); if (!again) mood.fun('chat'); timers?.heard(); },
-    onTool: (name, input, r) => { noted(name, input, r); earned(name, input, r); if (!r?.error && FUN_OF[name]) mood.fun(FUN_OF[name]); },
+    onTool: (name, input, r) => {
+      noted(name, input, r); earned(name, input, r);
+      if (!r?.error && FUN_OF[name]) mood.fun(FUN_OF[name]);
+      if (!r?.error) {
+        const act = name === 'make' || name === 'change' || name === 'doodle' ? 'make'
+          : name === 'play' || name === 'game_move' ? 'game'
+          : name === 'music' || name === 'karaoke' || name === 'jam' || name === 'radio' ? 'music'
+          : name === 'focus' ? 'focus'
+          : name === 'garden' || name === 'aquarium' ? 'garden'
+          : name === 'place' || name === 'room_colours' || name === 'theme' ? 'room' : 'chat';
+        body?.brains?.noteActivity(act);
+      }
+    },
     tools: {
       window: input => world.daylight.set(input),
       doodle: async () => { if (world.game?.id === 'draw_and_guess') return { text: 'Not opened: the drawing pad is already in use for Draw and Guess.', error: true }; pad.show(); return 'The drawing pad is open on their screen. When they press Make it!, you will hear what they drew and it appears in your hands.'; },
@@ -313,14 +360,17 @@ async function boot() {
       helpers: input => helpers.manage(input),
       shop: input => shop.tool(input || {}),
       badges: async () => achievements.report(),
-      ...karaoke.tools,
-      ...jam.tools,
+      karaoke: async input => { if (input?.action !== 'stop' && input?.action !== 'list') { if (jam?.playing) jam.stop(); if (radio?.playing && radio.state.station === 'lofi') radio.stop(); } return karaoke.tools.karaoke(input); },
+      jam: async input => { if (input?.action !== 'stop' && radio?.playing && radio.state.station === 'lofi') radio.stop(); return jam.tools.jam(input); },
       diary: async () => { diary.show(); return 'Your diary is open on their screen: everything you remember about them, and a way to forget any of it.'; },
       reminder: input => timers.tool(input),
       garden: input => garden.command(input),
       aquarium: input => aquarium.command(input),
       capsule: input => capsules.command(input),
       story: input => storytime.command(input),
+      radio: input => radio.command(input),
+      theme: input => themes.command(input),
+      focus: input => focus.command(input),
       watch: input => watch.command(input),
     } });
   // reminders and timers: chips on the stage, a chime and Reverie saying so when one goes off (once it is free to talk)
@@ -329,33 +379,43 @@ async function boot() {
     canTalk: () => awake && !brain.busy && !brain.speaking && !world.creature.state.listening,
     announce: text => brain.hear(text, { at: performance.now(), news: true }),
     onRing: () => { const c = world.creature; if (!c.busy) c.gesture('wave'); c.mood('excited'); const at = c.coreAt(new gs.hd.THREE.Vector3()); world.floaties.burst({ x: at.x, y: at.y + .3, z: at.z }, { n: 4 }); } });
-  body = makeBody({ creature: world.creature, world, mood });
+  body = makeBody({ creature: world.creature, world, mood, audioOn: () => !!(radio?.playing || jam?.playing || music?.spotify?.playing) });
+  world.skill = () => body.brains.skill();
+  world.onGameResult = won => body.brains.recordGameResult(won);
   // the phone in their hands (fun.js): shaken, it gets dizzy and Claude hears of it; tilted, things on the floor roll
   shaker = makeShaker({ world: world.physics, creature: world.creature, floaties: world.floaties, floor: world.floorBodies, pet: () => world.keeper,
     onShaken: strength => { mood.fun('shake'); if (!world.game) brain.notice(`[phone] They just shook the phone ${strength > 220 ? 'really hard' : 'about'}: you are dizzy, and everything on the floor bounced.`, true); } });
   // its windowsill garden (garden.js): plants that grow over real days, watered by asking or by a tap on the pot
-  garden = makeGarden({ world, onNews: (text, loud) => brain.notice(text, loud) });
+  const quietNotice = (text, loud) => brain.notice(text, loud && !focus?.focusing);
+  garden = makeGarden({ world, onNews: quietNotice });
   world.addLine(() => garden.line());
-  // mini desk aquarium (aquarium.js), time capsule jars on the shelf (capsule.js), and bedtime storytime (storytime.js)
-  aquarium = makeAquarium({ world, onNews: (text, loud) => brain.notice(text, loud) });
+  // mini desk aquarium, time capsule jars, bedtime storytime, workshop radio, room themes, and focus buddy
+  aquarium = makeAquarium({ world, onNews: quietNotice });
   world.addLine(() => aquarium.line());
-  capsules = makeCapsules({ world, memory, onNews: (text, loud) => brain.notice(text, loud) });
+  capsules = makeCapsules({ world, memory, onNews: quietNotice });
   world.addLine(() => capsules.line());
   storytime = makeStorytime({ world, memory, onNews: (text, loud) => brain.notice(text, loud) });
   world.addLine(() => storytime.line());
+  radio = makeRadio({ world, onNews: quietNotice });
+  world.addLine(() => radio.line());
+  themes = makeThemes({ world, radio });
+  world.addLine(() => themes.line());
+  focus = makeFocus({ world, body, radio, memory, aquarium, onNews: (text, loud) => brain.notice(text, loud) });
+  world.addLine(() => focus.line());
+  world.addLine(() => body?.brains?.contextLine?.() || '');
   // watching a video together: a screen in the room; only words about it (title, captions) ever reach Claude
   const sheet = makeWatchSheet({ el: $('#watching'), onPick: v => { wakeUp(); startWatching(v); } });
   watch = makeWatch({ host: $('#screen'), sheet, world, memory, state: () => ({ speaking: brain.speaking, busy: brain.busy, listening: world.creature.state.listening }),
     onOpen: () => { pad?.hide(); if (show?.isOpen) show.close(); diary?.hide(); },
     onNews: (text, loud) => brain.notice(text, loud) });
-  world.onNews = (text, loud) => { gameNews(text); gameBadges(text); if (/^\[(chess|quiz|noughts|twenty|draw and guess|quest|lesson|escape|cards|words)/.test(text)) mood.fun(/checkmate|you win|you won|they won|last question|well played|right!|guessed it|treasure|you escaped|spot on|solved/i.test(text) ? 'win' : 'move'); brain.notice(text, loud); };
+  world.onNews = (text, loud) => { gameNews(text); gameBadges(text); if (/^\[(chess|quiz|noughts|twenty|draw and guess|quest|lesson|escape|cards|words|battleships)/.test(text)) mood.fun(/checkmate|you win|you won|they won|last question|well played|right!|guessed it|treasure|you escaped|spot on|solved|fleet cleared/i.test(text) ? 'win' : 'move'); brain.notice(text, loud); };
   world.onSay = line => { if (brain.busy || brain.speaking) return false; brain.speak(line); return true; };
   world.pad = pad;
   voice = new Listener({ onProblem: () => listeningOff(), onNote: debug ? line => { timing.textContent = 'mic: ' + line; } : null });
   // (which games they play most, for the diary's habits)
   const play0 = world.play.bind(world);
   world.play = (game, o) => { memory.note('play', { game }); return play0(game, o); };
-  window.__reverie = { world, brain, body, gs, voice, pad, memory, learning, diary, today, mood, show, shaker, music, helpers, google, reminders, timers, recapper, shop, achievements, trophies, garden, aquarium, capsules, storytime, watch, karaoke, jam };
+  window.__reverie = { world, brain, body, gs, voice, pad, memory, learning, diary, today, mood, show, shaker, music, helpers, google, reminders, timers, recapper, shop, achievements, trophies, garden, aquarium, capsules, storytime, radio, themes, focus, watch, karaoke, jam };
   achievements.onUnlock(celebrateBadge);
   // its voice (about 48 MB the first time, then from the cache) loaded and its hello written while the light gets
   // ready, so the tap is answered at once: the web version of the engine otherwise loads it with the first line, and
@@ -575,6 +635,12 @@ function gameNews(text) {
   let end = null;
   if (/^\[chess\]/.test(text)) { const level = g?.level; end = /checkmate: they beat you/i.test(text) ? ['chess', { result: 'won', level }] : /checkmate: you won/i.test(text) ? ['chess', { result: 'lost', level }] : /stalemate|game is a draw/i.test(text) ? ['chess', { result: 'drawn', level }] : null; }
   else if (/^\[quiz\] That was the last question/.test(text)) { const m = /scored (\d+) out of (\d+)/.exec(text); if (m) end = ['quiz', { score: +m[1], of: +m[2] }]; }
+  else if (/^\[(battleships|cards|words|noughts)\]/.test(text)) {
+    const tag = /^\[(\w+)\]/.exec(text)[1];
+    if (/fleet cleared|they won|you win|solved|spot on|blackjack! they win|dealer busts|they beat you/i.test(text)) end = ['game_result', { game: tag, result: 'won' }];
+    else if (/reverie won|dealer wins|out of guesses|they lost|busted|sank their last ship|you won/i.test(text)) end = ['game_result', { game: tag, result: 'lost' }];
+    else if (/draw|push|tie/i.test(text)) end = ['game_result', { game: tag, result: 'drawn' }];
+  }
   if (!end) return;
   // (the same ending can be told twice; a new round is a new game object start)
   const id = end[0] + JSON.stringify(end[1]) + key + Math.floor(performance.now() / 15000);
@@ -605,9 +671,13 @@ function listeningOff() {
 
 form.addEventListener('submit', async e => {
   e.preventDefault();
-  let text = input.value.trim(); if (!text || !brain) return;
+  let text = input.value.trim();
+  // pressing Enter on an empty input while Reverie is speaking hushes it immediately
+  if (!text) { if (brain?.speaking || brain?.busy) brain.interrupt('enter hush'); return; }
+  if (!brain) return;
   const at = performance.now();
   input.value = ''; wakeUp();
+  if (isPureHush(text) && (brain.speaking || brain.busy)) { brain.interrupt('typed hush'); return; }
   // a YouTube link: it goes up on the screen at once, and Claude hears it is on
   const v = videoOf(text);
   if (v) {
@@ -615,6 +685,7 @@ form.addEventListener('submit', async e => {
     text += `\n(The video was put on the screen straight away when they pasted it: ${typeof r === 'string' ? r : r.text} Don't call watch open; just react.)`;
     return brain.hear(text, { at });
   }
+  body?.react?.('think');
   brain.hear(text, { at });
 });
 
@@ -623,9 +694,12 @@ async function startWatching(v) {
   const r = await watch.open(v);
   brain.hear(`[watch] They picked ${v.kind === 'file' ? 'a video file from their device' : 'a video'} to watch together. ${typeof r === 'string' ? r : r.text}`, { at: performance.now(), news: true });
 }
-input.addEventListener('input', () => { speed.inputAt = performance.now(); if (input.value.length === 1) body?.notice(); if (input.value && brain?.speaking && input.value.length > 3) brain.interrupt(); });
+input.addEventListener('input', () => { speed.inputAt = performance.now(); if (input.value.length === 1) body?.notice(); if (input.value && brain?.speaking) brain.interrupt('started typing'); });
+addEventListener('keydown', e => { if (e.key === 'Escape' && (brain?.speaking || brain?.busy)) { brain.interrupt('escape key'); setVoiceDuck(false); } });
 mic.addEventListener('click', async () => {
   if (!awake) return wakeUp();   // (waking asks for the microphone itself)
+  // tapping the mic while Reverie is speaking hushes it and keeps listening ready for your next words
+  if (brain?.speaking || brain?.busy) { brain.interrupt('mic tap'); setVoiceDuck(false); if (!voice.listening && !voice.want) await startListening(); return; }
   if (voice.listening || voice.want) { voice.stop(); mic.classList.remove('on'); input.placeholder = 'Say something, or type…'; return; }
   // (denied before: the browser may let it ask again, or the person has to allow it in the site settings)
   // ('broken': try every way again from the top)
@@ -652,13 +726,39 @@ const looking = makeLook({
     if (!hit && garden.tap(x, y, W, H)) return;
     if (!hit && aquarium?.tap(x, y, W, H)) return;
     if (!hit && capsules?.tap(x, y, W, H)) return;
+    if (!hit && radio?.tap(x, y, W, H)) return;
     if (hit === 'pet') achievements.track('pat');
     if (hit === 'creature') { body.poke(); mood.fun('poke'); gs.sound.sounds.boing?.(); achievements.track('poke'); }
     else if (hit === 'prop') world.toss();
   },
   onMove() { speed.inputAt = performance.now(); },
 });
-canvas.addEventListener('pointerdown', () => { speed.inputAt = performance.now(); });
+let draggedProp = null, dragStart = null, didDragProp = false;
+canvas.addEventListener('pointerdown', e => {
+  speed.inputAt = performance.now();
+  if (!world || world.game) return;
+  const r = canvas.getBoundingClientRect();
+  const hit = world.pickKept?.(e.clientX - r.left, e.clientY - r.top);
+  if (hit) { draggedProp = hit; dragStart = { x: e.clientX, y: e.clientY }; didDragProp = false; }
+});
+canvas.addEventListener('pointermove', e => {
+  if (!draggedProp || !dragStart) return;
+  if (!didDragProp && Math.hypot(e.clientX - dragStart.x, e.clientY - dragStart.y) < 7) return;
+  didDragProp = true;
+  const r = canvas.getBoundingClientRect();
+  world.dragKept?.(draggedProp, e.clientX - r.left, e.clientY - r.top);
+});
+const finishPropDrag = () => {
+  if (draggedProp && didDragProp) world.dropKept?.(draggedProp);
+  draggedProp = null; dragStart = null; didDragProp = false;
+};
+canvas.addEventListener('pointerup', finishPropDrag);
+canvas.addEventListener('pointercancel', finishPropDrag);
+canvas.addEventListener('wheel', e => {
+  if (!draggedProp) return;
+  e.preventDefault();
+  world.rotateKept?.(draggedProp, (e.deltaY > 0 ? 1 : -1) * .25);
+}, { passive: false });
 recentre.addEventListener('click', () => looking.recentre());
 
 /** The helpers' pills on the stage: who is out and what each is doing; one with news can be tapped to hear it. */
@@ -682,7 +782,7 @@ helperList.addEventListener('click', e => {
 // The line above the chat bar while a game is on: how it stands, and its buttons (Undo, New game, Done).
 let barKey = '';
 function showGame() {
-  const g = world.game, b = g ? g.bar() : (watch?.bar() || storytime?.bar());
+  const g = world.game, b = g ? g.bar() : (watch?.bar() || focus?.bar() || storytime?.bar());
   gamebar.hidden = !b; if (!b) { barKey = ''; return; }
   if (gameText.textContent !== b.text) gameText.textContent = b.text;
   // (the buttons are made again only when they change: a video's clock changes the text every second)
@@ -693,6 +793,7 @@ function showGame() {
 gamebar.addEventListener('click', e => {
   const id = e.target.closest('button')?.dataset.id, g = world?.game; if (!id) return;
   if (!g && watch?.on) { watch.button(id); barKey = ''; return; }
+  if (!g && focus?.on) { focus.button(id); barKey = ''; return; }
   if (!g && storytime?.on) { storytime.button(id); barKey = ''; return; }
   if (!g) return;
   // (Claude hears about both: a new round out loud, as when it calls play; a game put away with the next thing said)

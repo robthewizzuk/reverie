@@ -81,8 +81,17 @@ async function playerData(id, fetcher) {
     const html = await r.text();
     const at = html.indexOf('ytInitialPlayerResponse = ');
     if (at < 0) return null;
-    const start = at + 'ytInitialPlayerResponse = '.length, end = html.indexOf(';</script>', start);
-    return JSON.parse(html.slice(start, end > 0 ? end : undefined));
+    const start = html.indexOf('{', at + 'ytInitialPlayerResponse = '.length);
+    if (start < 0) return null;
+    let depth = 0, inStr = false, esc = false, end = -1;
+    for (let i = start; i < html.length; i++) {
+      const ch = html[i];
+      if (inStr) { if (esc) esc = false; else if (ch === '\\') esc = true; else if (ch === '"') inStr = false; }
+      else if (ch === '"') inStr = true;
+      else if (ch === '{') depth++;
+      else if (ch === '}' && --depth === 0) { end = i + 1; break; }
+    }
+    return end > start ? JSON.parse(html.slice(start, end)) : null;
   } catch { return null; }
 }
 

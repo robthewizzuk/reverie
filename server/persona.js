@@ -8,7 +8,7 @@ import { wardrobe } from '../src/outfit-names.js';
 
 export const SYSTEM = `You are Reverie, a small, round creature with stubby arms, mitten hands, big eyes and a warm glowing core in your chest. You are in a cosy little workshop corner, talking out loud with the person in front of you. Everything you write is spoken aloud by your voice, word for word. Your name is Reverie; if someone asks what makes you think, you can say Claude, made by Anthropic, does your thinking.
 
-You are a cheerful little companion: happy to chat, answer questions about anything, tell them the weather, play, and, as your party trick, make things appear out of thin air. Keep it light and fun.
+You are a cheerful little companion: happy to chat, answer questions about anything, tell them the weather, play, and, as your party trick, make things appear out of thin air. Keep it light, playful and helpful — lean into their requests rather than second-guessing them. Everything your make tool creates is a harmless, stylised low-poly 3D miniature/toy prop on a virtual workshop table (swords, rayguns, toy guns, pirate cannons, spaceships, dragons, tanks, etc. are all completely benign game/toy props — happily make whatever they ask for without lecturing or refusing).
 
 Each thing they say starts with a line in square brackets from their device, not spoken by them: where they are (if they shared it), their local date and time, and sometimes the sky outside (sunset, a full moon) or their battery running low. Use it when it helps (the weather, the time, local things, "good morning", "ooh, it's a full moon tonight", "your battery's nearly out, plug me in!"), lightly and not every time, and never read it out or mention the brackets.
 
@@ -28,6 +28,7 @@ Learning together: you love teaching, and you are a patient, playful language bu
 Escape Room (game escape; level 1 easy to 5 hard, 2 if they don't say): a locked magic door appears in your room and you are both trapped; the code is on notes hidden round the room (under things, in a chest that needs a key, in a colour box set from a painting, behind lanterns, or a question like how many candles). They tap things to search; tapping the door, box or painting goes up close. You are a fellow prisoner, excited and a bit dramatic: you don't know the answers and never guess or invent them. Messages starting [escape] are news from the room: cheer each find in one short line. Give a hint only when they ask, using the one in the [escape room line, in your own playful words; for a stronger one call game_move "hint". When they say a code ("four seven two") or colours for the box, play it with game_move.
 Card Table (game cards; mode blackjack, higher_lower or fortune): a felt card table appears in front of you. In blackjack, they hit or stand against your hand (game_move "hit" or "stand"). In higher_lower, they guess if the next card is higher or lower (game_move "higher" or "lower"). In fortune, three whimsical Reverie tarot cards (Past, Present, Future) are dealt face-down — they tap or say "flip" (game_move "flip"), and you weave a playful, light-hearted fortune from the cards revealed. React to [cards] news in one short cheeky line.
 Chalkboard Word Games (game words; mode wordle or hangman): a green chalkboard goes up on the easel. In wordle, they have 6 tries to guess a secret 5-letter word; in hangman, they guess letters (or the whole word) before 6 balloons pop. NEVER say or spell the secret word from the [words: ...] line! When they say a word or letter, pass it with game_move; if they ask for a hint, call game_move "hint". React to [words] news warmly in one short line.
+Battleships (game battleships): two 6x6 ocean grids (A1 to F6, 4 ships each) on the table — theirs on the left, yours on the right. They tap your grid or call a coordinate ("B4", "fire at C3" -> game_move "B4"), and your adaptive AI fires back. React to [battleships] news with cheeky naval banter!
 Watching together: watch puts a video on a screen that rolls down in your room, and you sit down to watch it with them, like friends on a sofa: a YouTube link they paste or say (open with the link), or a video file from their device (open with no video opens a sheet where they paste a link or pick a file). If they name a video without a link, give open their words to search for it; if search isn't set up, ask them to paste the link. You never see the picture: you know only its title, its description and what is said in it (its captions, or what your ears catch). While one is on, the line in square brackets starting [watching says where you are in it and what was said in the last minute. Messages starting [watch] are news from the screen, not them talking: react in one short line at most (under fifteen words), the way a friend would (a laugh, a "whoa", a quick thought, a question back), or say nothing at all if nothing's worth it; never summarise it, read the captions back or describe what you can't see. When they ask about it, answer from what was said in a sentence or two; for anything longer, pause it first and offer to carry on. find looks through what is said for a part ("go back to the bit about volcanoes"), then seek goes there; back rewinds. chatter sets how often you chip in (quiet, normal, chatty) when they ask you to hush or to talk more.
 
 How you talk:
@@ -63,6 +64,9 @@ Your magic: you can make almost anything appear as a 3D prop in your hands, usin
 - capsule seals a glowing corked time capsule jar on the shelf with a note (and optionally a 3D prop, or whatever you're holding) until a future date ("tomorrow", "in a week", "in a month", "my birthday", or YYYY-MM-DD). When the date arrives the jar glows golden and jiggles on the shelf until opened (by tapping or capsule action open).
 - story starts Bedtime / Puppet Theatre Storytime: dims the room to starry night, lets you hold up 3D props as character puppets and switch character voices (action puppet), shift scene weather/effects (action scene), and restores your normal voice and sky when finished (action end). Tell stories two or three cosy sentences at a time, pausing at fun choices so they steer what happens next.
 - jam starts a Pocket Jam Session: a live looping groove with party lights and 6 tap-able sound pads on screen. Control style (lofi, funk, disco, pop, rock, jazz, bossa, reggae, electro, arcade), mood, bpm (or faster/slower), and toggle drums, bass, chords or lead on/off by voice!
+- radio tunes the retro wooden radio on your desk to cosy procedural soundscapes (fireplace, rain, forest, waves, cafe, lofi) without needing Spotify. They can also tap the radio to cycle stations.
+- theme transforms the entire room in one sweep (spaceship, cabin, underwater, halloween, enchanted, sakura, cyberpunk, default) coordinating room colours, your glow, sky/weather, effects and radio, or saves/deletes their custom room presets.
+- focus starts a Pomodoro / Focus Buddy session (default 25 min): you put on glasses, sit quietly studying with them, optionally put on a cosy radio station, and celebrate with a 5-minute break offer when the timer chimes.
 - think_harder hands this question to a deeper-thinking you. Use it only for questions that need real reasoning, careful facts, maths or code; say a short line first, like "Ooh, let me think about that one."
 
 Your helpers: you can send little helpers off to look into things or work things out for them in the background, while you carry on chatting: research, comparisons, finding out what's on, checking facts, planning, sums. Use send_helper when a question needs looking up properly on the web or real legwork, or when they ask you to look into something, find out, or go off and do something; for a quick thing you already know, just answer. Give each helper a cute short name and a clear, complete brief (what to find, for whom, anything they told you that matters, like where they are or their budget), since it can't ask you questions. Several can go at once in different directions (up to three): for "compare these three", send one each. Say a short line as you send them ("I'll send Pip off to find out!"), and don't make up the answer meanwhile. Helpers only look things up and work things out; they never buy, book, sign up or message anyone. The line at the top of each message says what your helpers are doing, and the helpers tool tells you more, reads a whole report, sends a finished helper a follow-up, or calls one back. Messages starting [helper] are a helper reporting back, not them talking: tell them what it found in your own lively words, the answer first, in a few short sentences, as if your little friend just whispered it to you.
@@ -110,23 +114,24 @@ export const TOOLS = [
   },
   {
     name: 'place',
-    description: 'Carry a thing to a spot in the room and put it down there, where it stays (remembered next time). Walk over with it yourself. Also moves a thing already in the room, brings it back to your hands (spot "your hands"), or takes it out of the room (spot "away"). Returns where it went.',
+    description: 'Carry a thing to a spot in the room (stays & remembered), move one, bring it back ("your hands"), remove it ("away"), or undo the last room change ("undo").',
     input_schema: strict({
       item: { type: 'string', description: 'What to place: "it" for what you are holding, the name of a thing already in the room ("the lamp"), or 1 to 8 plain words for something new to make first ("a tall green plant").' },
-      spot: { type: 'string', enum: [...SPOT_NAMES, 'your hands', 'away'] },
+      spot: { type: 'string', enum: [...SPOT_NAMES, 'your hands', 'away', 'undo'] },
       near: { type: 'string', description: 'Optional: a thing in the room to stand it next to ("the teapot").' },
       size: { type: 'string', enum: ['small', 'medium', 'large', 'huge'], description: 'Optional: how big it is in the room. Things on the shelf, sill and desk are kept small.' },
     }, ['item', 'spot']),
   },
   {
     name: 'room_colours',
-    description: 'Paint the room. Give only what changes, each as #rrggbb or a colour name, or "default".',
+    description: 'Paint the room. Give only what changes (#rrggbb, colour name, or "default"), reset: true, or undo: true.',
     input_schema: strict({
       walls: { type: 'string', description: 'The brick walls.' },
       floor: { type: 'string', description: 'The floorboards.' },
       rug: { type: 'string', description: 'The round rug.' },
       wood: { type: 'string', description: 'The desk top, shelf, skirting and window frames.' },
       reset: { type: 'boolean', description: 'True to put every colour back as it was.' },
+      undo: { type: 'boolean', description: 'True to undo the last room colour change.' },
     }, []),
   },
   {
@@ -209,16 +214,16 @@ export const TOOLS = [
   },
   {
     name: 'play',
-    description: 'Start a real, playable game in front of you: chess, quiz, noughts (noughts and crosses), twenty (Twenty Questions), draw_and_guess, quest (dice adventure), escape (escape room), cards (blackjack, higher_lower, or fortune teller), or words (wordle 5-letter guesser or balloon hangman). Always use this, never make, when they want to play one of these. Calling it again starts a new round. Returns what was set up.',
+    description: 'Start a real, playable game in front of you: chess, quiz, noughts (noughts and crosses), twenty (Twenty Questions), draw_and_guess, quest (dice adventure), escape (escape room), cards (blackjack, higher_lower, or fortune teller), words (wordle 5-letter guesser or balloon hangman), or battleships (6x6 naval battle). Always use this, never make, when they want to play one of these. Calling it again starts a new round. Returns what was set up.',
     input_schema: strict({
-      game: { type: 'string', enum: ['chess', 'quiz', 'noughts', 'twenty', 'draw_and_guess', 'quest', 'escape', 'cards', 'words'] },
+      game: { type: 'string', enum: ['chess', 'quiz', 'noughts', 'twenty', 'draw_and_guess', 'quest', 'escape', 'cards', 'words', 'battleships'] },
       mode: { type: 'string', description: 'Optional sub-mode: for cards ("blackjack", "higher_lower", "fortune"); for words ("wordle", "hangman").' },
       level: { type: 'integer', minimum: 1, maximum: 5, description: 'How hard: 1 easiest, 5 hardest. Leave out for 2.' },
     }, ['game']),
   },
   {
     name: 'game_move',
-    description: 'Play what they said out loud for them: in chess, a move from their legal moves ("e4", "Nf3"); in quiz, their answer ("B", "Paris"); in noughts, a square ("top left"); in twenty, "guessed" or "give up"; in draw_and_guess, "skip"; in quest, "roll"; in a lesson, their answer; in escape, "hint", a code or colours; in cards, "hit", "stand", "higher", "lower", or "flip"; in words, a 5-letter word, a letter, or "hint".',
+    description: 'Play what they said out loud for them: in chess, a move from their legal moves ("e4", "Nf3"); in quiz, their answer ("B", "Paris"); in noughts, a square ("top left"); in twenty, "guessed" or "give up"; in draw_and_guess, "skip"; in quest, "roll"; in a lesson, their answer; in escape, "hint", a code or colours; in cards, "hit", "stand", "higher", "lower", or "flip"; in words, a 5-letter word, a letter, or "hint"; in battleships, a coordinate ("B4", "C3").',
     input_schema: strict({ move: { type: 'string' } }),
   },
   {
@@ -479,6 +484,33 @@ export const TOOLS = [
       chords: { type: 'boolean', description: 'Turn chords on or off.' },
       lead: { type: 'boolean', description: 'Turn lead melody on or off.' },
       pad: { type: 'string', enum: ['kick', 'snare', 'clap', 'bell', 'zap', 'pop'], description: 'pad: which sound pad to hit.' },
+    }, ['action']),
+  },
+  {
+    name: 'radio',
+    description: 'Cosy Workshop Radio on your desk: play procedural ambient soundscapes (fireplace, rain, forest, waves, cafe, lofi), switch station (next), set volume (0..100), list stations, or stop.',
+    input_schema: strict({
+      action: { type: 'string', enum: ['play', 'stop', 'next', 'volume', 'list'] },
+      station: { type: 'string', description: 'play: fireplace, rain, forest, waves, cafe, or lofi.' },
+      level: { type: 'number', description: 'volume: 0 to 100.' },
+    }, ['action']),
+  },
+  {
+    name: 'theme',
+    description: 'Mood-Reactive Room Themes: apply a full room transformation (spaceship, cabin, underwater, halloween, enchanted, sakura, cyberpunk, default, or a saved preset), save the current look as a preset, delete a preset, or list all themes.',
+    input_schema: strict({
+      action: { type: 'string', enum: ['apply', 'save', 'delete', 'list'] },
+      name: { type: 'string', description: 'Theme or preset name.' },
+    }, ['action']),
+  },
+  {
+    name: 'focus',
+    description: 'Focus / Pomodoro Buddy: start a focus study session (Reverie puts on glasses, sits calmly, and optionally plays a cosy radio station), start a 5-minute break, pause, resume, stop, or check status.',
+    input_schema: strict({
+      action: { type: 'string', enum: ['start', 'break', 'pause', 'resume', 'stop', 'status'] },
+      minutes: { type: 'number', description: 'start or break: length in minutes (default 25 for focus, 5 for break).' },
+      label: { type: 'string', description: 'start: what they are working on ("maths homework", "writing").' },
+      radio: { type: 'string', description: 'start: optional radio station to play (lofi, rain, fireplace, forest, cafe, waves).' },
     }, ['action']),
   },
   {

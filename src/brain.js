@@ -13,10 +13,10 @@ const API = (import.meta.env.VITE_API_URL || '').replace(/\/+$/, '') + '/api/tur
 const KEEP = 40;                 // messages kept in the conversation (older ones drop off, whole turns at a time)
 const KEEP_PHOTOS = 2;           // photos from show and tell sent along (the newest ones)
 const MAX_STEPS = 5;             // model calls in one turn (tool rounds)
-// The first thing it says after being quiet can be a clause (up to a comma) rather than the whole sentence: the voice
-// writes a line to sound before it plays it, so a short first line is heard sooner, and the rest is written while it
-// plays. Only a clause of 24 characters or more and 4 words or more, so it never stops after "Ooh,".
-const FIRST_CUT = /^([\s\S]{24,}?[,;:–—])\s+/;
+// The first thing it says after being quiet can be a short clause (up to a comma) rather than the whole sentence: the
+// voice writes a line to sound before it plays it, so a short first line is heard sooner, and the rest is written
+// while it plays. 14+ characters and 3+ words gets openings like "Ooh, good idea," speaking ~200 ms earlier.
+const FIRST_CUT = /^([\s\S]{14,}?[,;:–—])\s+/;
 const RETRY_WAIT = 400;          // ms before a turn that failed before it said or did anything is tried once more
 const GESTURES = ['none', 'wave', 'point', 'tada', 'shrug', 'think', 'nod', 'shake', 'bounce'];
 const MOODS = ['calm', 'happy', 'excited', 'curious', 'sad', 'surprised'];
@@ -24,11 +24,10 @@ const MOODS = ['calm', 'happy', 'excited', 'curious', 'sad', 'surprised'];
 // Text for the voice: no markdown, no stage directions.
 const spoken = s => s.replace(/[*_#`~>|]/g, '').replace(/\[(?!hmm|laugh|sigh|gasp)[^\]]*\]/gi, '').replace(/\s+/g, ' ').trim();
 
-// The mic hears the creature too, and the recogniser's last words about a line can come seconds after it was said
-// (while it makes a prop, say). So what is heard is always checked against everything it said in the last ECHO_KEEP
-// ms and everything it is about to say, loosely (a recogniser mishears its voice: "magic" as "magical"). Words of two
-// letters or fewer don't count either way.
-const ECHO_KEEP = 9000;
+// The mic hears the creature too, and the recogniser's last words about a line can arrive briefly after it was said.
+// While a line is actively speaking (until === Infinity), its words are filtered; once finished, echo clears after
+// ECHO_KEEP ms (1.8 s) so replying with similar words ("Yes, a red dragon!") is never swallowed as echo.
+const ECHO_KEEP = 1800;
 const wordsOf = s => String(s).toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter(w => w.length > 2);
 function near(a, b) {
   if (a === b) return true;
@@ -54,7 +53,7 @@ function cut(buf, take, quiet) {
     // quiet until now: a first clause goes to the voice at once (the rest of its sentence follows on)
     if (quiet()) {
       const c = FIRST_CUT.exec(buf);
-      if (c && c[1].trim().split(/\s+/).length >= 4) { take(c[1]); buf = buf.slice(c[0].length); continue; }
+      if (c && c[1].trim().split(/\s+/).length >= 3) { take(c[1]); buf = buf.slice(c[0].length); continue; }
     }
     // a long run with no full stop yet: say up to its last comma
     if (buf.length > 160) { const i = buf.lastIndexOf(', '); if (i > 40) { take(buf.slice(0, i + 1)); buf = buf.slice(i + 2); continue; } }
@@ -186,6 +185,9 @@ function checkInput(name, input) {
   if (name === 'capsule' && (!['seal', 'open', 'list', 'remove'].includes(input.action) || ['note', 'prop', 'until', 'label', 'id'].some(k => input[k] != null && typeof input[k] !== 'string'))) return 'action must be seal, open, list or remove, and the rest text';
   if (name === 'story' && (!['start', 'puppet', 'scene', 'end'].includes(input.action) || ['title', 'theme', 'time', 'weather', 'prop', 'character', 'voice', 'effect', 'beat'].some(k => input[k] != null && typeof input[k] !== 'string'))) return 'action must be start, puppet, scene or end, and the rest text';
   if (name === 'jam' && (!['start', 'change', 'pad', 'stop'].includes(input.action) || ['style', 'mood', 'pad'].some(k => input[k] != null && typeof input[k] !== 'string') || (input.bpm != null && typeof input.bpm !== 'number'))) return 'action must be start, change, pad or stop, bpm a number, the rest text';
+  if (name === 'radio' && (!['play', 'stop', 'next', 'volume', 'list'].includes(input.action) || (input.station != null && typeof input.station !== 'string') || (input.level != null && typeof input.level !== 'number'))) return 'action must be play, stop, next, volume or list, level a number, station text';
+  if (name === 'theme' && (!['apply', 'save', 'delete', 'list'].includes(input.action) || (input.name != null && typeof input.name !== 'string'))) return 'action must be apply, save, delete or list, name text';
+  if (name === 'focus' && (!['start', 'break', 'pause', 'resume', 'stop', 'status'].includes(input.action) || ['label', 'radio'].some(k => input[k] != null && typeof input[k] !== 'string') || (input.minutes != null && typeof input.minutes !== 'number'))) return 'action must be start, break, pause, resume, stop or status, minutes a number, the rest text';
   return null;
 }
 
@@ -197,9 +199,10 @@ export function gameAsked(text) {
     : /\b(draw and guess|draw ?& ?guess|pictionary|guess (what i'?m drawing|my drawing(s)?))\b/.test(t) ? 'draw_and_guess'
     : /\b(dice quest|dice adventure|quest|adventure game)\b/.test(t) ? 'quest' : /\b(escape room|escape game|escape the room)\b/.test(t) ? 'escape'
     : /\b(blackjack|pontoon|higher or lower|fortune teller|tarot|read my cards|card game)\b/.test(t) ? 'cards'
-    : /\b(wordle|hangman|word guesser|word game)\b/.test(t) ? 'words' : null;
+    : /\b(wordle|hangman|word guesser|word game)\b/.test(t) ? 'words'
+    : /\bbattleships?\b/.test(t) ? 'battleships' : null;
   if (!game || /\b(stop|quit|end|enough|no more|don'?t|not now|later|rules|history|who invented)\b/.test(t)) return null;
-  if (!/\b(play|game|match|fancy|let'?s|up for|challenge|set up|get out|board|again|rematch|wanna|want to|quiz me|another|round|start|do a|have a|host|guess my|go on a|tell me a|deal|read my)\b/.test(t) && !/^\W*(chess|quiz|trivia|noughts and crosses|tic tac toe|twenty questions|draw and guess|pictionary|dice quest|escape room|blackjack|higher or lower|fortune teller|tarot|wordle|hangman)\W*$/.test(t)) return null;
+  if (!/\b(play|game|match|fancy|let'?s|up for|challenge|set up|get out|board|again|rematch|wanna|want to|quiz me|another|round|start|do a|have a|host|guess my|go on a|tell me a|deal|read my)\b/.test(t) && !/^\W*(chess|quiz|trivia|noughts and crosses|tic tac toe|twenty questions|draw and guess|pictionary|dice quest|escape room|blackjack|higher or lower|fortune teller|tarot|wordle|hangman|battleships?)\W*$/.test(t)) return null;
   const level = /\b(easy|gentle|beginner|go easy)\b/.test(t) ? 1 : /\b(hardest|master|best you can|full strength)\b/.test(t) ? 5 : /\b(hard|tough|serious)\b/.test(t) ? 4 : undefined;
   const mode = game === 'cards' ? (/\b(fortune|tarot|read my cards)\b/.test(t) ? 'fortune' : /\bhigher or lower\b/.test(t) ? 'higher_lower' : 'blackjack')
     : game === 'words' ? (/\bhangman\b/.test(t) ? 'hangman' : 'wordle') : undefined;
@@ -248,7 +251,18 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
     if (name === 'think_harder') return Promise.resolve(deepNow
       ? { text: 'You are already thinking harder. Answer the question now.', error: true }
       : { text: 'Handed over to deeper thinking. You are now thinking harder about this question: answer it now, and do not call think_harder again.', deep: true });
-    const fn = { make: () => world.make(input.words), change: () => world.change(input.words), toss: () => world.toss(), weather: () => weather(input.place), clear: () => world.clear({ room: !!input.room }), place: () => world.place(input), room_colours: () => world.recolourRoom(input), act: () => world.act(input.gesture, input.mood), voice: async () => { const r = setVoice(input), d = r.error ? '' : world.dressFor?.(voiceNow().name) || ''; return d ? { ...r, text: `${r.text} ${d}` } : r; }, wear: () => world.wear(input), colours: () => world.recolour(input),
+    const TOOL_STATUS = {
+      make: 'crafting…', change: 'reshaping…', place: 'arranging room…', room_colours: 'painting room…',
+      play: 'setting up game…', weather: 'checking weather…', recall: 'checking diary…',
+      send_helper: 'sending a helper…', helpers: 'checking helpers…', email: 'checking email…',
+      calendar: 'checking calendar…', watch: 'loading video…', shop: 'checking shops…',
+      theme: 'switching theme…', radio: 'tuning radio…', focus: 'setting focus timer…',
+      aquarium: 'tending aquarium…', capsule: 'checking time capsules…', story: 'opening storybook…',
+      jam: 'tuning jam pads…',
+    };
+    const statusLabel = TOOL_STATUS[name];
+    if (statusLabel) onStatus(statusLabel);
+    const fn = { make: () => world.make(input.words), change: () => world.change(input.words), toss: () => world.toss(), weather: () => weather(input.place), clear: () => world.clear({ room: !!input.room }), place: () => /^undo$/i.test(String(input.spot || '').trim()) ? world.undoRoom() : world.place(input), room_colours: () => input.undo ? world.undoRoom() : world.recolourRoom(input), act: () => world.act(input.gesture, input.mood), voice: async () => { const r = setVoice(input), d = r.error ? '' : world.dressFor?.(voiceNow().name) || ''; return d ? { ...r, text: `${r.text} ${d}` } : r; }, wear: () => world.wear(input), colours: () => world.recolour(input),
       play: () => world.play(input.game, { level: input.level, mode: input.mode }), game_move: () => world.game ? world.game.command(input.move) : Promise.resolve('No game is being played.'), stop_game: () => world.stopGame(),
       roll: () => world.roll(input.dice || '1d6'), pet: () => world.pet(input), ...Object.fromEntries(Object.entries(extra).map(([k, f]) => [k, () => f(input)])) }[name];
     if (!fn) return Promise.resolve({ text: `There is no tool called ${name}.`, error: true });
@@ -359,20 +373,27 @@ export function makeBrain({ world, onCaption = () => {}, onStatus = () => {}, on
     const t = times = { start: o.at ?? performance.now(), heard: performance.now() };
     let tier = 'quick', errored = false; deepNow = false;
     try {
+      const trimToolText = s => {
+        s = String(s ?? '');
+        return s.length > 2400 ? s.slice(0, 1800) + '\n…[trimmed]…\n' + s.slice(-450) : s;
+      };
       for (let n = 0; n < MAX_STEPS; n++) {
-        // (a hiccup before it said or did anything, a dropped connection or a busy server: tried once more, unseen)
+        // (a hiccup before it said or did anything, a dropped connection or a busy server: retried with backoff)
         const did = { something: false };
         let r;
-        try { r = await step(tier, my, t, did); } catch (e) {
-          if (e?.name === 'AbortError' || my !== turn || did.something || !transient(e)) throw e;
-          console.info('[reverie] trying the turn again: ' + (e?.message || e));
-          await wait(RETRY_WAIT); if (my !== turn) return;
-          r = await step(tier, my, t, did);
+        for (let attempt = 0; ; attempt++) {
+          try { r = await step(tier, my, t, did); break; } catch (e) {
+            if (e?.name === 'AbortError' || my !== turn || did.something || !transient(e) || attempt >= 2) throw e;
+            const delay = attempt === 0 ? RETRY_WAIT : RETRY_WAIT * 2.3;
+            console.info(`[reverie] retrying turn (attempt ${attempt + 2}): ${e?.message || e}`);
+            onStatus('reconnecting…');
+            await wait(delay); if (my !== turn) return;
+          }
         }
         if (!r || my !== turn) return;
         history.push({ role: 'assistant', content: r.content });
         if (!r.results.length) break;
-        history.push({ role: 'user', content: r.results.map(x => ({ type: 'tool_result', tool_use_id: x.id, content: x.text, ...(x.error ? { is_error: true } : {}) })) });
+        history.push({ role: 'user', content: r.results.map(x => ({ type: 'tool_result', tool_use_id: x.id, content: trimToolText(x.text), ...(x.error ? { is_error: true } : {}) })) });
         if (r.results.some(x => x.deep)) { tier = 'deep'; deepNow = true; creature.state.thinking = true; creature.gesture('think'); onStatus('thinking harder'); }
       }
     } catch (e) {

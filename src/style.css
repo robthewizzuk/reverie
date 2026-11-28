@@ -30,6 +30,8 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 #bar button svg { width: 22px; height: 22px; fill: currentColor; }
 #bar #send { background: var(--accent); color: #241509; }
 #bar #mic.on { background: #e5484d; color: #fff; animation: pulse 1.2s ease-in-out infinite; }
+#bar #mic.on.hearing { box-shadow: 0 0 0 calc(4px + var(--vad, 0) * 10px) #e5484d59; transition: box-shadow .08s linear; }
+#bar #mic.on.ducking { background: #f59e0b; box-shadow: 0 0 0 calc(6px + var(--vad, 0) * 12px) #f59e0b73; }
 #bar button[hidden] { display: none; }
 @keyframes pulse { 50% { box-shadow: 0 0 0 6px #e5484d44; } }
 @media (prefers-reduced-motion: reduce) { #bar #mic.on { animation: none; } }
