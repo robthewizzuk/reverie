@@ -220,7 +220,7 @@ const ok = (cond, msg) => { if (!cond) fail(msg); };
   const fakeMesh = {
     isMesh: true, name: 'wingL', userData: { part: 'wing' }, scale: { x: 1, y: 1, z: 1 }, position: { x: 0, y: 0, z: 0 },
     geometry: { boundingBox: { min: { x: -.2, y: 0, z: -.1 }, max: { x: .2, y: .7, z: .1 } } },
-    material: { color: { r: .85, g: .65, b: .15 }, metalness: .85, roughness: .2, emissiveIntensity: .8 },
+    material: { color: { r: .85, g: .65, b: .15 }, metalness: .85, roughness: .2, emissive: { r: .9, g: .5, b: .1 }, emissiveIntensity: .8 },
   };
   const fakeThing = {
     userData: {
@@ -234,6 +234,21 @@ const ok = (cond, msg) => { if (!cond) fail(msg); };
   ok(/tall and upright/.test(d.text), 'reports actual 3D proportions: ' + d.text);
   ok(!/Not reflected/.test(d.text), 'no false-positive missing words: ' + d.text);
   ok(colourName('#d6a634') === 'gold', 'colourName maps gold accurately');
+  // Regression test: Lego brick house with InstancedMesh instanceColor + default black emissive (emissiveIntensity: 1)
+  const brickHouseMesh = {
+    isMesh: true, isInstancedMesh: true, count: 4, name: 'lego_bricks', scale: { x: 1, y: 1, z: 1 }, position: { x: 0, y: 0, z: 0 },
+    geometry: { boundingBox: { min: { x: -.2, y: 0, z: -.2 }, max: { x: .2, y: .35, z: .2 } } },
+    instanceColor: { array: new Float32Array([.2, .08, .03, .2, .08, .03, .2, .08, .03, .01, .03, .12]) },
+    material: { color: { r: 1, g: 1, b: 1 }, metalness: 0, roughness: .5, emissive: { r: 0, g: 0, b: 0 }, emissiveIntensity: 1 },
+  };
+  const legoHouse = {
+    userData: { generatedSpec: { kind: 'brick' } },
+    traverse(fn) { fn(this); fn(brickHouseMesh); },
+  };
+  const dh = describe(legoHouse, 'a lego house', { size: .4 });
+  ok(/lego/.test(dh.short) && /house/.test(dh.short), 'lego brick house keeps house noun: ' + dh.short);
+  ok(/brown/.test(dh.text) && !/white/.test(dh.text), 'reads instanceColor (brown) and ignores neutral white tint: ' + dh.text);
+  ok(!/glowing/.test(dh.text), 'black emissive with emissiveIntensity=1 is NOT reported as glowing: ' + dh.text);
   console.log('describe: ok');
 }
 

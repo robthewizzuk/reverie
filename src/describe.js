@@ -82,15 +82,34 @@ function partsOf(thing) {
   return [...seen].map(([say, n]) => typeof say === 'function' ? say(n) : say).filter((v, i, a) => a.indexOf(v) === i).slice(0, 8);
 }
 
-/** Inspects actual Three.js meshes in `thing` for dominant colours, finishes, and bounding proportions. */
+/** Inspects actual Three.js meshes in `thing` for dominant colours (including instanceColor & vertexColors), finishes, and bounding proportions. */
 function inspectMeshes(thing) {
   const colourWeights = new Map();
-  let glowing = false, glossy = false, metallic = false, transparent = false, meshCount = 0;
+  let glowing = false, glossy = false, metallic = false, transparent = false, hasBricks = false, meshCount = 0;
   let minX = Infinity, minY = Infinity, minZ = Infinity, maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
 
+  const addCol = (c, w) => {
+    const cn = colourName(c);
+    if (cn) colourWeights.set(cn, (colourWeights.get(cn) || 0) + w);
+  };
+  const linToSrgb = x => x <= .0031308 ? x * 12.92 : 1.055 * Math.pow(Math.max(0, x), 1 / 2.4) - .055;
+  const sampleAttr = (attr, total, w) => {
+    const n = Math.min(total, 64), step = Math.max(1, Math.floor(total / n));
+    let sampled = 0;
+    for (let i = 0; i < total; i += step) sampled++;
+    const each = w / Math.max(1, sampled);
+    for (let i = 0; i < total; i += step) {
+      const r = attr.getX ? attr.getX(i) : attr.array[i * 3];
+      const g = attr.getY ? attr.getY(i) : attr.array[i * 3 + 1];
+      const b = attr.getZ ? attr.getZ(i) : attr.array[i * 3 + 2];
+      addCol({ r: linToSrgb(r), g: linToSrgb(g), b: linToSrgb(b) }, each);
+    }
+  };
+
   thing?.traverse?.(m => {
-    if (!m.isMesh) return;
+    if (!m.isMesh && !m.isInstancedMesh) return;
     meshCount++;
+    if (/brick|stud|lego/i.test(m.name || '') || m.userData?.bricks) hasBricks = true;
     let weight = 1;
     const g = m.geometry;
     if (g) {
@@ -108,14 +127,24 @@ function inspectMeshes(thing) {
       }
     }
     const mats = Array.isArray(m.material) ? m.material : m.material ? [m.material] : [];
+    const hasInstCol = !!(m.isInstancedMesh && m.instanceColor && m.count > 0);
+    const hasVertCol = !!(g?.attributes?.color?.count > 0 && mats.some(mt => mt?.vertexColors));
+
+    if (hasInstCol) sampleAttr(m.instanceColor, m.count, weight * Math.min(m.count, 50));
+    else if (hasVertCol) sampleAttr(g.attributes.color, g.attributes.color.count, weight);
+
     for (const mat of mats) {
       if (!mat) continue;
-      if (mat.emissiveIntensity > .35) glowing = true;
+      // Only treat as glowing if emissive colour is actually non-black (Three.js defaults emissiveIntensity to 1 with black emissive!)
+      const em = mat.emissive;
+      const emLum = em ? (em.r + em.g + em.b) : 0;
+      if (emLum > .08 && (mat.emissiveIntensity ?? 1) * emLum > .18) glowing = true;
       if (mat.metalness > .55) metallic = true;
       if (mat.roughness != null && mat.roughness < .28 && !metallic) glossy = true;
       if (mat.transparent && mat.opacity != null && mat.opacity < .85) transparent = true;
-      const cn = colourName(mat.color);
-      if (cn) colourWeights.set(cn, (colourWeights.get(cn) || 0) + weight);
+      // Skip pure white mat.color when it's just the neutral multiplier for vertexColors / instanceColor
+      const isNeutralWhite = (hasInstCol || hasVertCol) && mat.color && mat.color.r > .92 && mat.color.g > .92 && mat.color.b > .92;
+      if (!isNeutralWhite && mat.color) addCol(mat.color, weight);
     }
   });
 
@@ -134,7 +163,7 @@ function inspectMeshes(thing) {
   if (transparent) finishes.push('translucent/glassy');
   if (metallic) finishes.push('metallic');
   else if (glossy) finishes.push('glossy');
-  return { topColours, finishes, shape, meshCount };
+  return { topColours, finishes, shape, hasBricks, meshCount };
 }
 
 function looksOf(spec, meshInfo) {
@@ -150,15 +179,30 @@ function looksOf(spec, meshInfo) {
 }
 
 const GENERIC_KINDS = new Set(['thing', 'prop', 'object', 'item', 'mesh', 'group', 'model', 'asset']);
-const kindOf = spec => {
+const MATERIAL_KINDS = new Set(['brick', 'stone', 'wood', 'timber', 'metal', 'plastic', 'glass', 'punched', 'block', 'voxel']);
+const NOUN_SKIP = new Set(['a', 'an', 'the', 'my', 'some', 'lego', 'toy', 'wooden', 'brick', 'stone', 'metal', 'gold', 'golden', 'silver', 'red', 'blue', 'green', 'yellow', 'brown', 'black', 'white', 'grey', 'gray', 'dark', 'light', 'big', 'small', 'tiny', 'little', 'huge', 'giant', 'glowing', 'shiny', 'cute', 'cool', 'old', 'new', 'of', 'with', 'in', 'on', 'made', 'from', 'out']);
+
+const askedNoun = asked => {
+  const ws = String(asked || '').toLowerCase().replace(/[^a-z ]+/g, ' ').trim().split(/\s+/).filter(w => w.length > 2 && !NOUN_SKIP.has(w));
+  return ws.at(-1) || '';
+};
+
+const kindOf = (spec, asked = '') => {
   const raw = [spec.thing, spec.name, spec.kind, spec.as, spec.look]
     .map(v => typeof v === 'string' ? v.replace(/^\w+:/, '').trim() : '')
     .filter(Boolean);
-  return raw.find(v => !GENERIC_KINDS.has(v.toLowerCase())) || raw[0] || 'thing';
+  const picked = raw.find(v => !GENERIC_KINDS.has(v.toLowerCase())) || raw[0] || '';
+  if (!picked || MATERIAL_KINDS.has(picked.toLowerCase())) {
+    const noun = askedNoun(asked);
+    if (noun && noun !== picked.toLowerCase()) return picked && picked !== 'punched' ? `${picked} ${noun}` : noun;
+  }
+  return picked || 'thing';
 };
 
-const styleOf = spec => {
-  const s = spec.style || spec.drawn || (spec.brick || spec.lego ? 'toy-brick' : '') || (spec.voxel || spec.pixel ? 'pixel/voxel' : '');
+const styleOf = (spec, meshInfo = null, asked = '') => {
+  const s = spec.style || spec.drawn
+    || (spec.brick || spec.lego || meshInfo?.hasBricks || /\blego\b/i.test(asked) ? 'lego' : '')
+    || (spec.voxel || spec.pixel ? 'pixel/voxel' : '');
   return typeof s === 'string' && s && s !== 'normal' && s !== 'default' ? s : '';
 };
 
@@ -166,9 +210,9 @@ const styleOf = spec => {
 export function describe(thing, words, { size = null, read = null, asked = words } = {}) {
   const spec = thing?.userData?.generatedSpec || thing?.userData?.assetSpec || {};
   const meshInfo = inspectMeshes(thing);
-  const kind = kindOf(spec);
+  const kind = kindOf(spec, asked);
   const looks = looksOf(spec, meshInfo);
-  const style = styleOf(spec);
+  const style = styleOf(spec, meshInfo, asked);
   const first = looks[0] ? looks[0].replace(/ (painted|plastic|fabric|scales|fur)$/, '') : '';
 
   let short;
