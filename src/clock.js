@@ -11,13 +11,13 @@ export function makeClock({ world, onNews = () => {} }) {
 
   const root = new THREE.Group();
   root.name = 'clock';
-  // Mounted on the back-left wall above the floating shelf, balanced opposite the arched wall mirror
-  const cx = -1.16, cy = 1.66, cz = backZ(cx, cy) + .026;
+  // Mounted cleanly above the center-left floating shelf, well inside the camera frame
+  const cx = -.46, cy = 1.40, cz = backZ(cx, cy) + .026;
   const n = wallNormal(cx, cy, cz);
   root.position.set(cx, cy, cz);
-  root.lookAt(cx + n[0], cy + n[1] * .3, cz + n[2]);
+  root.lookAt(cx + n[0], cy + n[1] * .25, cz + n[2]);
 
-  const R = .17;
+  const R = .13;
   const bb = brushedBrassMaps(THREE);
   const rimMat = Object.assign(pbr('#c8a25e', { metal: .85, rough: .26 }), { bumpMap: bb.bumpMap, bumpScale: .002, roughnessMap: bb.roughnessMap });
   const faceMat = pbr('#f6f1e6', { rough: .78 });

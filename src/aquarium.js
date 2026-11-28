@@ -12,7 +12,7 @@ Object.assign(FUN, { aquarium: FUN.aquarium || [.035, .55] });
 
 // tank dimensions (metres), sitting on the left-middle of the desk, clear of the lamp at x = 1.3
 const TANK = { w: .32, h: .21, d: .18 };
-const TANK_X = .52;
+const TANK_X = .76;
 
 export function makeAquarium({ world, onNews = () => {} }) {
   const { THREE, pbr, rbox } = gs.hd;
