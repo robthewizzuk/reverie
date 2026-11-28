@@ -33,12 +33,12 @@ const TAP_PX = 8;   // (a press that moves less than this is a tap)
 export function makeLook({ el, onTap = () => {}, onMove = () => {} }) {
   const want = { yaw: 0, pitch: 0, zoom: 1 }, now = { yaw: 0, pitch: 0, zoom: 1 }, spin = { yaw: 0, pitch: 0 };
   const downs = new Map();   // pointer id -> { x, y, sx, sy, t }
-  let W = 360, H = 640, dragging = false, pinch = null, lastSeat = null, free = false;
+  let W = 360, H = 640, dragging = false, pinch = null, lastSeat = null;
 
   const clampWant = () => {
-    if (!free) want.yaw = Math.max(-LIMITS.yaw, Math.min(LIMITS.yaw, want.yaw));
+    want.yaw = Math.max(-LIMITS.yaw, Math.min(LIMITS.yaw, want.yaw));
     want.pitch = Math.max(-LIMITS.pitchDown, Math.min(LIMITS.pitchUp, want.pitch));
-    want.zoom = Math.max(LIMITS.near, Math.min(free ? 3.5 : LIMITS.far, want.zoom));
+    want.zoom = Math.max(LIMITS.near, Math.min(LIMITS.far, want.zoom));
   };
   const turn = (dx, dy) => { want.yaw -= dx / Math.max(W, 1) * Math.PI * .9; want.pitch += dy / Math.max(H, 1) * 2.2; clampWant(); };
   const spread = () => { const [a, b] = [...downs.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
@@ -97,8 +97,6 @@ export function makeLook({ el, onTap = () => {}, onMove = () => {} }) {
     /** True while the view is away from the seat (the recentre button shows then). */
     get moved() { return Math.abs(want.yaw) > .04 || Math.abs(want.pitch) > .04 || Math.abs(want.zoom - 1) > .04; },
     get dragging() { return dragging; },
-    get free() { return free; },
-    set free(v) { free = !!v; if (!free) clampWant(); },
     size(w, h) { W = w; H = h; },
     /** Back to the seat, eased. */
     recentre() { want.yaw = want.pitch = 0; want.zoom = 1; spin.yaw = spin.pitch = 0; },
@@ -111,7 +109,7 @@ export function makeLook({ el, onTap = () => {}, onMove = () => {} }) {
      */
     view(seat, dt, goal = seat) {
       const key = goal;
-      if (!free && lastSeat !== null && key !== lastSeat && !dragging) this.recentre();
+      if (lastSeat !== null && key !== lastSeat && !dragging) this.recentre();
       lastSeat = key;
       if (!dragging && (spin.yaw || spin.pitch)) {
         want.yaw += spin.yaw * dt; want.pitch += spin.pitch * dt; clampWant();
@@ -124,8 +122,7 @@ export function makeLook({ el, onTap = () => {}, onMove = () => {} }) {
       const dx = px - lx, dy = py - ly, dz = pz - lz, r = Math.hypot(dx, dy, dz) || 1;
       const yaw = Math.atan2(dx, dz) + now.yaw;
       const pitch = Math.max(LIMITS.lowest, Math.min(LIMITS.highest, Math.asin(dy / r) + now.pitch)), d = r * now.zoom;
-      const raw = [lx + d * Math.cos(pitch) * Math.sin(yaw), ly + d * Math.sin(pitch), lz + d * Math.cos(pitch) * Math.cos(yaw)];
-      const pos = free ? raw : inside(raw, seat.pos);
+      const pos = inside([lx + d * Math.cos(pitch) * Math.sin(yaw), ly + d * Math.sin(pitch), lz + d * Math.cos(pitch) * Math.cos(yaw)], seat.pos);
       return { pos, look: seat.look };
     },
     stop() {
