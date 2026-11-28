@@ -10,8 +10,8 @@ export const SUN_DIR = [-.8, .62, .3];
 // the opening in the left wall, its window (shell.js, with the room's shape)
 export { WINDOW };
 // actual wall sconce lights mounted above the shelves (pulled slightly out from the wall so they illuminate the shelves cleanly without burning hotspots onto the plaster)
-export const LAMP = { x: 1.06, y: 1.56, z: backZ(1.06, 1.56) + .24 };
-export const SHELF_LAMP = { x: -.46, y: 1.21, z: backZ(-.46, 1.21) + .24 };
+export const LAMP = { x: 1.06, y: 1.50, z: backZ(1.06, 1.50) + .28 };
+export const SHELF_LAMP = { x: -.46, y: 1.13, z: backZ(-.46, 1.13) + .28 };
 
 const CORE_LAMP = '#ff7020';     // the light its core casts, as made (moved with the glow colour)
 
@@ -93,8 +93,8 @@ export function lightRoom(v, creature, roomBox) {
       const mainI = lamp.i * .55 * (1 + this.pulse * .35);
       const mainLamp = Object.assign(swell, lamp, { i: mainI });
       leftLamp.col = lamp.col;
-      leftLamp.i = mainI * .78;
-      leftLamp.reach = Math.max(1.5, lamp.reach * .8);
+      leftLamp.i = mainI * .58;
+      leftLamp.reach = Math.max(1.4, lamp.reach * .75);
       if (this.night > .05) {
         propFill.x = at.x - .3; propFill.z = at.z + 1.35;
         propFill.i = 1.35 * this.night;
