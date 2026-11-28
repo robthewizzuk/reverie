@@ -34,7 +34,7 @@ import { playCue } from './sounds.js';
 import { makeTrophies } from './trophies.js';
 import { roomColours } from './room.js';
 import { makeGarden } from './garden.js';
-import { makeWatch, makeWatchSheet, videoOf } from './watch.js';
+import { makeWatch, videoOf } from './watch.js';
 import { makeKaraoke } from './karaoke.js';
 import { makeLyrics } from './lyrics.js';
 import { makeAquarium } from './aquarium.js';
@@ -49,7 +49,7 @@ const $ = s => document.querySelector(s);
 const stage = $('#stage'), canvas = $('#view'), ctx = canvas.getContext('2d');
 const input = $('#say'), form = $('#bar'), mic = $('#mic'), caption = $('#caption'), status = $('#status'), wake = $('#wake'), timing = $('#timing');
 const gamebar = $('#gamebar'), gameText = $('#gamebar span'), gameButtons = $('#gamebar div');
-const draw = $('#draw'), book = $('#book'), look = $('#look'), recentre = $('#recentre'), helperList = $('#helpers'), tv = $('#tv');
+const draw = $('#draw'), book = $('#book'), look = $('#look'), recentre = $('#recentre'), helperList = $('#helpers');
 const debug = new URLSearchParams(location.search).has('debug');
 
 let W = 0, H = 0, world, brain, body, voice, pad, diary, mood, show, shaker, music, helpers, wisps, google, timers, shop, trophies, garden, watch, karaoke, aquarium, capsules, storytime, jam, radio, themes, focus, last = 0, awake = false, captionT = 0, nextAt = 0;
@@ -402,9 +402,8 @@ async function boot() {
   focus = makeFocus({ world, body, radio, memory, aquarium, onNews: (text, loud) => brain.notice(text, loud) });
   world.addLine(() => focus.line());
   world.addLine(() => body?.brains?.contextLine?.() || '');
-  // watching a video together: a screen in the room; only words about it (title, captions) ever reach Claude
-  const sheet = makeWatchSheet({ el: $('#watching'), onPick: v => { wakeUp(); startWatching(v); } });
-  watch = makeWatch({ host: $('#screen'), sheet, world, memory, state: () => ({ speaking: brain.speaking, busy: brain.busy, listening: world.creature.state.listening }),
+  // watching a video together: Reverie searches YouTube directly and rolls down a screen in the room
+  watch = makeWatch({ host: $('#screen'), world, memory, state: () => ({ speaking: brain.speaking, busy: brain.busy, listening: world.creature.state.listening }),
     onOpen: () => { pad?.hide(); if (show?.isOpen) show.close(); diary?.hide(); },
     onNews: (text, loud) => brain.notice(text, loud) });
   world.onNews = (text, loud) => { gameNews(text); gameBadges(text); if (/^\[(chess|quiz|noughts|twenty|draw and guess|quest|lesson|escape|cards|words|battleships)/.test(text)) mood.fun(/checkmate|you win|you won|they won|last question|well played|right!|guessed it|treasure|you escaped|spot on|solved|fleet cleared/i.test(text) ? 'win' : 'move'); brain.notice(text, loud); };
@@ -711,7 +710,6 @@ wake.addEventListener('click', wakeUp);
 look.addEventListener('click', () => { if (!show) return; wakeUp(); if (show.isOpen) show.close(); else show.open(); });
 draw.addEventListener('click', () => { if (!pad) return; wakeUp(); if (pad.open) pad.hide(); else pad.show(); });
 book.addEventListener('click', () => { if (!diary) return; if (diary.open) diary.hide(); else diary.show(); });
-tv.addEventListener('click', () => { if (!watch) return; wakeUp(); if (watch.on) watch.close(); else watch.open(null); });
 // (any tap lets Spotify's player make sound, on browsers that want one first)
 addEventListener('pointerdown', () => music?.tapped(), { capture: true });
 // a press on the room: a tap pokes Reverie, tosses what it holds or plays a game; a drag, pinch or scroll looks around
