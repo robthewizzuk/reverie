@@ -324,7 +324,13 @@ export function makeDaylight({ v, light, outside, glass, side, globe, motes }) {
   const snap = () => { for (const c of COLOURS) now[c].copy(goal[c]); for (const n of ALL_NUMBERS) now[n] = goal[n]; dirNow.copy(dirGoal); };
   // how far the light is from what the bounce light and the reflections were baked with
   const drift = () => baked.sunI == null ? 1 : Math.abs(now.sunI - baked.sunI) / 3 + Math.abs(now.lamp - baked.lamp) / 3 + Math.abs(now.glow - baked.glow) + Math.abs(now.hemiI - baked.hemiI) * 3 + (Math.abs(now.sun.r - baked.sun.r) + Math.abs(now.sun.g - baked.sun.g) + Math.abs(now.sun.b - baked.sun.b)) + dirNow.distanceTo(baked.dir) * .6;
-  const rebake = () => { light.bounce?.bake?.(); light.room?.bake?.(); Object.assign(baked, { sunI: now.sunI, lamp: now.lamp, glow: now.glow, hemiI: now.hemiI, sun: now.sun.clone(), dir: dirNow.clone() }); };
+  let pendingBounceBake = false;
+  const rebake = () => {
+    light.room?.bake?.();
+    // Skip static probe grid rebake when live traced bounce GI is active (it updates continuously without stalling)
+    if (!v.liveBounce) pendingBounceBake = true;
+    Object.assign(baked, { sunI: now.sunI, lamp: now.lamp, glow: now.glow, hemiI: now.hemiI, sun: now.sun.clone(), dir: dirNow.clone() });
+  };
 
   function rainSound() {
     const want = soundOn ? Math.max(now.rain, storm ? 1 : 0) : 0;
@@ -368,8 +374,9 @@ export function makeDaylight({ v, light, outside, glass, side, globe, motes }) {
         dropsActive = D.some(d => d.k > 0);
         drops.visible = dropsActive;
       }
-      // the bounce light and reflections, baked again once the light has settled somewhere new
-      if ((bakeAt -= dt) <= 0 && drift() > .25 && moved < .08) { bakeAt = 3; rebake(); }
+      // the bounce light and reflections, baked again once the light has settled somewhere new (staggered so we never stall)
+      if (pendingBounceBake) { pendingBounceBake = false; light.bounce?.bake?.(); }
+      else if ((bakeAt -= dt) <= 0 && drift() > .45 && moved < .08) { bakeAt = 20; rebake(); }
       if (soundOn && (now.rain > .01 || storm || bed)) rainSound();
     },
     /** Shows another sky: time ('live', 'sunset', 'night'...) and/or weather ('live', 'rain', 'snow'...). Resolves a sentence. */

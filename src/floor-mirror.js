@@ -112,21 +112,26 @@ export function makeFloorMirror({ brassMat, woodMat, x = -1.05, z = -.42, ry = .
           const _view = new THREE.Vector3(), _look = new THREE.Vector3(), _targ = new THREE.Vector3();
           const _rotM = new THREE.Matrix4(), _invP = new THREE.Matrix4();
           const _plane = new THREE.Plane(), _C = new THREE.Vector4(), _Q = new THREE.Vector4();
-          const _sz = new THREE.Vector2();
-          let inMirror = false;
+          const MIRROR_RES = 512;
+          let inMirror = false, frameIdx = 0;
 
           base.updateBefore = function (frame) {
             const { scene, camera, renderer, material } = frame;
             if (!renderer?.reversedDepthBuffer) return origUpdateBefore(frame);
             if (inMirror) return false;
-            inMirror = true;
 
-            const { target } = this;
             const vc = this.getVirtualCamera(camera);
             const rt = this.getRenderTarget(vc);
-            renderer.getDrawingBufferSize(_sz);
-            this._updateResolution(rt, renderer);
+            // Keep a fixed crisp 512x512 RT so adaptive resolution changes never reallocate WebGPU textures/bind-groups
+            if (rt.width !== MIRROR_RES || rt.height !== MIRROR_RES) rt.setSize(MIRROR_RES, MIRROR_RES);
+            this.textureNode.value = rt.texture;
+            if (this.depth) this.textureNode.getDepthNode().value = rt.depthTexture;
 
+            // Update reflection every 2nd frame once populated (30 fps reflection = half GPU load, zero queue stalls)
+            if (this.hasOutput && !this.forceUpdate && (++frameIdx & 1)) return;
+
+            inMirror = true;
+            const { target } = this;
             target.updateWorldMatrix(true, false);
             _mPos.setFromMatrixPosition(target.matrixWorld);
             _cPos.setFromMatrixPosition(camera.matrixWorld);
@@ -175,20 +180,19 @@ export function makeFloorMirror({ brassMat, woodMat, x = -1.05, z = -.42, ry = .
             }
             vc.projectionMatrixInverse.copy(vc.projectionMatrix).invert();
 
-            this.textureNode.value = rt.texture;
-            if (this.depth) this.textureNode.getDepthNode().value = rt.depthTexture;
-
             material.visible = false;
             const wasBack = back.visible;
             back.visible = false;
             const curRT = renderer.getRenderTarget();
             const curMRT = renderer.getMRT();
             const curClear = renderer.autoClear;
+            const curShadowAuto = renderer.shadowMap?.autoUpdate;
             const prevName = scene.name;
 
             renderer.setMRT(null);
             renderer.setRenderTarget(rt);
             renderer.autoClear = true;
+            if (renderer.shadowMap) renderer.shadowMap.autoUpdate = false;
             scene.name = (scene.name || 'Scene') + ' [ Reflector ]';
 
             try {
@@ -201,6 +205,7 @@ export function makeFloorMirror({ brassMat, woodMat, x = -1.05, z = -.42, ry = .
               }
             } finally {
               scene.name = prevName;
+              if (renderer.shadowMap && curShadowAuto !== undefined) renderer.shadowMap.autoUpdate = curShadowAuto;
               renderer.setMRT(curMRT);
               renderer.setRenderTarget(curRT);
               renderer.autoClear = curClear;
