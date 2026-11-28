@@ -17,7 +17,7 @@ import { makePet } from './pet.js';
 import { makeFloaties } from './floaties.js';
 import { breakApart, makeShows } from './fun.js';
 import { makeMotion, flexFor } from './motion.js';
-import { DESK, SHELF, SILL, LEDGE, onBoard, SPOTS, SPOT_NAMES, spotOf, roomColours, roomItems, tidyRoomColours, keepRoomColours, keepItem, forgetItem, forgetAll, freePlace, findItem, roomLine, inRoom, MAX_ITEMS } from './room.js';
+import { DESK, SHELF, SILL, LEDGE, FIXTURES, onBoard, SPOTS, SPOT_NAMES, spotOf, roomColours, roomItems, tidyRoomColours, keepRoomColours, keepItem, forgetItem, forgetAll, freePlace, findItem, roomLine, inRoom, MAX_ITEMS } from './room.js';
 import { plasterMaps, weaveMaps, brushedBrassMaps, ceramicBump } from './photoreal-mats.js';
 
 const HOLD_SIZE = .4;            // metres: the longest side of a prop in its hands
@@ -76,7 +76,13 @@ function setup() {
   // two windows are cut cleanly into the curve: a long rounded one in the left wall (the daylight) and a round one in
   // the back wall, each with a deep reveal out to the glass, as in a thick moulded wall.
   const W0 = WINDOW, wz = (W0.z0 + W0.z1) / 2, wy = (W0.y0 + W0.y1) / 2;
-  const PORT = { x: -1.28, y: 1.12, r: .26 }, portOut = backZ(PORT.x, PORT.y) - .05;
+  const PORT = { x: -1.28, y: 1.15, r: .26 };
+  const portOut = Math.min(
+    backZ(PORT.x - PORT.r, PORT.y),
+    backZ(PORT.x + PORT.r, PORT.y),
+    backZ(PORT.x, PORT.y - PORT.r),
+    backZ(PORT.x, PORT.y + PORT.r),
+  ) - .04;
   const cut = buildShell(THREE, [
     { wall: 'side', sdf: roundRect(wz, wy, (W0.z1 - W0.z0) / 2, (W0.y1 - W0.y0) / 2, W0.r), at: [wz, wy], out: W0.x },
     { wall: 'back', sdf: circle(PORT.x, PORT.y, PORT.r), at: [PORT.x, PORT.y], out: portOut },
@@ -100,7 +106,7 @@ function setup() {
   sky.position.set(W0.x - .8, 1.6, wz); sky.rotation.y = Math.PI / 2; room.add(sky);
   // the round window's glass at the end of its reveal (matte, so the sky painted in it by daylight.js reads: the stars
   // and moon at night, not the room mirrored over them), and a sill under it
-  const glass = new THREE.Mesh(new THREE.CircleGeometry(PORT.r + .02, 40), pbr('#eef0ec', { rough: 1, glow: .9, glowCol: '#f2f0e8' }));
+  const glass = new THREE.Mesh(new THREE.CircleGeometry(PORT.r + .035, 40), pbr('#eef0ec', { rough: 1, glow: .9, glowCol: '#f2f0e8' }));
   glass.position.set(PORT.x, PORT.y, portOut + .002); room.add(glass);
   const GLASS = { x: PORT.x, y: PORT.y, z: portOut + .002, r: PORT.r };
   // boards that follow the curve of the back wall: the sill under the round window, the desk (where it makes things)
@@ -152,7 +158,7 @@ function setup() {
     g.add(bulb);
     room.add(g);
   };
-  addShelfSconce(-.46, 1.21, .34);   // above the left floating shelf
+  addShelfSconce(-.46, 1.19, .34);   // above the left floating shelf
   addShelfSconce(1.06, 1.56, .46);   // above the right trophy shelf
 
   // little desk accent lamp on the far right end of the workbench
@@ -432,18 +438,33 @@ export function makeWorld() {
   }
   async function restoreRoom() {
     let n = 0;
-    for (const i of roomItems()) {
+    for (const raw of roomItems()) {
+      let i = raw;
       let thing = null;
       try { thing = await gs.models.generate.make(i.words, { seed: i.seed }); } catch { /* the generator could not: leave it out this time */ }
       if (!thing) continue;
-      let desc = i.desc, short = i.short;
+      let desc = i.desc, short = i.short, dirty = false;
       if (!desc) {
         try {
           const d = describe(thing, i.words, { size: i.size });
           desc = d.text; short ||= d.short;
-          keepItem({ ...i, short, desc });
+          dirty = true;
         } catch { /* fine */ }
       }
+      // If the room layout moved (e.g. lowered desk/shelf/sill or relocated window), re-seat saved items onto their surface
+      const S = SPOTS[i.spot];
+      if (S) {
+        const r = i.r || .12;
+        const offY = Math.abs(i.y - S.at[1]) > .025;
+        const offBoard = S.board && (i.x < S.board.x0 + .02 || i.x > S.board.x1 - .02 || Math.abs(i.z - onBoard(S.board, i.x)[2]) > .14);
+        const hitsFixture = S.board && FIXTURES.some(f => Math.abs(f.y - S.at[1]) < .2 && Math.hypot(f.x - i.x, f.z - i.z) < (f.r || .15) + r);
+        if (offY || offBoard || hitsFixture) {
+          const p = freePlace(i.spot, r, placed);
+          i = { ...i, x: +p.x.toFixed(3), y: +p.y.toFixed(3), z: +p.z.toFixed(3) };
+          dirty = true;
+        }
+      }
+      if (dirty) keepItem({ ...i, short, desc });
       const pivot = pivotFor(thing, i.size), e = { ...i, short, desc, pivot, body: null };
       pivot.position.set(i.x, i.y + pivot.userData.size.y / 2, i.z); pivot.rotation.set(0, i.ry || 0, 0);
       v.scene.add(pivot); settle(e); placed.push(e);
