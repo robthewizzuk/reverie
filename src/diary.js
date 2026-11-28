@@ -13,7 +13,7 @@ const btns = (edit, forget, label) => `<button type="button" data-edit="${esc(ed
 
 /** el: the #diary element. memory: memory.js. onForget(): after anything is forgotten or changed (so the chat reads it again).
  * extra(): more sections of the sheet as HTML (the lessons, from learn.js), or ''. */
-export function makeDiary({ el, memory, achievements = null, today = () => ({}), onForget = () => {}, google = null, extra = () => '' }) {
+export function makeDiary({ el, memory, achievements = null, today = () => ({}), onForget = () => {}, google = null, splat = null, extra = () => '' }) {
   const body = el.querySelector('.pages'), wipe = el.querySelector('[data-id="wipe"]');
   let armed = 0, editing = null;
 
@@ -64,6 +64,7 @@ export function makeDiary({ el, memory, achievements = null, today = () => ({}),
     if (m.chat.length) parts.push(`<section><h3>What we said lately</h3><ul class="chat">${m.chat.slice(-8).map(x => `<li class="${x.who === 'you' ? 'you' : 'me'}">${esc(x.text)}</li>`).join('')}</ul><button type="button" class="small" data-forget="the chats">Forget our chats</button></section>`);
     parts.push(`<section><label class="learn"><input type="checkbox" data-id="learn"${m.learn ? ' checked' : ''}> Learn about me from our chats</label><p class="soft">${m.learn ? 'Every so often I jot down what we talked about and anything new about you. The diary stays in this browser.' : "I only keep what you ask me to remember, and I don't keep our chats."}</p></section>`);
     parts.push(`<section class="backup"><h3>Backup &amp; restore</h3><p class="soft">Save a copy of your diary, room, pet, aquarium, capsules and badges to a file, or restore one on another browser.</p><div style="display:flex;gap:.5rem;flex-wrap:wrap"><button type="button" class="small" data-id="backup-export">Export backup (.json)</button><button type="button" class="small" data-id="backup-import">Import backup</button><input type="file" accept=".json,application/json" data-id="backup-file" hidden></div><p class="soft" data-id="backup-msg"></p></section>`);
+    if (splat) parts.push(`<section class="splat"><h3>Gaussian Splat room</h3><p class="soft">${splat.active ? `Active room: <b>${esc(splat.name)}</b>.` : 'Load a photo-scanned 3D Gaussian Splat (.splat or .ply) from Luma, Polycam, or Scaniverse — or drag one onto the stage — to place Reverie in a real room.'}</p><div style="display:flex;gap:.5rem;flex-wrap:wrap"><button type="button" class="small" data-id="splat-pick">Load .splat / .ply room</button>${splat.active ? '<button type="button" class="small" data-id="splat-clear">Back to workshop</button>' : ''}<input type="file" accept=".splat,.ply" data-id="splat-file" hidden></div><p class="soft" data-id="splat-msg"></p></section>`);
     // Gmail and the calendar: connect or disconnect (the sign-in is kept by Google and an encrypted cookie, not here)
     const g = google?.status;
     if (g?.ready) parts.push(`<section class="google"><h3>Gmail and calendar</h3>${g.connected
@@ -111,6 +112,15 @@ export function makeDiary({ el, memory, achievements = null, today = () => ({}),
       body.querySelector('[data-id="backup-file"]')?.click();
       return;
     }
+    if (b.dataset.id === 'splat-pick') {
+      body.querySelector('[data-id="splat-file"]')?.click();
+      return;
+    }
+    if (b.dataset.id === 'splat-clear') {
+      splat?.unload?.();
+      render();
+      return;
+    }
     if (b.dataset.id === 'wipe') {
       // pressed twice within a few seconds: there's no undo
       if (Date.now() - armed > 4000) { armed = Date.now(); wipe.textContent = 'Tap again to forget everything'; wipe.classList.add('armed'); return; }
@@ -135,6 +145,20 @@ export function makeDiary({ el, memory, achievements = null, today = () => ({}),
   });
   el.addEventListener('change', e => {
     if (e.target.dataset?.id === 'learn') { memory.learn = e.target.checked; render(); return; }
+    if (e.target.dataset?.id === 'splat-file') {
+      const file = e.target.files?.[0]; if (!file || !splat) return;
+      const msg = body.querySelector('[data-id="splat-msg"]');
+      if (msg) msg.textContent = 'Loading Gaussian Splat room…';
+      splat.loadFile(file).then(r => {
+        render();
+        const m2 = body.querySelector('[data-id="splat-msg"]');
+        if (m2) m2.textContent = r.ok ? `Loaded ${r.count.toLocaleString()} splats from ${r.name}.` : (r.error || 'Could not load splat.');
+      }).catch(err => {
+        const m2 = body.querySelector('[data-id="splat-msg"]');
+        if (m2) m2.textContent = 'Could not load splat: ' + String(err?.message || err).slice(0, 80);
+      });
+      return;
+    }
     if (e.target.dataset?.id === 'backup-file') {
       const file = e.target.files?.[0]; if (!file) return;
       file.text().then(txt => {

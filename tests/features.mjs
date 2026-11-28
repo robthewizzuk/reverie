@@ -17,6 +17,7 @@ import { describe, colourName } from '../src/describe.js';
 import { isBargeIn, isPureHush, settleDelay } from '../src/turn-taking.js';
 import { makeMemory, exportBackup, importBackup } from '../src/memory.js';
 import { freePlace, FIXTURES } from '../src/room.js';
+import { parseSplatBuffer } from '../src/splat-parse.js';
 import { SYSTEM, TOOLS } from '../server/persona.js';
 
 const fail = msg => { console.error('FAIL:', msg); process.exitCode = 1; };
@@ -317,6 +318,33 @@ const ok = (cond, msg) => { if (!cond) fail(msg); };
   ok(placeTool.input_schema.properties.spot.enum.includes('undo'), 'place tool supports undo');
   ok(roomColTool.input_schema.properties.undo?.type === 'boolean', 'room_colours tool supports undo');
   console.log('existing-systems: ok');
+}
+
+// 16. Gaussian Splat Parser (src/splat-parse.js)
+{
+  // Synthetic 2-splat binary .splat buffer (64 bytes)
+  const buf = new ArrayBuffer(64);
+  const dv = new DataView(buf), u8 = new Uint8Array(buf);
+  dv.setFloat32(0, 1.0, true); dv.setFloat32(4, -0.5, true); dv.setFloat32(8, -2.0, true);
+  dv.setFloat32(12, 0.05, true); dv.setFloat32(16, 0.05, true); dv.setFloat32(20, 0.05, true);
+  u8[24] = 255; u8[25] = 128; u8[26] = 64; u8[27] = 240;
+  dv.setFloat32(32, -1.0, true); dv.setFloat32(36, -1.5, true); dv.setFloat32(40, -1.0, true);
+  dv.setFloat32(44, 0.04, true); dv.setFloat32(48, 0.04, true); dv.setFloat32(52, 0.04, true);
+  u8[56] = 50; u8[57] = 200; u8[58] = 255; u8[59] = 255;
+  const s1 = parseSplatBuffer(buf, 'studio.splat');
+  ok(s1.count === 2, '.splat parses 2 splats');
+  ok(Math.abs(s1.positions[0] - 1.0) < 1e-4 && Math.abs(s1.positions[1] - 0.5) < 1e-4, '.splat flips Y-down to Y-up');
+  ok(s1.colors[0] > 0.99 && s1.colors[3] > 0.9, '.splat decodes RGBA');
+  // Synthetic ASCII .ply Gaussian Splat
+  const ply = new TextEncoder().encode(
+    'ply\nformat ascii 1.0\nelement vertex 2\nproperty float x\nproperty float y\nproperty float z\nproperty float f_dc_0\nproperty float f_dc_1\nproperty float f_dc_2\nproperty float opacity\nproperty float scale_0\nproperty float scale_1\nproperty float scale_2\nend_header\n'
+    + '0.5 -0.2 -1.0 0.8 0.2 -0.3 2.0 -3.0 -3.0 -3.0\n'
+    + '-0.5 -0.8 -1.5 -0.2 0.6 0.4 1.5 -3.2 -3.2 -3.2\n',
+  );
+  const s2 = parseSplatBuffer(ply, 'desk.ply');
+  ok(s2.count === 2, '.ply parses 2 Gaussian splats');
+  ok(s2.colors[0] > 0.6 && s2.colors[3] > 0.8, '.ply decodes SH DC color and sigmoid opacity');
+  console.log('splat-parse: ok');
 }
 
 console.log(process.exitCode ? 'features: failed' : 'features: all passed');
