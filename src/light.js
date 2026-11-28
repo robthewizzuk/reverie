@@ -10,8 +10,8 @@ export const SUN_DIR = [-.8, .62, .3];
 // the opening in the left wall, its window (shell.js, with the room's shape)
 export { WINDOW };
 // actual wall sconce lights mounted above the shelves (pulled slightly out from the wall so they illuminate the shelves cleanly without burning hotspots onto the plaster)
-export const LAMP = { x: 1.06, y: 1.50, z: backZ(1.06, 1.50) + .28 };
-export const SHELF_LAMP = { x: -.46, y: 1.13, z: backZ(-.46, 1.13) + .28 };
+export const LAMP = { x: 1.09, y: 1.50, z: backZ(1.09, 1.50) + .28 };
+export const SHELF_LAMP = { x: -.94, y: 1.13, z: backZ(-.94, 1.13) + .28 };
 
 const CORE_LAMP = '#ff7020';     // the light its core casts, as made (moved with the glow colour)
 

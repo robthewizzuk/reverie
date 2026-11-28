@@ -13,9 +13,9 @@ export const PARTS = Object.keys(DEFAULT_ROOM);
 // The things fixed to the back wall, which curves round behind them (the room is a round capsule, shell.js): each a
 // board that follows the curve, from x0 to x1 at height y (its top), d deep. The desk floats on the wall like the shelf
 // (no legs: the floor curves up into the wall where they would stand).
-export const DESK = { x0: .46, x1: 1.62, y: .70, d: .48 };
-export const SHELF = { x0: -.78, x1: -.14, y: .94, d: .22 };
-export const SILL = { x0: -1.66, x1: -.90, y: .80, d: .16 };
+export const DESK = { x0: .54, x1: 1.64, y: .70, d: .48 };
+export const SHELF = { x0: -1.30, x1: -.58, y: .94, d: .22 };
+export const SILL = { x0: -.38, x1: .38, y: .88, d: .16 };
 // the ledge along the bottom of the big left window: from the glass (x0) to a little into the room (x1), its top at y,
 // along the straight part of the window's bottom edge (z0 to z1)
 export const LEDGE = { x0: WINDOW.x, x1: sideX((WINDOW.z0 + WINDOW.z1) / 2, WINDOW.y0) + .12, y: WINDOW.y0 + .012, z0: WINDOW.z0 + WINDOW.r - .06, z1: WINDOW.z1 - WINDOW.r + .06 };
@@ -33,13 +33,13 @@ export const SPOTS = {
   'right of you': { at: [.6, 0, .1], spread: [.4, -.25], about: 'on the floor just to your right' },
   'in front of you': { at: [0, 0, .5], spread: [.35, 0], about: 'on the rug in front of you' },
   'on the rug': { at: [-.45, .012, .45], spread: [.3, .1], about: 'on the rug' },
-  'by the window': { at: [-1.2, 0, -.95], spread: [.32, 0], about: 'on the floor under the round window' },
-  'on the windowsill': { at: onBoard(SILL, -1.28), board: SILL, spread: [.2, 0], small: true, about: 'on the windowsill' },
-  'on the workbench': { at: onBoard(DESK, 1.32), board: DESK, spread: [-.22, 0], small: true, about: 'on the desk' },
-  'on the shelf': { at: onBoard(SHELF, -.46), board: SHELF, spread: [.18, 0], small: true, about: 'on the shelf' },
+  'by the window': { at: [0, 0, -1.15], spread: [.32, 0], about: 'on the floor under the round window' },
+  'on the windowsill': { at: onBoard(SILL, 0), board: SILL, spread: [.2, 0], small: true, about: 'on the windowsill' },
+  'on the workbench': { at: onBoard(DESK, 1.36), board: DESK, spread: [-.22, 0], small: true, about: 'on the desk' },
+  'on the shelf': { at: onBoard(SHELF, -.94), board: SHELF, spread: [.18, 0], small: true, about: 'on the shelf' },
   'back left corner': { at: [-1.55, 0, -.55], spread: [.3, .35], about: 'in the back left corner, by the pouf' },
   'by the plant': { at: [1.75, 0, .05], spread: [0, .4], about: 'on the right, by the plant' },
-  'under the workbench': { at: [.95, 0, -1.08], spread: [.35, 0], about: 'under the desk' },
+  'under the workbench': { at: [1.0, 0, -1.08], spread: [.35, 0], about: 'under the desk' },
   'by the left wall': { at: [-1.6, 0, .35], spread: [0, .4], about: 'against the left wall, under the big window' },
   'front left': { at: [-1.05, 0, .75], spread: [-.35, -.2], about: 'at the front on the left' },
   'front right': { at: [1.05, 0, .75], spread: [.35, -.2], about: 'at the front on the right' },
@@ -106,9 +106,9 @@ export function forgetAll() { now.items = []; save(); }
 
 // Fixed workshop props (desk aquarium, radio, lamp) so placed items don't clip into them.
 export const FIXTURES = [
-  { name: 'aquarium', x: .76,  y: DESK.y, z: -1.12, r: .24 },
-  { name: 'radio',    x: 1.14, y: DESK.y, z: -1.16, r: .16 },
-  { name: 'lamp',     x: 1.46, y: DESK.y, z: -1.25, r: .14 },
+  { name: 'aquarium', x: .84,  y: DESK.y, z: -1.12, r: .24 },
+  { name: 'radio',    x: 1.20, y: DESK.y, z: -1.16, r: .16 },
+  { name: 'lamp',     x: 1.50, y: DESK.y, z: -1.25, r: .14 },
 ];
 
 /**
