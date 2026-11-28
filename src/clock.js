@@ -12,7 +12,7 @@ export function makeClock({ world, onNews = () => {} }) {
   const root = new THREE.Group();
   root.name = 'clock';
   // Mounted cleanly above the center-left floating shelf, well inside the camera frame
-  const cx = -.46, cy = 1.45, cz = backZ(cx, cy) + .026;
+  const cx = -.94, cy = 1.45, cz = backZ(cx, cy) + .026;
   const n = wallNormal(cx, cy, cz);
   root.position.set(cx, cy, cz);
   root.lookAt(cx + n[0], cy + n[1] * .25, cz + n[2]);

@@ -19,13 +19,14 @@ import { breakApart, makeShows } from './fun.js';
 import { makeMotion, flexFor } from './motion.js';
 import { DESK, SHELF, SILL, LEDGE, FIXTURES, onBoard, SPOTS, SPOT_NAMES, spotOf, roomColours, roomItems, tidyRoomColours, keepRoomColours, keepItem, forgetItem, forgetAll, freePlace, findItem, roomLine, inRoom, MAX_ITEMS } from './room.js';
 import { plasterMaps, weaveMaps, brushedBrassMaps, ceramicBump } from './photoreal-mats.js';
+import { makeFloorMirror } from './floor-mirror.js';
 
 const HOLD_SIZE = .4;            // metres: the longest side of a prop in its hands
 const SIZE_WORDS = [[/\b(giant|huge|enormous)\b/, 1.8], [/\b(bigger|big|large)\b/, 1.4], [/\b(smaller|small|little)\b/, .7], [/\b(tiny|teeny)\b/, .5]];
 const article = w => w.replace(/^(a|an|the|some)\s+/i, '');
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 
-let v, light, creature, outfits, fx, world, room, embers, motes, body, daylight, sleepy, floaties, party;
+let v, light, creature, outfits, fx, world, room, embers, motes, body, daylight, sleepy, floaties, party, floorMirror;
 // the room's recolourable parts: the meshes made of each, and the recipe they are made from
 const ROOM_LOOK = { walls: null, floor: ['wood', [8, 8]], rug: null, wood: ['wood', [1, 1]] };
 const roomParts = { walls: [], floor: [], rug: [], wood: [] }, relight = [];
@@ -76,7 +77,7 @@ function setup() {
   // two windows are cut cleanly into the curve: a long rounded one in the left wall (the daylight) and a round one in
   // the back wall, each with a deep reveal out to the glass, as in a thick moulded wall.
   const W0 = WINDOW, wz = (W0.z0 + W0.z1) / 2, wy = (W0.y0 + W0.y1) / 2;
-  const PORT = { x: -1.28, y: 1.15, r: .26 };
+  const PORT = { x: 0, y: 1.24, r: .28 };
   const portOut = Math.min(
     backZ(PORT.x - PORT.r, PORT.y),
     backZ(PORT.x + PORT.r, PORT.y),
@@ -158,23 +159,23 @@ function setup() {
     g.add(bulb);
     room.add(g);
   };
-  addShelfSconce(-.46, 1.19, .34);   // above the left floating shelf
-  addShelfSconce(1.06, 1.56, .46);   // above the right trophy shelf
+  addShelfSconce(-.94, 1.19, .36);   // above the left floating shelf
+  addShelfSconce(1.09, 1.56, .46);   // above the right trophy shelf
 
   // little desk accent lamp on the far right end of the workbench
   const pale = pbr('#ece6dd', { rough: .55 });
-  const [dlx, dly, dlz] = onBoard(DESK, 1.46);
+  const [dlx, dly, dlz] = onBoard(DESK, 1.50);
   const lampBase = new THREE.Mesh(new THREE.CylinderGeometry(.05, .058, .016, 24), pale); lampBase.position.set(dlx, dly + .008, dlz); add(lampBase, false);
   const stem = new THREE.Mesh(new THREE.CylinderGeometry(.005, .005, .19, 10), pale); stem.position.set(dlx, dly + .105, dlz); add(stem, false);
   const globe = new THREE.Mesh(new THREE.SphereGeometry(.058, 24, 16), globeMat); globe.position.set(dlx, dly + .22, dlz); room.add(globe);
 
   const vaseShape = [[0, 0], [.045, 0], [.055, .03], [.05, .09], [.03, .13], [.026, .16], [.032, .17], [0, .17]].map(([x, y]) => new THREE.Vector2(x, y));
   const vaseMat = Object.assign(pbr('#d9b8a4', { rough: .34, clear: .65 }), { bumpMap: cb, bumpScale: .003 });
-  const vase = new THREE.Mesh(new THREE.LatheGeometry(vaseShape, 28), vaseMat); vase.position.set(...onBoard(SHELF, -.68)); add(vase);
+  const vase = new THREE.Mesh(new THREE.LatheGeometry(vaseShape, 28), vaseMat); vase.position.set(...onBoard(SHELF, -1.18)); add(vase);
   // workshop dressing: cloth-bound books + framed sketch on the floating shelf, ceramic coffee mug on the workbench
   {
     const bookCols = ['#7b3f36', '#3d5a52', '#c89b52'];
-    const [bx0, by0, bz0] = onBoard(SHELF, -.25);
+    const [bx0, by0, bz0] = onBoard(SHELF, -.70);
     let yAcc = by0;
     bookCols.forEach((col, i) => {
       const bw = .15 - i * .012, bh = .026, bd = .11 - i * .008;
@@ -185,7 +186,7 @@ function setup() {
       yAcc += bh;
     });
     // leaning framed botanical print on the shelf
-    const [fx, fy, fz] = onBoard(SHELF, -.47);
+    const [fx, fy, fz] = onBoard(SHELF, -.94);
     const frameG = new THREE.Group();
     frameG.position.set(fx, fy + .10, fz - .02);
     frameG.rotation.set(-.12, .12, 0);
@@ -197,7 +198,7 @@ function setup() {
     frameG.add(outerF, matBoard, leafArt);
     room.add(frameG);
     // warm ceramic coffee mug on the workbench
-    const [mx0, my0, mz0] = onBoard(DESK, .54);
+    const [mx0, my0, mz0] = onBoard(DESK, .62);
     const mugMat = Object.assign(pbr('#e9dfd1', { rough: .28, clear: .7 }), { bumpMap: cb, bumpScale: .002 });
     const mug = new THREE.Mesh(new THREE.CylinderGeometry(.036, .032, .08, 22), mugMat);
     mug.position.set(mx0, my0 + .04, mz0 + .06);
@@ -207,37 +208,12 @@ function setup() {
     handle.position.set(mx0 + .034, my0 + .042, mz0 + .06); handle.rotation.z = -Math.PI / 2;
     add(mug); room.add(coffee); add(handle, false);
   }
-  // workshop wall mirror: arched brass frame + true reflective mirror glass positioned cleanly in the center-right zone
-  const mirrorGroup = new THREE.Group();
-  const mx = .16, my = 1.10, mz = backZ(mx, my) + .03;
-  const mn = wallNormal(mx, my, mz);
-  mirrorGroup.position.set(mx, my, mz);
-  mirrorGroup.lookAt(mx + mn[0], my + mn[1] * .2, mz + mn[2]);
-  const archShape = (w, h) => {
-    const sh = new THREE.Shape(), hw = w / 2, hh = h / 2, r = hw;
-    sh.moveTo(-hw, -hh);
-    sh.lineTo(hw, -hh);
-    sh.lineTo(hw, hh - r);
-    sh.absarc(0, hh - r, r, 0, Math.PI, false);
-    sh.lineTo(-hw, -hh);
-    return sh;
-  };
-  const mirrorMat = pbr('#ffffff', { metal: .98, rough: .01, clear: .3 });
-  const mirrorGlass = new THREE.Mesh(new THREE.ShapeGeometry(archShape(.44, .56), 24), mirrorMat);
-  mirrorGlass.position.z = .018;
-  mirrorGlass.userData.noTrace = true; // mirror reflects the room without self-intersecting in the traced BVH
-  const frameOuter = archShape(.50, .62);
-  const frameHole = archShape(.435, .555);
-  frameOuter.holes.push(frameHole);
-  const mirrorFrame = new THREE.Mesh(new THREE.ExtrudeGeometry(frameOuter, { depth: .028, bevelEnabled: true, bevelThickness: .006, bevelSize: .006, bevelSegments: 2, curveSegments: 20 }), brassMat);
-  const mirrorBack = new THREE.Mesh(new THREE.ShapeGeometry(archShape(.48, .60), 20), wood);
-  mirrorBack.position.z = -.002;
-  mirrorBack.rotation.y = Math.PI;
-  mirrorGroup.add(mirrorBack, mirrorFrame, mirrorGlass);
-  room.add(mirrorGroup);
+  // freestanding arched brass cheval floor mirror angled toward Reverie and the room, with real-time planar reflection
+  floorMirror = makeFloorMirror({ brassMat, woodMat: wood, x: -1.05, z: -.42, ry: .80 });
+  room.add(floorMirror.group);
   // a round pouf in the back left corner, soft woven linen like Reverie
   const pouf = new THREE.Mesh(new THREE.SphereGeometry(.26, 32, 18), felt('#b4bfa8', [8, 8]));
-  pouf.scale.set(1, .62, 1); pouf.position.set(-1.15, .16, -.85); add(pouf);
+  pouf.scale.set(1, .62, 1); pouf.position.set(-1.48, .16, -.82); add(pouf);
   // a plant on the right, in a tall matte ceramic pot
   const potShape = [[0, 0], [.13, 0], [.16, .04], [.17, .38], [.165, .4], [0, .4]].map(([x, y]) => new THREE.Vector2(x, y));
   const potMat = Object.assign(pbr('#efeae3', { rough: .72, clear: .18 }), { bumpMap: cb, bumpScale: .003 });
@@ -253,7 +229,7 @@ function setup() {
   // the light: the sun through the window, the bench lamp, its core, ray-traced bounce light and reflections
   // (made once the creature is in the room, so the reflections reach its eyes, glass dome and mirror)
   light = lightRoom(v, creature, { min: [SHELL.cx - SHELL.a, 0, SHELL.cz - SHELL.b], max: [SHELL.cx + SHELL.a, SHELL.top, SHELL.cz + SHELL.b] });
-  v.reflect?.(mirrorGlass);
+  v.reflect?.(floorMirror.glass);
   relight.push(light.bounce, light.room);   // (both baked again when the room is repainted)
   // the real day outside: the sun, the sky in the windows, the lamp, rain on the glass (daylight.js)
   daylight = makeDaylight({ v, light, outside: { side: sky.material, round: glass.material }, glass: GLASS, side: W0, globe: globeMat, motes: dust });
@@ -641,6 +617,7 @@ export function makeWorld() {
       creature.update(dt, v.cam); outfits.update(dt);
       daylight.update(dt); sleepy.update(dt);
       light.update(dt, t);
+      floorMirror?.upgrade(v);
       party.update(dt); v.exposure *= party.dim;   // (the room a little darker while the party lights are up)
       creature.coreAt(at);
       emberAt.x = at.x; emberAt.y = at.y; emberAt.z = at.z + .03;
