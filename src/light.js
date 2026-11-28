@@ -20,16 +20,18 @@ const CORE_LAMP = '#ff7020';     // the light its core casts, as made (moved wit
  * Returns { sun, lamp, bounce, room, update(dt, t), recolour() }. daylight.js moves the sun and lamp with the real day.
  */
 export function lightRoom(v, creature, roomBox) {
-  const { sun, HD } = gs.hd;
+  const { sun } = gs.hd;
 
   // Enable WebGPU ray tracing for reflections, direct shadow rays, and live ray-traced bounce light (GI).
-  // (Automatically falls back to screen-space reflections & baked bounce on devices without WebGPU.)
-  if (HD) {
-    HD.traced = true;
-    HD.tracePhones = true;
-    HD.regen = true;
-    HD.traceSunMap = false;
-  }
+  // (Uses the mutable HD object from hd3d.js dynamically so hd3d stays code-split; gs.hd.HD is a read-only view.)
+  import('../engine/src/kit/hd3d.js').then(({ HD }) => {
+    try {
+      HD.traced = true;
+      HD.tracePhones = true;
+      HD.regen = true;
+      HD.traceSunMap = false;
+    } catch { /* fallback to defaults */ }
+  }).catch(() => {});
 
   // the mood: clean and bright, colours as they are
   v.scene.background.set('#e9e3da');
