@@ -335,4 +335,25 @@ const ok = (cond, msg) => { if (!cond) fail(msg); };
   console.log('existing-systems: ok');
 }
 
+// 16. Silero VAD + Zipformer 20M filterbank, BPE decoding & hotword tuning
+{
+  const { OnlineFbank, parseTokens, decodeBpe, buildHotwordBoosts, cleanTranscript } = await import('../src/fbank.js');
+  const fb = new OnlineFbank();
+  // Feed 0.5 s of 440 Hz sine wave at 16 kHz -> should yield 48 frames ((8000 - 400) / 160 + 1)
+  const pcm = new Float32Array(8000);
+  for (let i = 0; i < pcm.length; i++) pcm[i] = 0.4 * Math.sin(2 * Math.PI * 440 * i / 16000);
+  const added = fb.acceptWaveform(pcm);
+  ok(added === 48 && fb.numFrames === 48, `OnlineFbank extracts exact frame count (got ${added})`);
+  const chunk = fb.popChunk(39, 32);
+  ok(chunk instanceof Float32Array && chunk.length === 39 * 80, 'popChunk returns 39x80 flat Float32Array');
+  ok(chunk.every(Number.isFinite), 'all log-mel fbank values are finite');
+  ok(fb.numFrames === 16, `popChunk advances by 32 leaving 16 frames (got ${fb.numFrames})`);
+  const toks = parseTokens('<blk> 0\n\u2581MAKE 1\n\u2581A 2\n\u2581LEG 3\nO 4\n\u2581HOUSE 5\n\u2581REV 6\nERIE 7\n');
+  ok(decodeBpe([0, 1, 2, 3, 4, 5], toks) === 'MAKE A LEGO HOUSE', 'decodeBpe joins SentencePiece tokens cleanly');
+  const boosts = buildHotwordBoosts(['reverie', 'lego'], toks, 1.2);
+  ok(boosts.get(3) === 1.2 && boosts.get(6) === 1.2 && !boosts.has(2), 'buildHotwordBoosts targets domain BPE prefixes');
+  ok(cleanTranscript('HEY REFEREE MAKE A LEG GO HOUSE') === 'hey reverie make a lego house', 'cleanTranscript fixes Reverie domain confusions');
+  console.log('stt-fbank: ok');
+}
+
 console.log(process.exitCode ? 'features: failed' : 'features: all passed');

@@ -18,7 +18,11 @@
 // as said, there and then. If the recogniser's final turns out the same, it is dropped; if they went on, or it heard
 // the words differently, the whole phrase comes again as { more: true }, to be asked instead of the first part.
 
+import { LocalStt } from './stt-local.js';
+
 const R = typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition);
+const STT_PARAM = typeof location !== 'undefined' ? new URLSearchParams(location.search).get('stt') : null;
+const WANT_LOCAL = STT_PARAM !== 'browser' && typeof Worker !== 'undefined' && typeof navigator !== 'undefined' && !!navigator.mediaDevices?.getUserMedia && !navigator.webdriver;
 /** The same words, near enough: a recogniser's final often differs from what it showed by a word ("to" for "two"),
  * which is not worth asking again for. */
 export function sameWords(a, b) {
@@ -42,21 +46,67 @@ export class Listener {
     this.textAt = 0;              // when .text last changed
     this.early = '';              // words taken as said by settle() that the recogniser hasn't given as final yet
     this.listening = false; this.want = false; this.rec = null; this.local = false;
+    this.usingLocal = false;      // true once Silero VAD + Zipformer 20M owns transcription
     this.onProblem = onProblem; this.onNote = onNote;
     this.firstWay = this.way = EDGE ? 2 : 0;      // index into WAYS (Edge: straight to the plain way)
     this.fails = 0;               // failures in a row at this way
     this.log = [];
+    this._localStt = WANT_LOCAL ? new LocalStt({
+      onNote: msg => this.note(msg),
+      onReady: () => this._activateLocal(),
+      onPartial: text => {
+        if (!this.usingLocal || !this.want) return;
+        const t = norm(text);
+        if (t && t !== this.text) { this.text = t; this.textAt = performance.now(); }
+      },
+      onFinal: text => {
+        if (!this.usingLocal || !this.want) return;
+        const t = norm(text);
+        this.text = '';
+        if (t) this.finished(t);
+      },
+      onFailed: () => {
+        if (this.usingLocal) {
+          this.usingLocal = false;
+          if (this.want && R) this.listen();
+          else if (this.want) this.fail('broken');
+        } else if (this.want && !this.rec && !R) {
+          this.fail('broken');
+        }
+      },
+    }) : null;
     // (a browser driven by tests has the class but no speech service: starting it there takes the page down)
-    this.available = !!R && !navigator.webdriver;
+    this.available = (!!R || !!this._localStt) && !navigator.webdriver;
     /** Why it stopped for good, if it did: 'denied' (no microphone allowed), 'unavailable', 'broken' or null. */
     this.problem = this.available ? null : 'unavailable';
-    this.note(`recogniser ${R ? (window.SpeechRecognition ? 'SpeechRecognition' : 'webkitSpeechRecognition') : 'none'}, ${EDGE ? 'Edge' : 'not Edge'}, language ${language}`);
+    this.note(`recogniser ${this._localStt ? 'Silero VAD + Zipformer 20M' : ''}${this._localStt && R ? ' + ' : ''}${R ? (window.SpeechRecognition ? 'SpeechRecognition' : 'webkitSpeechRecognition') : (this._localStt ? '' : 'none')}, ${EDGE ? 'Edge' : 'not Edge'}, language ${language}`);
   }
 
   note(what) {
     const line = `${(performance.now() / 1000).toFixed(1)}s ${what}`;
     this.log.push(line); if (this.log.length > 60) this.log.shift();
     console.info(`[reverie] mic: ${what}`); this.onNote?.(what);
+  }
+
+  /** Update Reverie-specific hotwords (pet name, room items, etc.) boosted by Zipformer 20M. */
+  setHotwords(words) { this._localStt?.setHotwords(words); }
+
+  /** Switch seamlessly from browser SpeechRecognition to local Silero VAD + Zipformer 20M once models are ready. */
+  _activateLocal() {
+    if (!this.want || !this._localStt?.ready || this._localStt.failed) return;
+    if (!this.stream?.getAudioTracks().some(t => t.readyState === 'live')) return;
+    if (this.rec) {
+      const r = this.rec; this.rec = null; r.onend = null; r.onresult = null; r.onerror = null;
+      try { r.abort(); } catch { /* gone */ }
+    }
+    clearTimeout(this.watch);
+    this.usingLocal = true;
+    this.local = true;
+    this.listening = true;
+    this.text = '';
+    this.early = '';
+    if (!this._localStt.active) this._localStt.start(this.stream);
+    this.note('switched to local Silero VAD + Zipformer 20M');
   }
 
   /** Asks for the microphone (the browser's prompt) and starts listening. Call from a tap. Resolves to true if it is. */
@@ -71,12 +121,29 @@ export class Listener {
       this.micAllowed = true;
       this.note(`microphone allowed: "${t?.label || 'unnamed'}", ${t?.readyState}${t?.muted ? ', muted' : ''}`);
       this._startVad(this.stream);
-      // (only the first way listens to this stream: the others needed it just for the prompt)
-      if (WAYS[this.way] !== 'track') this.release();
+      // Kick off local Silero VAD + Zipformer 20M (cached in browser after first load)
+      if (this._localStt && !this._localStt.failed) {
+        this._localStt.warmup();
+        await this._localStt.start(this.stream);
+      }
+      // (only keep stream if local STT needs it or browser track mode uses it)
+      const keepStream = (this._localStt && !this._localStt.failed) || WAYS[this.way] === 'track';
+      if (!keepStream) this.release();
     } catch (e) {
       this.note(`microphone refused: ${e?.name} ${e?.message || ''}`);
       if (e?.name === 'NotAllowedError' || e?.name === 'SecurityError') { this.problem = 'denied'; this.available = false; return false; }
       // (no getUserMedia here, or no device: the recogniser asks by itself)
+    }
+    this.want = true; this.problem = null; this.fails = 0;
+    // If Silero VAD + Zipformer 20M is already cached & ready, use it directly without starting browser STT
+    if (this._localStt?.ready && !this._localStt.failed && this.stream) {
+      this._activateLocal();
+      return true;
+    }
+    if (!R) {
+      // Browser has no SpeechRecognition (e.g. Firefox): wait for local Silero VAD + Zipformer 20M
+      this.listening = !!(this._localStt && !this._localStt.failed);
+      return this.listening;
     }
     // on the device where it can (Chrome with the language downloaded), else the browser's usual recogniser
     this.canLocal = false;
@@ -84,11 +151,10 @@ export class Listener {
       try { const a = await R.available({ langs: [this.language], processLocally: true }); this.canLocal = a === 'available'; this.note(`on-device recogniser: ${a}`); }
       catch (e) { this.note(`on-device check failed: ${e?.message || e}`); }
     }
-    this.want = true; this.problem = null; this.fails = 0;
     return this.listen();
   }
 
-  /** Lightweight RMS energy meter on the echo-cancelled mic track (for instant acoustic ducking). */
+  /** Lightweight RMS energy meter on the echo-cancelled mic track (fallback until Silero VAD is ready). */
   _startVad(stream) {
     try {
       const AC = window.AudioContext || window.webkitAudioContext;
@@ -101,8 +167,11 @@ export class Listener {
     } catch { this._vad = null; }
   }
 
-  /** Current mic RMS level (0..1) for instant barge-in ducking, or 0 if unavailable. */
+  /** Current mic energy / neural VAD level (0..1) for instant barge-in ducking & mic pulse ring. */
   get voiceLevel() {
+    if (this._localStt?.active && this._localStt.ready) {
+      return Math.max(this._localStt.rms, this._localStt.vadProb * .22);
+    }
     if (!this._vad) return 0;
     const { an, buf } = this._vad;
     an.getByteTimeDomainData(buf);
@@ -111,11 +180,15 @@ export class Listener {
     return Math.sqrt(sum / buf.length);
   }
 
-  /** True when the user's voice energy is clearly above background noise. */
-  get speakingNow() { return this.voiceLevel > .045; }
+  /** True when Silero VAD (or RMS fallback before models load) detects human speech. */
+  get speakingNow() {
+    if (this._localStt?.active && this._localStt.ready) return this._localStt.speaking;
+    return this.voiceLevel > .045;
+  }
 
-  /** The microphone stream we hold is only for way 1; elsewhere it is let go so the recogniser has the mic to itself. */
+  /** Release microphone stream and audio contexts. */
   release() {
+    this._localStt?.stop();
     this.stream?.getTracks().forEach(t => t.stop()); this.stream = null;
     if (this._vadCtx) { this._vadCtx.close?.().catch?.(() => {}); this._vadCtx = null; }
     this._vad = null;
@@ -123,22 +196,24 @@ export class Listener {
 
   /** This way isn't working: try the next one, or give up and say so. */
   stepDown(why) {
+    if (this.usingLocal) return;
     clearTimeout(this.watch);
     if (this.way < WAYS.length - 1) {
       this.way++; this.fails = 0;
       this.note(`not working (${why}): trying "${WAYS[this.way]}" next`);
-      if (WAYS[this.way] !== 'track') this.release();
+      if (WAYS[this.way] !== 'track' && !(this._localStt && !this._localStt.failed)) this.release();
       if (this.rec) { const r = this.rec; this.rec = null; r.onend = null; try { r.abort(); } catch { /* gone */ } }
       this.listening = false;
-      if (this.want) setTimeout(() => this.want && this.listen(), 250);
+      if (this.want) setTimeout(() => this.want && !this.usingLocal && this.listen(), 250);
       return;
     }
     this.note(`not working (${why}), and there is nothing left to try: listening is off`);
+    if (this._localStt && !this._localStt.failed) return; // local STT still loading
     this.fail('broken');
   }
 
   fail(problem) {
-    this.problem = problem; this.want = false; this.listening = false; this.text = '';
+    this.problem = problem; this.want = false; this.listening = false; this.usingLocal = false; this.text = '';
     if (problem !== 'denied') this.available = false;
     clearTimeout(this.watch); this.release();
     if (this.rec) { const r = this.rec; this.rec = null; r.onend = null; try { r.abort(); } catch { /* gone */ } }
@@ -146,6 +221,7 @@ export class Listener {
   }
 
   listen() {
+    if (this.usingLocal || !R) return this.listening;
     const way = WAYS[this.way], rec = new R(), t0 = performance.now();
     let audio = false, heard = false, empty = 0;
     rec.lang = this.language; rec.continuous = way !== 'one at a time'; rec.interimResults = true; rec.maxAlternatives = 1;
@@ -159,7 +235,7 @@ export class Listener {
     rec.onspeechend = () => this.note('speech end');
     rec.onnomatch = () => this.note('no match');
     rec.onresult = e => {
-      if (this.rec !== rec) return;
+      if (this.rec !== rec || this.usingLocal) return;
       // (results that are all empty: the recogniser is getting silence, not us. Edge does this with our track)
       const words = [...e.results].some(r => r[0]?.transcript?.trim());
       if (!words) { if (++empty >= 3) this.stepDown('only empty results'); return; }
@@ -174,7 +250,7 @@ export class Listener {
     };
     rec.onerror = e => {
       this.note(`error "${e.error}"${e.message ? ': ' + e.message : ''}, ${ms()} ms`);
-      if (this.rec !== rec) return;
+      if (this.rec !== rec || this.usingLocal) return;
       if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
         // (with our own microphone already allowed, a refusal here is the recogniser's service, not the person)
         if (this.way < WAYS.length - 1) return this.stepDown(e.error);
@@ -186,7 +262,7 @@ export class Listener {
     rec.onend = () => {
       clearTimeout(this.watch);
       this.note(`end, ${ms()} ms${heard ? '' : ', nothing heard'}`);
-      if (this.rec !== rec) return;
+      if (this.rec !== rec || this.usingLocal) return;
       // (words it was still hearing when the session ended are never given as final: they are said, not lost)
       if (this.text && this.text !== this.early) this.finished(this.text);
       this.early = '';
@@ -194,7 +270,7 @@ export class Listener {
       if (!this.want) return;
       // ending at once, again and again, with nothing heard: this way isn't working
       if (!heard && ms() < QUICK_END && ++this.fails >= 2) return this.stepDown('ends at once');
-      setTimeout(() => this.want && !this.rec && this.listen(), 200);
+      setTimeout(() => this.want && !this.rec && !this.usingLocal && this.listen(), 200);
     };
     const track = way === 'track' ? this.stream?.getAudioTracks().find(t => t.readyState === 'live') : null;
     try {
@@ -209,7 +285,7 @@ export class Listener {
       if (this.want) { this.stepDown('start failed'); return this.want; }
     }
     clearTimeout(this.watch);
-    this.watch = setTimeout(() => { if (this.rec === rec && !audio && !heard) this.stepDown(`no audio after ${AUDIO_WAIT / 1000} s`); }, AUDIO_WAIT);
+    this.watch = setTimeout(() => { if (this.rec === rec && !audio && !heard && !this.usingLocal) this.stepDown(`no audio after ${AUDIO_WAIT / 1000} s`); }, AUDIO_WAIT);
     return this.listening;
   }
 
@@ -241,7 +317,7 @@ export class Listener {
   next() { return this.said.length ? this.said.shift() : null; }
 
   stop() {
-    this.want = false; this.listening = false; this.text = ''; this.early = '';
+    this.want = false; this.listening = false; this.usingLocal = false; this.text = ''; this.early = '';
     clearTimeout(this.watch); this.release();
     if (this.rec) { try { this.rec.abort(); } catch { /* gone */ } this.rec = null; }
     this.note('stopped');
